@@ -29,7 +29,7 @@ try:
     PALETTES = list(_pal.ALL_PALETTES.keys())
 except Exception:
     _pal = None
-    PALETTES = ["PICO-8", "Sweetie-16", "NES", "CGA-16", "CGA-4", "Game Boy DMG"]
+    PALETTES = ["PICO-8", "DAWNBRINGER-16", "ENDESGA-32", "NES", "GAMEBOY", "C=64"]
 
 
 def _colors():
@@ -217,7 +217,8 @@ def main():
                    help="how aggressively to match the background color for --transparent. default 16")
     p.add_argument("--palette", default="none",
                    help="palette to lock to: 'none' = keep the model's own colors; "
-                        "or PICO-8 / Sweetie-16 / NES / ... (see --list-palettes)")
+                        "or PICO-8 / DAWNBRINGER-16 / ENDESGA-32 / NES / ... "
+                        "(55 bundled, see --list-palettes)")
     p.add_argument("--dither", action="store_true", help="Floyd-Steinberg dithering")
     p.add_argument("--smooth", choices=["mode", "median", "none"], default="mode",
                    help="flatten noise before downscaling (mode=cleanest). default mode")

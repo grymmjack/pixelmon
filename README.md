@@ -11,13 +11,13 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 ```
 
 <p>
-  <img src="examples/knight.png" width="200" alt="knight sprite">
+  <img src="examples/knight.png" width="190" alt="knight sprite">
+  <img src="examples/wizard-endesga.png" width="190" alt="wizard sprite, ENDESGA-32 palette">
   <img src="examples/spider-1.png" width="150" alt="spider sprite">
   <img src="examples/spider-2.png" width="150" alt="spider sprite">
-  <img src="examples/spider-4.png" width="150" alt="spider sprite">
 </p>
 
-*(`pixelmon "a knight in armor"`, then three variations of `pixelmon "a spider" -n …`.)*
+*(`pixelmon "a knight in armor"`; `pixelmon "a wizard" --palette ENDESGA-32`; two `pixelmon "a spider" -n …` variations.)*
 
 ---
 
@@ -115,7 +115,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 |---|---|---|
 | `-n, --number N` | how many to make, each a different seed | `1` |
 | `--size N` | sprite size in px: 16 / 32 / 64 / 128 (128 = sharpest) | `128` |
-| `--palette NAME` | `none` (model's colors), PICO-8, Sweetie-16, NES, CGA-16, Game Boy DMG, Custom | `none` |
+| `--palette NAME` | `none` (model's colors), or one of **55 bundled** palettes (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, GAMEBOY, …) — see `--list-palettes` — or Custom | `none` |
 | `--transparent` | cut out the background → transparent PNG | off |
 | `--dither` | Floyd-Steinberg dithering (faked shading) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
@@ -153,8 +153,12 @@ finishing pass that makes output a *true* sprite:
    hard 1-bit alpha (no soft matte fringe — what sprites want).
 5. **preview** — a nearest-neighbour upscaled copy so you can see the tiny sprite.
 
-Palettes live in `custom_nodes/pixelart_palette/palettes.py` — add your own in the
-`MY_PALETTES` dict (grab hex from [lospec.com](https://lospec.com/palette-list)).
+Palettes **auto-load** from `custom_nodes/pixelart_palette/gpl/*.GPL` — 55 are
+bundled (PICO-8, DAWNBRINGER, ENDESGA, NES, Game Boy, C=64, VGA, QUAKE, and more).
+To add one, drop a GIMP `.GPL` file (export from GIMP/Aseprite, or grab one from
+[lospec.com](https://lospec.com/palette-list)) into that folder and restart — the
+filename minus its ` (N)` count becomes the palette name. You can also add hex
+lists directly to the `MY_PALETTES` dict in `palettes.py`.
 
 ---
 

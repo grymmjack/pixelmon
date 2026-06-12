@@ -1,74 +1,27 @@
 """Palette registry for the PixelArtPalette node.
 
-Each palette is just a list of hex colors. Add your own in MY_PALETTES at the
-bottom — anything you put there shows up in the node's dropdown after you
-restart ComfyUI. (For one-off palettes you don't want to keep, you can instead
-paste hex codes into the node's `custom_hex` field without editing this file.)
+Palettes are loaded automatically from the bundled GIMP-palette files in the
+`gpl/` folder next to this file — drop a new `.GPL` in there (and restart
+ComfyUI) and it shows up as a selectable palette. The palette NAME is the
+filename with any trailing " (N)" count stripped, e.g. `PICO-8 (16).GPL`
+becomes "PICO-8".
+
+You can also add ad-hoc palettes in MY_PALETTES below (a name -> list-of-hex
+dict), or — for one-offs — paste hex codes into the node's `custom_hex` field.
 """
+import os
+import re
 
-# ---------------------------------------------------------------------------
-# Built-in presets
-# ---------------------------------------------------------------------------
-
-PICO8 = [
-    "000000", "1D2B53", "7E2553", "008751", "AB5236", "5F574F", "C2C3C7", "FFF1E8",
-    "FF004D", "FFA300", "FFEC27", "00E436", "29ADFF", "83769C", "FF77A8", "FFCCAA",
-]
-
-# Sweetie-16 by GrafxKid — a modern, vibrant 16-color palette.
-SWEETIE16 = [
-    "1A1C2C", "5D275D", "B13E53", "EF7D57", "FFCD75", "A7F070", "38B764", "257179",
-    "29366F", "3B5DC9", "41A6F6", "73EFF7", "F4F4F4", "94B0C2", "566C86", "333C57",
-]
-
-# Classic 16-color CGA/EGA palette (more useful than the 4-color mode).
-CGA16 = [
-    "000000", "0000AA", "00AA00", "00AAAA", "AA0000", "AA00AA", "AA5500", "AAAAAA",
-    "555555", "5555FF", "55FF55", "55FFFF", "FF5555", "FF55FF", "FFFF55", "FFFFFF",
-]
-
-# CGA mode 4, palette 1 (high intensity) — the iconic cyan/magenta/white DOS look.
-CGA4 = ["000000", "55FFFF", "FF55FF", "FFFFFF"]
-
-# Curated NES hardware palette (duplicate blacks removed).
-NES = [
-    "7C7C7C", "0000FC", "0000BC", "4428BC", "940084", "A80020", "A81000", "881400",
-    "503000", "007800", "006800", "005800", "004058", "000000",
-    "BCBCBC", "0078F8", "0058F8", "6844FC", "D800CC", "E40058", "F83800", "E45C10",
-    "AC7C00", "00B800", "00A800", "00A844", "008888",
-    "F8F8F8", "3CBCFC", "6888FC", "9878F8", "F878F8", "F85898", "F87858", "FCA044",
-    "F8B800", "B8F818", "58D854", "58F898", "00E8D8", "787878",
-    "FCFCFC", "A4E4FC", "B8B8F8", "D8B8F8", "F8B8F8", "F8A4C0", "F0D0B0", "FCE0A8",
-    "F8D878", "D8F878", "B8F8B8", "B8F8D8", "00FCFC", "F8D8F8",
-]
-
-# Bonus: original Game Boy DMG 4-shade green.
-GAMEBOY_DMG = ["0F380F", "306230", "8BAC0F", "9BBC0F"]
+_HERE = os.path.dirname(os.path.abspath(__file__))
+GPL_DIR = os.path.join(_HERE, "gpl")
 
 
 # ---------------------------------------------------------------------------
-# YOUR palettes — add as many as you like. Format: "Name": [list of hex].
-# Example shows the structure; replace/extend with your own exact colors
-# (e.g. grab a palette from https://lospec.com/palette-list and paste its hex).
+# Extra palettes you want in code (loaded on top of the .GPL files).
+# Format:  "Name": ["RRGGBB", "RRGGBB", ...]
 # ---------------------------------------------------------------------------
-
 MY_PALETTES = {
     # "Slime Cave": ["1b1b2f", "3a8c4f", "8be04e", "e0f8cf", "ff4d6d"],
-}
-
-
-# ---------------------------------------------------------------------------
-# Registry assembled for the node. Order here = order in the dropdown.
-# ---------------------------------------------------------------------------
-
-ALL_PALETTES = {
-    "PICO-8": PICO8,
-    "Sweetie-16": SWEETIE16,
-    "NES": NES,
-    "CGA-16": CGA16,
-    "CGA-4": CGA4,
-    "Game Boy DMG": GAMEBOY_DMG,
-    **MY_PALETTES,
 }
 
 
@@ -78,6 +31,52 @@ def hex_to_rgb(h):
     if len(h) != 6:
         raise ValueError(f"bad hex color: {h!r}")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _parse_gpl(path):
+    """Parse a GIMP .GPL palette -> list of 'RRGGBB' hex strings.
+
+    Handles both common variants (4th column is a hex code or a color name) by
+    only trusting the first three whitespace-separated ints as R G B.
+    """
+    colors = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            low = line.lower()
+            if low.startswith(("gimp palette", "name:", "columns:")):
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                r, g, b = (int(parts[0]), int(parts[1]), int(parts[2]))
+            except ValueError:
+                continue
+            colors.append(f"{r:02X}{g:02X}{b:02X}")
+    return colors
+
+
+def _load_gpl_dir(directory):
+    """Load every *.GPL in `directory` -> {name: [hex, ...]}, sorted by name."""
+    out = {}
+    if not os.path.isdir(directory):
+        return out
+    for fn in sorted(os.listdir(directory)):
+        if not fn.lower().endswith(".gpl"):
+            continue
+        # "PICO-8 (16).GPL" -> "PICO-8"
+        name = re.sub(r"\s*\(\d+\)\s*$", "", os.path.splitext(fn)[0]).strip()
+        cols = _parse_gpl(os.path.join(directory, fn))
+        if cols:
+            out[name] = cols
+    return dict(sorted(out.items()))
+
+
+# Bundled .GPL palettes first, then any MY_PALETTES (which can override by name).
+ALL_PALETTES = {**_load_gpl_dir(GPL_DIR), **MY_PALETTES}
 
 
 def parse_palette(name, custom_hex):
