@@ -11,13 +11,13 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 ```
 
 <p>
-  <img src="examples/knight.png" width="190" alt="knight sprite">
-  <img src="examples/wizard-endesga.png" width="190" alt="wizard sprite, ENDESGA-32 palette">
+  <img src="examples/knight.png" width="180" alt="knight sprite">
+  <img src="examples/wizard-endesga.png" width="180" alt="wizard sprite, ENDESGA-32 palette">
+  <img src="examples/portrait-dosrpg.png" width="180" alt="DOS CRPG portrait, dosrpg style">
   <img src="examples/spider-1.png" width="150" alt="spider sprite">
-  <img src="examples/spider-2.png" width="150" alt="spider sprite">
 </p>
 
-*(`pixelmon "a knight in armor"`; `pixelmon "a wizard" --palette ENDESGA-32`; two `pixelmon "a spider" -n …` variations.)*
+*(`pixelmon "a knight in armor"` · `--palette ENDESGA-32` · `--style dosrpg` (Ultima/Wasteland portrait) · `"a spider"`)*
 
 ---
 

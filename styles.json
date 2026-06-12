@@ -19,5 +19,12 @@
   "deadcells":    {"prompt": "in the style of Dead Cells, fluid detailed sprite, glowing rim light, dynamic pose", "negative": ""},
   "blasphemous":  {"prompt": "in the style of Blasphemous, gothic, ornate, dark, highly detailed", "negative": ""},
   "owlboy":       {"prompt": "in the style of Owlboy, polished hi-bit pixel art, colorful, smooth shading", "negative": ""},
-  "stardew":      {"prompt": "in the style of Stardew Valley, cozy, soft, charming farm-RPG sprite", "negative": ""}
+  "stardew":      {"prompt": "in the style of Stardew Valley, cozy, soft, charming farm-RPG sprite", "negative": ""},
+
+  "dosrpg":       {"prompt": "retro MS-DOS CRPG character portrait, head-and-shoulders bust, front view, 256-color VGA, (heavy dithering:1.2), painterly pixel shading, in the style of Ultima VII and Wasteland, gritty dark fantasy, muted earthy palette", "negative": "full body, full figure, modern, anime, cel shaded, smooth gradient, 3d render, photograph, clean vector"},
+
+  "darkest":      {"prompt": "in the style of Darkest Dungeon, gothic horror, (high contrast:1.2), heavy black ink shadows, grim desaturated palette, dramatic rim lighting, ornate", "negative": "bright, cheerful, colorful, flat even lighting"},
+  "undertale":    {"prompt": "in the style of Undertale, simple charming low-res sprite, clean white outline, minimal shapes, retro RPG monster, limited palette", "negative": "detailed, realistic, painterly, photo"},
+  "mario":        {"prompt": "in the style of classic Super Mario Bros, bright bold primary colors, chunky cheerful platformer sprite, thick clean outline, NES SNES", "negative": "dark, gritty, realistic, muted"},
+  "zelda":        {"prompt": "in the style of The Legend of Zelda A Link to the Past, 16-bit SNES, top-down action-RPG sprite, clean colorful fantasy, bold outline", "negative": "dark, gritty, realistic, photo"}
 }
