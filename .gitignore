@@ -1,0 +1,24 @@
+# Model weights — large third-party downloads, fetched via download-models.sh
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# A cloned ComfyUI engine, if anyone clones it inside the repo
+/ComfyUI/
+
+# Generated images / scratch
+output/
+*.tmp
+
+# OS / editor cruft
+.DS_Store
+*.swp

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# pixelmon — one-command pixel-art monster generator.
+# Makes sure the ComfyUI server is up, then hands your prompt to pixelmon.py.
+set -euo pipefail
+
+COMFY="$HOME/ComfyUI"
+PY="$COMFY/.venv/bin/python"
+URL="http://127.0.0.1:8188"
+
+up() { curl -fsS "$URL/system_stats" >/dev/null 2>&1; }
+
+# Help / palette listing / no args don't touch the GPU — never start the server.
+needs_server=1
+case " $* " in
+    *" -h "*|*" --help "*|*" --list-palettes "*) needs_server=0 ;;
+esac
+[ "$#" -eq 0 ] && needs_server=0
+
+if [ "$needs_server" = 1 ] && ! up; then
+    echo "[pixelmon] ComfyUI server isn't running — starting it (first run ~15s)..."
+    nohup "$HOME/launch-comfyui.sh" >"$COMFY/server.log" 2>&1 &
+    for _ in $(seq 1 90); do
+        up && break
+        sleep 1
+    done
+    if ! up; then
+        echo "[pixelmon] server didn't come up. Check $COMFY/server.log" >&2
+        exit 1
+    fi
+    echo "[pixelmon] server ready."
+fi
+
+exec "$PY" "$COMFY/pixelmon.py" "$@"
