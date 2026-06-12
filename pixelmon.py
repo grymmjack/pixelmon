@@ -73,15 +73,18 @@ def print_help():
         ex('pixelmon "a spider" --style geometric', "sharp, angular style guide"),
         ex('pixelmon "a goblin" -n 8 --palette random', "8 variations, random palettes"),
         ex('pixelmon "a knight" --transparent --preview', "transparent + zoomed preview"),
+        ex('pixelmon --batch "bat,skeleton,spider" -n 128', "128 of each → own folders"),
         "",
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
         opt("-n, --number N", "how many to make, each a different seed", "1"),
+        opt('--batch "a,b,c"', "round-robin subjects → a folder each (N of each)"),
         opt("--size N", "sprite size in px: 16 / 32 / 64 / 128", "128"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
         opt("--dither", "Floyd-Steinberg dithering (faked shading)"),
+        opt("--snap-pixels", "snap to a perfect grid (pixel-snapper) — extra crisp"),
         opt("--fast", "LCM mode: ~5x faster, slightly softer"),
         opt("--seed N", "lock / repeat a result (re-run a favorite)", "random"),
         opt("--steps N", "refinement steps (more = slower)", "25"),
@@ -107,6 +110,9 @@ def print_help():
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
         opt("--no-lora", "base model only (skip pixel LoRA)"),
         opt("--no-open", "don't auto-open the result"),
+        opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
+        opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
+        opt("--create-dirs", "create output folders if missing"),
         "",
         f"{c['b']}{c['cyan']}OUTPUT{c['rst']}",
         f"  {c['dim']}{OUTPUT}/pixelmon/{c['rst']}",
@@ -149,19 +155,20 @@ def slug(text):
     return out[:40] or "monster"
 
 
-def build_graph(a, seed, palette=None):
+def build_graph(a, seed, palette=None, subject=None):
     palette = palette or a.palette
+    subject = subject if subject is not None else a.prompt
     # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
     # and --style snippets (a.style_add) do the steering. "game sprite" keeps it
     # clean. Style negatives (a.style_neg) push away unwanted shapes/looks.
-    parts = [f"pixel, a {a.prompt}"]
+    parts = [f"pixel, a {subject}"]
     if a.style_add:
         parts.append(a.style_add)
     parts.append("game sprite, simple flat colors, solid background")
     prompt = ", ".join(parts)
     negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
 
-    name = a.name or slug(a.prompt)
+    name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
     prefix = f"pixelmon/{name}_{a.size}_{palette}_s{seed}"
     res = a.res
@@ -183,7 +190,8 @@ def build_graph(a, seed, palette=None):
                           "dithering": "floyd-steinberg" if a.dither else "none",
                           "downscale_filter": a.filter, "smooth": a.smooth,
                           "view_scale": a.view_scale, "custom_hex": a.custom_hex,
-                          "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance}},
+                          "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
+                          "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors}},
         "11": {"class_type": "SaveImage",
                "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}},
     }
@@ -243,7 +251,11 @@ def main():
     p.add_argument("--size", type=int, default=128,
                    help="sprite size in px (16/32/64/128). default 128 (sharpest)")
     p.add_argument("-n", "--number", type=int, default=1,
-                   help="how many to generate, each with a different seed. default 1")
+                   help="how many to generate, each with a different seed. default 1 "
+                        "(with --batch: how many of EACH subject)")
+    p.add_argument("--batch", default=None, metavar="SUBJECTS",
+                   help='comma-separated subjects to round-robin, one of each per pass '
+                        '(e.g. --batch "bat,skeleton,spider"); each goes to its own folder')
     p.add_argument("--transparent", action="store_true",
                    help="cut out the background -> transparent PNG (great for game sprites)")
     p.add_argument("--bg-tolerance", dest="bg_tolerance", type=int, default=16,
@@ -255,6 +267,11 @@ def main():
                    help="style guide(s) to append to the prompt, comma-separated "
                         "(e.g. geometric,detailed). see --list-styles")
     p.add_argument("--dither", action="store_true", help="Floyd-Steinberg dithering")
+    p.add_argument("--snap-pixels", dest="snap_pixels", action="store_true",
+                   help="snap to a perfect pixel grid via the pixel-snapper (auto-detects size; "
+                        "extra crisp). overrides --size.")
+    p.add_argument("--snap-colors", dest="snap_colors", type=int, default=0,
+                   help="color cap for --snap-pixels (0 = auto)")
     p.add_argument("--smooth", choices=["mode", "median", "none"], default="mode",
                    help="flatten noise before downscaling (mode=cleanest). default mode")
     p.add_argument("--filter", choices=["box (area average)", "nearest"],
@@ -267,6 +284,13 @@ def main():
     p.add_argument("--negative", default="3d render, realistic, photograph, blurry, "
                    "smooth gradient, antialiased, jpeg artifacts, text, watermark, signature")
     p.add_argument("--name", default=None, help="output filename base (default: from prompt)")
+    # --- where finished files go (relative to the directory you run pixelmon FROM) ---
+    p.add_argument("--output-to", dest="output_to", default=None, metavar="DIR",
+                   help="move finished files into DIR (relative to your current directory)")
+    p.add_argument("--move-to-dirs", dest="move_to_dirs", action="store_true",
+                   help="organize each run into its own subdir named after the prompt (or --name)")
+    p.add_argument("--create-dirs", dest="create_dirs", action="store_true",
+                   help="create the output dir(s) if they don't exist")
     p.add_argument("--custom-hex", dest="custom_hex", default="",
                    help='hex codes when --palette Custom, e.g. "#000 #fff #f00"')
     p.add_argument("--preview", action="store_true",
@@ -293,7 +317,7 @@ def main():
     a = p.parse_args()
 
     # Friendly help on -h/--help, or when run with no prompt at all.
-    if a.show_help or (not a.prompt and not a.list_palettes and not a.list_styles):
+    if a.show_help or (not a.prompt and not a.batch and not a.list_palettes and not a.list_styles):
         print_help()
         return
     if a.list_palettes:
@@ -333,47 +357,88 @@ def main():
         a.scheduler = "normal"
 
     n = max(1, a.number)
-    # Distinct seed per image so they're real variations. With an explicit
-    # --seed we increment from it (reproducible); otherwise pick random seeds.
-    if a.seed >= 0:
-        seeds = [a.seed + i for i in range(n)]
-    else:
-        seeds = [random.randint(0, 2**31 - 1) for _ in range(n)]
+    # Subjects: one (the prompt) or many (--batch round-robins one of each per pass).
+    subjects = [s.strip() for s in a.batch.split(",") if s.strip()] if a.batch else [a.prompt]
 
+    # Where finished files go — relative to the directory you ran pixelmon FROM:
+    #   --batch        -> one folder per subject  (./<subject>/)
+    #   --move-to-dirs -> one folder named after the prompt  (./<prompt>/)
+    #   --output-to D  -> that folder D (flat); else left in ComfyUI's output.
+    base = os.path.abspath(os.path.expanduser(a.output_to)) if a.output_to else os.getcwd()
+
+    def dest_for(subject):
+        if a.batch:
+            d = os.path.join(base, slug(subject))
+        elif a.move_to_dirs:
+            d = os.path.join(base, a.name or slug(a.prompt))
+        elif a.output_to:
+            d = base
+        else:
+            return None
+        if not os.path.isdir(d):
+            if a.create_dirs or a.move_to_dirs or a.batch:
+                os.makedirs(d, exist_ok=True)
+            else:
+                p.error(f"output dir does not exist: {d}\n  (add --create-dirs to make it)")
+        return d
+
+    dests = {subj: dest_for(subj) for subj in subjects}
+
+    total = n * len(subjects)
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
     pal_label = "random" if a.palette == "random" else a.palette
     style_label = f"  |  style: {a.style}" if a.style else ""
-    print(f"🎨 {a.prompt!r}  |  {a.size}px  |  {pal_label}"
+    subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
+    count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
+    print(f"🎨 {subj_label}  |  {a.size}px  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
-          f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {n} image(s)")
-    if n > 1:
-        eta = n * per
+          f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {count_label}")
+    if total > 1:
+        eta = total * per
         tip = "" if a.fast else "  (tip: add --fast for quick variations)"
         print(f"   ~{eta // 60}m{eta % 60:02d}s estimated{tip}")
 
-    # Pick a palette per image ('random' draws a fresh one each), then queue all
-    # jobs up front; ComfyUI runs them one at a time and we collect in order.
-    jobs = []
-    for s in seeds:
-        pal = random.choice(PALETTES) if a.palette == "random" else a.palette
-        jobs.append((s, pal, submit(build_graph(a, s, pal))))
-    if n > 1:
-        print(f"   queued {n} jobs; generating...")
+    # Build the work list. --batch round-robins (one of each subject per pass) so
+    # every folder fills evenly instead of finishing one subject at a time.
+    work = []  # (subject, seed, palette, dest)
+    k = 0
+    for _ in range(n):
+        for subj in subjects:
+            seed = (a.seed + k) if a.seed >= 0 else random.randint(0, 2**31 - 1)
+            pal = random.choice(PALETTES) if a.palette == "random" else a.palette
+            work.append((subj, seed, pal, dests[subj]))
+            k += 1
+
+    # Queue everything up front; ComfyUI runs them one at a time, in order.
+    jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj)))
+            for (subj, seed, pal, d) in work]
+    if total > 1:
+        print(f"   queued {total} jobs; generating...")
 
     t0 = time.time()
     first_open = None
-    for i, (s, pal, pid) in enumerate(jobs, 1):
+    for i, (subj, seed, pal, d, pid) in enumerate(jobs, 1):
         outs = wait(pid)
         files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"])
                  for node in outs.values() for im in node.get("images", [])]
+        if d:  # move finished files out of ComfyUI's output into the target folder
+            moved = []
+            for f in files:
+                if os.path.exists(f):
+                    tgt = os.path.join(d, os.path.basename(f))
+                    shutil.move(f, tgt)
+                    moved.append(tgt)
+            files = moved
         sprite = next((f for f in files if "_sprite_" in f), None)
         preview = next((f for f in files if "_preview_" in f), None)
         first_open = first_open or preview or sprite      # open preview if saved, else the sprite
-        tag = f"[{i}/{n}] " if n > 1 else ""
-        pal_note = f"  pal={pal}" if a.palette == "random" else ""
-        print(f"   ✅ {tag}seed={s}{pal_note}  ->  {sprite}")
+        tag = f"[{i}/{total}] " if total > 1 else ""
+        subj_note = f"{subj}  " if a.batch else ""
+        pal_note = f"pal={pal}  " if a.palette == "random" else ""
+        print(f"   ✅ {tag}{subj_note}{pal_note}seed={seed}  ->  {sprite}")
 
-    print(f"   all done in {time.time() - t0:.1f}s  |  files in {OUTPUT}/pixelmon/")
+    where = ", ".join(sorted({str(x) for x in dests.values() if x})) or f"{OUTPUT}/pixelmon/"
+    print(f"   all done in {time.time() - t0:.1f}s  |  files in {where}")
     if first_open and not a.no_open and shutil.which("xdg-open"):
         try:
             subprocess.Popen(["xdg-open", first_open],

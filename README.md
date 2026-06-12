@@ -117,8 +117,11 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--size N` | sprite size in px: 16 / 32 / 64 / 128 (128 = sharpest) | `128` |
 | `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
+| `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
+| `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (auto-sizes) | off |
 | `--transparent` | cut out the background → transparent PNG | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
+| `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
 | `--dither` | Floyd-Steinberg dithering (faked shading) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
 | `--seed N` | lock / repeat a result | random |
@@ -144,6 +147,34 @@ by editing `styles.json` (`{"name": {"prompt": "...", "negative": "..."}}`).
 
 **Workflow tip:** explore with `--fast`, then re-run the `--seed` you liked
 *without* `--fast` for the full-quality keeper.
+
+### Batches & organizing output
+
+By default files stay in `~/ComfyUI/output/pixelmon/`. To organize a run into a
+folder **relative to where you run the command**, use `--move-to-dirs` (one
+folder per prompt) or `--output-to DIR` (a specific folder); add `--create-dirs`
+to make missing folders.
+
+**`--batch` is the overnight workhorse.** Give it several subjects and it
+round-robins — one of each per pass — so every folder fills *evenly* instead of
+finishing one subject before starting the next:
+
+```bash
+cd ~/sprites
+pixelmon --batch "bat,skeleton,spider" -n 128 --fast
+#  -> ./bat/ ./skeleton/ ./spider/, each filling up 1-at-a-time as it runs
+```
+Every other flag still applies (`--style`, `--palette random`, `--transparent`,
+`--snap-pixels`, …). An interrupted run is still organized — files are moved out
+of ComfyUI's output as each one finishes.
+
+### Extra crispness (`--snap-pixels`)
+
+`--snap-pixels` runs the render through [Hugo-Dz/spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper)
+(bundled, built by `install.sh` — needs the Rust toolchain). It auto-detects the
+true pixel grid and snaps every pixel to it, removing the faint speckle/drift AI
+output has. It auto-sizes (overrides `--size`); pair with `--palette` to then
+lock the snapped result to specific colors.
 
 ---
 
@@ -241,6 +272,7 @@ pixelmon/
 - [SDXL base 1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) — Stability AI (CreativeML Open RAIL++-M)
 - [Pixel Art XL](https://huggingface.co/nerijs/pixel-art-xl) — nerijs
 - [LCM-LoRA SDXL](https://huggingface.co/latent-consistency/lcm-lora-sdxl) — Latent Consistency
+- [spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — Hugo Duprez (MIT), used by `--snap-pixels`
 
 The code in this repo (the CLI, wrapper, launcher, and custom node) is released
 under the MIT License — see `LICENSE`.

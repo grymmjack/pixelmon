@@ -15,6 +15,9 @@ venv/
 # A cloned ComfyUI engine, if anyone clones it inside the repo
 /ComfyUI/
 
+# pixel-snapper: Rust source + build (cloned & built by install.sh, see --snap-pixels)
+/tools/
+
 # Generated images / scratch
 output/
 *.tmp

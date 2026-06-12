@@ -47,6 +47,18 @@ if ! id -nG | tr ' ' '\n' | grep -qx render; then
     echo "   ⚠  LOG OUT AND BACK IN for this to take effect."
 fi
 
+# 5. (optional) pixel-snapper for --snap-pixels — needs the Rust toolchain
+SNAP="$REPO/tools/pixel-snapper"
+if command -v cargo >/dev/null; then
+    [ -d "$SNAP/.git" ] || git clone --depth 1 \
+        https://github.com/Hugo-Dz/spritefusion-pixel-snapper.git "$SNAP"
+    echo "==> building pixel-snapper (for --snap-pixels)…"
+    (cd "$SNAP" && cargo build --release) && echo "   pixel-snapper ready"
+else
+    echo "==> no cargo found — skipping pixel-snapper; --snap-pixels will be unavailable"
+    echo "    (install Rust via https://rustup.rs then re-run, if you want it)"
+fi
+
 cat <<EOF
 
 ✅ install done.

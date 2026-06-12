@@ -7,6 +7,10 @@ Outputs two images:
   * "preview" — the same image upscaled with nearest-neighbour, just so you can
                 actually see it. PreviewImage / SaveImage this to eyeball results.
 """
+import os
+import subprocess
+import tempfile
+
 import numpy as np
 import torch
 from PIL import Image, ImageFilter
@@ -131,6 +135,37 @@ def _make_transparent(pixels_rgb, tolerance):
     return Image.fromarray(rgba, "RGBA")
 
 
+def _snapper_bin():
+    """Locate the spritefusion-pixel-snapper binary (env override or repo build)."""
+    env = os.environ.get("PIXELMON_SNAPPER")
+    if env and os.path.exists(env):
+        return env
+    # realpath: this file is reached via a symlink (~/ComfyUI/...), resolve to the real repo
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+    cand = os.path.join(root, "tools", "pixel-snapper", "target", "release",
+                        "spritefusion-pixel-snapper")
+    return cand if os.path.exists(cand) else None
+
+
+def _snap_pixels(pil_img, k_colors, pixel_size=None):
+    """Run Hugo-Dz/spritefusion-pixel-snapper on a messy AI image -> clean,
+    grid-snapped RGB. Auto-detects the pixel grid; k_colors caps the palette."""
+    binp = _snapper_bin()
+    if not binp:
+        raise RuntimeError(
+            "pixel-snapper not built. Build it once with:\n"
+            "  cd ~/pixelmon/tools/pixel-snapper && cargo build --release\n"
+            "(or run ~/pixelmon/install.sh). Needs the Rust toolchain.")
+    with tempfile.TemporaryDirectory() as td:
+        ip, op = os.path.join(td, "in.png"), os.path.join(td, "out.png")
+        pil_img.convert("RGB").save(ip)
+        cmd = [binp, ip, op, str(int(k_colors))]
+        if pixel_size:
+            cmd += ["--pixel-size", str(pixel_size)]
+        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+        return Image.open(op).convert("RGB").copy()
+
+
 class PixelArtPalette:
     @classmethod
     def INPUT_TYPES(cls):
@@ -149,6 +184,8 @@ class PixelArtPalette:
                 "pixel_grid": ("INT", {"default": 128, "min": 32, "max": 256, "step": 8}),
                 "transparent_bg": ("BOOLEAN", {"default": False}),
                 "bg_tolerance": ("INT", {"default": 16, "min": 0, "max": 128, "step": 1}),
+                "snap_pixels": ("BOOLEAN", {"default": False}),
+                "snap_colors": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
             },
         }
@@ -160,7 +197,8 @@ class PixelArtPalette:
 
     def process(self, image, downscale_to, palette, dithering,
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
-                custom_hex="", transparent_bg=False, bg_tolerance=16):
+                custom_hex="", transparent_bg=False, bg_tolerance=16,
+                snap_pixels=False, snap_colors=0):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -180,7 +218,14 @@ class PixelArtPalette:
             scl = target_long / max(sw, sh)
             return src.resize((max(1, round(sw * scl)), max(1, round(sh * scl))), resample=resample)
 
-        if downscale_to < pixel_grid:
+        if snap_pixels:
+            # Hand the raw render to the pixel-snapper: it auto-detects the true
+            # grid and outputs a perfect, grid-aligned sprite — REPLACING the
+            # downscale (so --size is ignored; the snapper decides the real res).
+            # A palette will re-quantize after, so keep colors generous here.
+            k = snap_colors or (64 if palette != "none" else 24)
+            small = _snap_pixels(pil, k)
+        elif downscale_to < pixel_grid:
             grid_img = flatten_shrink(pil, pixel_grid, _RESAMPLE[downscale_filter])  # -> ~128, clean
             gw, gh = grid_img.size
             scl = downscale_to / pixel_grid
