@@ -31,5 +31,7 @@
   "hollowknight": {"prompt": "in the style of Hollow Knight, dark atmospheric, monochrome with stark white accents, elegant gothic, hand-drawn inky linework", "negative": "bright, colorful, busy, cluttered"},
   "metroid":      {"prompt": "in the style of Super Metroid, sci-fi, dark moody atmosphere, 16-bit SNES, armored, alien tech", "negative": "fantasy, cute, bright, medieval"},
   "finalfantasy": {"prompt": "in the style of Final Fantasy VI, 16-bit SNES JRPG sprite, detailed, vibrant fantasy, expressive", "negative": "realistic, photo, 3d render"},
-  "pokemon":      {"prompt": "in the style of Pokemon, cute creature sprite, clean bold outline, bright cheerful colors, simple cel shading", "negative": "gritty, dark, realistic, human"}
+  "pokemon":      {"prompt": "in the style of Pokemon, cute creature sprite, clean bold outline, bright cheerful colors, simple cel shading", "negative": "gritty, dark, realistic, human"},
+
+  "item":         {"prompt": "single game item icon, one isolated object, centered, clean", "negative": "character, person, creature, hands, arms, body, face, figure, holding"}
 }
