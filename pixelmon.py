@@ -79,7 +79,7 @@ def print_help():
         opt("prompt", "what to draw (in quotes)"),
         opt("-n, --number N", "how many to make, each a different seed", "1"),
         opt('--batch "a,b,c"', "round-robin subjects → a folder each (N of each)"),
-        opt("--size N", "sprite size in px: 16 / 32 / 64 / 128", "128"),
+        opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
@@ -170,13 +170,12 @@ def build_graph(a, seed, palette=None, subject=None):
 
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
-    prefix = f"pixelmon/{name}_{a.size}_{palette}_s{seed}"
-    res = a.res
+    prefix = f"pixelmon/{name}_{a.sw}x{a.sh}_{palette}_s{seed}"
 
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": a.base}},
         "5": {"class_type": "EmptyLatentImage",
-              "inputs": {"width": res, "height": res, "batch_size": 1}},
+              "inputs": {"width": a.gen_w, "height": a.gen_h, "batch_size": 1}},
         "6": {"class_type": "CLIPTextEncode", "inputs": {"clip": None, "text": prompt}},
         "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": None, "text": negative}},
         "3": {"class_type": "KSampler",
@@ -186,12 +185,13 @@ def build_graph(a, seed, palette=None, subject=None):
                          "negative": ["7", 0], "latent_image": ["5", 0]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "10": {"class_type": "PixelArtPalette",
-               "inputs": {"image": ["8", 0], "downscale_to": a.size, "palette": palette,
+               "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
                           "dithering": "floyd-steinberg" if a.dither else "none",
                           "downscale_filter": a.filter, "smooth": a.smooth,
                           "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                           "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
-                          "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors}},
+                          "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
+                          "out_width": a.sw, "out_height": a.sh}},
         "11": {"class_type": "SaveImage",
                "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}},
     }
@@ -248,8 +248,8 @@ def main():
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)
     p.add_argument("-h", "--help", action="store_true", dest="show_help")
     p.add_argument("prompt", nargs="?", help='what to draw, e.g. "a goblin warrior"')
-    p.add_argument("--size", type=int, default=128,
-                   help="sprite size in px (16/32/64/128). default 128 (sharpest)")
+    p.add_argument("--size", default="128",
+                   help="sprite size: N (square) or WxH, e.g. 32x48. default 128")
     p.add_argument("-n", "--number", type=int, default=1,
                    help="how many to generate, each with a different seed. default 1 "
                         "(with --batch: how many of EACH subject)")
@@ -356,6 +356,24 @@ def main():
         a.sampler = "euler" if a.sampler is None else a.sampler
         a.scheduler = "normal"
 
+    # Parse --size into target W x H (square if a single number), plus a matching
+    # generation resolution (long side = --res, kept ~proportional so the subject
+    # isn't distorted); the node then nails the exact W x H.
+    try:
+        if "x" in str(a.size).lower():
+            a.sw, a.sh = (int(v) for v in str(a.size).lower().split("x", 1))
+        else:
+            a.sw = a.sh = int(a.size)
+    except ValueError:
+        p.error(f"bad --size {a.size!r}; use N or WxH (e.g. 32 or 32x48)")
+    if a.sw < 1 or a.sh < 1:
+        p.error("--size dimensions must be >= 1")
+
+    def _r64(v):
+        return max(64, int(round(v / 64.0)) * 64)
+    a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
+    a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
+
     n = max(1, a.number)
     # Subjects: one (the prompt) or many (--batch round-robins one of each per pass).
     subjects = [s.strip() for s in a.batch.split(",") if s.strip()] if a.batch else [a.prompt]
@@ -390,7 +408,8 @@ def main():
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
-    print(f"🎨 {subj_label}  |  {a.size}px  |  {pal_label}"
+    size_label = f"{a.sw}x{a.sh}" if a.sw != a.sh else f"{a.sw}px"
+    print(f"🎨 {subj_label}  |  {size_label}  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
           f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {count_label}")
     if total > 1:

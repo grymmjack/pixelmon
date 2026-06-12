@@ -186,6 +186,8 @@ class PixelArtPalette:
                 "bg_tolerance": ("INT", {"default": 16, "min": 0, "max": 128, "step": 1}),
                 "snap_pixels": ("BOOLEAN", {"default": False}),
                 "snap_colors": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
+                "out_width": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
+                "out_height": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
             },
         }
@@ -198,7 +200,7 @@ class PixelArtPalette:
     def process(self, image, downscale_to, palette, dithering,
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
-                snap_pixels=False, snap_colors=0):
+                snap_pixels=False, snap_colors=0, out_width=0, out_height=0):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -233,6 +235,12 @@ class PixelArtPalette:
                                     resample=Image.NEAREST)                          # integer reduce
         else:
             small = flatten_shrink(pil, min(downscale_to, pixel_grid), _RESAMPLE[downscale_filter])
+
+        # Force exact W x H (e.g. 32x48) — the grid reduce above preserves aspect
+        # and lands within a pixel; this snaps to the precise size. (snap_pixels
+        # auto-sizes, so it opts out.)
+        if not snap_pixels and out_width > 0 and out_height > 0:
+            small = small.resize((out_width, out_height), Image.NEAREST)
 
         if palette == "none":
             pixels = small.convert("RGB")          # keep the model's own colors

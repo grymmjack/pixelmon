@@ -114,7 +114,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | Flag | What it does | Default |
 |---|---|---|
 | `-n, --number N` | how many to make, each a different seed | `1` |
-| `--size N` | sprite size in px: 16 / 32 / 64 / 128 (128 = sharpest) | `128` |
+| `--size N\|WxH` | square `N` (128 = sharpest), or non-square `WxH` e.g. `32x48` for tall character sprites | `128` |
 | `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
