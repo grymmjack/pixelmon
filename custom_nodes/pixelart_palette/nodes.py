@@ -138,14 +138,15 @@ class PixelArtPalette:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "downscale_to": ("INT", {"default": 64, "min": 8, "max": 256, "step": 1}),
+                "downscale_to": ("INT", {"default": 128, "min": 8, "max": 256, "step": 1}),
                 "palette": (palette_names,),
                 "dithering": (["none", "floyd-steinberg"],),
-                "downscale_filter": (list(_RESAMPLE.keys()), {"default": "box (area average)"}),
+                "downscale_filter": (list(_RESAMPLE.keys()), {"default": "nearest"}),
                 "view_scale": ("INT", {"default": 8, "min": 1, "max": 32, "step": 1}),
             },
             "optional": {
                 "smooth": (["mode", "median", "none"], {"default": "mode"}),
+                "pixel_grid": ("INT", {"default": 128, "min": 32, "max": 256, "step": 8}),
                 "transparent_bg": ("BOOLEAN", {"default": False}),
                 "bg_tolerance": ("INT", {"default": 16, "min": 0, "max": 128, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
@@ -158,26 +159,35 @@ class PixelArtPalette:
     CATEGORY = "image/pixel art"
 
     def process(self, image, downscale_to, palette, dithering,
-                downscale_filter, view_scale, smooth="mode", custom_hex="",
-                transparent_bg=False, bg_tolerance=16):
+                downscale_filter, view_scale, smooth="mode", pixel_grid=128,
+                custom_hex="", transparent_bg=False, bg_tolerance=16):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
-        w, h = pil.size
 
-        # Flatten soft gradients/noise into solid regions BEFORE downscaling, so
-        # near-flat backgrounds don't shatter into speckle when quantized. The
-        # window is ~one output-pixel block, so each block collapses to its
-        # dominant ('mode') or middle ('median') color while edges survive.
-        if smooth != "none":
-            block = max(3, int(round(max(w, h) / max(1, downscale_to))) | 1)  # odd >=3
-            f = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
-            pil = pil.filter(f(size=block))
+        # --- Grid-aware, crisp downscale ---------------------------------------
+        # Pixel Art XL paints ~8px blocks at 1024 — i.e. a ~128px LOGICAL image.
+        # To stay sharp we FIRST recover that native grid (flatten each block to
+        # its dominant color, then shrink), THEN integer-reduce to the requested
+        # size with nearest. A single big reduction instead samples mid-block
+        # noise, which is what made small sprites look fuzzy/speckled.
+        def flatten_shrink(src, target_long, resample):
+            sw, sh = src.size
+            if smooth != "none" and max(sw, sh) > target_long:
+                block = max(3, int(round(max(sw, sh) / target_long)) | 1)   # odd >= 3
+                fil = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
+                src = src.filter(fil(size=block))
+            scl = target_long / max(sw, sh)
+            return src.resize((max(1, round(sw * scl)), max(1, round(sh * scl))), resample=resample)
 
-        scale = downscale_to / max(w, h)
-        tw, th = max(1, round(w * scale)), max(1, round(h * scale))
-
-        small = pil.resize((tw, th), resample=_RESAMPLE[downscale_filter])
+        if downscale_to < pixel_grid:
+            grid_img = flatten_shrink(pil, pixel_grid, _RESAMPLE[downscale_filter])  # -> ~128, clean
+            gw, gh = grid_img.size
+            scl = downscale_to / pixel_grid
+            small = grid_img.resize((max(1, round(gw * scl)), max(1, round(gh * scl))),
+                                    resample=Image.NEAREST)                          # integer reduce
+        else:
+            small = flatten_shrink(pil, min(downscale_to, pixel_grid), _RESAMPLE[downscale_filter])
 
         if palette == "none":
             pixels = small.convert("RGB")          # keep the model's own colors
@@ -189,7 +199,8 @@ class PixelArtPalette:
         if transparent_bg:
             pixels = _make_transparent(pixels, bg_tolerance)
 
-        preview = pixels.resize((tw * view_scale, th * view_scale), Image.NEAREST)
+        pw, ph = pixels.size
+        preview = pixels.resize((pw * view_scale, ph * view_scale), Image.NEAREST)
         return (_pil_to_tensor(pixels), _pil_to_tensor(preview))
 
 

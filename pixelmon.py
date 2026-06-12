@@ -68,7 +68,7 @@ def print_help():
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
         opt("-n, --number N", "how many to make, each a different seed", "1"),
-        opt("--size N", "sprite size in px: 16 / 32 / 64 / 128", "64"),
+        opt("--size N", "sprite size in px: 16 / 32 / 64 / 128", "128"),
         opt("--palette NAME", "none = model's own colors, or a named palette", "none"),
         opt("--transparent", "cut out background -> transparent PNG"),
         opt("--dither", "Floyd-Steinberg dithering (faked shading)"),
@@ -84,7 +84,7 @@ def print_help():
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
-        opt("--filter MODE", "downscale: 'box (area average)' / nearest", "box"),
+        opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
         opt("--view-scale N", "how much to enlarge the preview", "8"),
         opt('--negative "..."', "negative prompt (what to avoid)"),
         opt("--name NAME", "output filename base", "from prompt"),
@@ -207,7 +207,8 @@ def main():
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)
     p.add_argument("-h", "--help", action="store_true", dest="show_help")
     p.add_argument("prompt", nargs="?", help='what to draw, e.g. "a goblin warrior"')
-    p.add_argument("--size", type=int, default=64, help="sprite size in px (16/32/64). default 64")
+    p.add_argument("--size", type=int, default=128,
+                   help="sprite size in px (16/32/64/128). default 128 (sharpest)")
     p.add_argument("-n", "--number", type=int, default=1,
                    help="how many to generate, each with a different seed. default 1")
     p.add_argument("--transparent", action="store_true",
@@ -221,7 +222,7 @@ def main():
     p.add_argument("--smooth", choices=["mode", "median", "none"], default="mode",
                    help="flatten noise before downscaling (mode=cleanest). default mode")
     p.add_argument("--filter", choices=["box (area average)", "nearest"],
-                   default="box (area average)", help="downscale method. default box")
+                   default="nearest", help="downscale: nearest (crisp) / box (soft). default nearest")
     p.add_argument("--steps", type=int, default=None,
                    help="sampling steps (default 25, or 8 with --fast)")
     p.add_argument("--cfg", type=float, default=None,

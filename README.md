@@ -11,13 +11,13 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 ```
 
 <p>
-  <img src="examples/spider-1.png" width="180" alt="spider sprite">
-  <img src="examples/spider-2.png" width="180" alt="spider sprite">
-  <img src="examples/spider-3.png" width="180" alt="spider sprite">
-  <img src="examples/spider-4.png" width="180" alt="spider sprite">
+  <img src="examples/knight.png" width="200" alt="knight sprite">
+  <img src="examples/spider-1.png" width="150" alt="spider sprite">
+  <img src="examples/spider-2.png" width="150" alt="spider sprite">
+  <img src="examples/spider-4.png" width="150" alt="spider sprite">
 </p>
 
-*(Four variations of `pixelmon "a spider" -n …` — same prompt, different seeds.)*
+*(`pixelmon "a knight in armor"`, then three variations of `pixelmon "a spider" -n …`.)*
 
 ---
 
@@ -114,7 +114,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | Flag | What it does | Default |
 |---|---|---|
 | `-n, --number N` | how many to make, each a different seed | `1` |
-| `--size N` | sprite size in px: 16 / 32 / 64 / 128 | `64` |
+| `--size N` | sprite size in px: 16 / 32 / 64 / 128 (128 = sharpest) | `128` |
 | `--palette NAME` | `none` (model's colors), PICO-8, Sweetie-16, NES, CGA-16, Game Boy DMG, Custom | `none` |
 | `--transparent` | cut out the background → transparent PNG | off |
 | `--dither` | Floyd-Steinberg dithering (faked shading) | off |
@@ -143,7 +143,10 @@ finishing pass that makes output a *true* sprite:
 
 1. **smooth** (mode/median filter) — flattens soft gradients so backgrounds don't
    shatter into speckle when quantized.
-2. **downscale** to the target size (box or nearest) — the real "pixelation".
+2. **downscale**, grid-aware, to the target size — recovers the model's native
+   ~128px pixel grid first (`nearest`), then integer-reduces to your size. This
+   is what keeps edges **crisp** instead of soft; a single big reduction samples
+   mid-block noise and looks fuzzy. (`--filter box` gives the old soft look.)
 3. **palette** quantize — locks colors to a palette using *perceptual* (redmean)
    color distance; or `none` to keep the model's own colors.
 4. **transparent** (optional) — border flood-fill removes the background, giving
