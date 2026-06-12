@@ -1,0 +1,23 @@
+{
+  "_comment": "Style guides appended to your prompt with --style NAME[,NAME2]. Each adds 'prompt' to the positive and 'negative' to the negative prompt. SDXL honors (term:weight) emphasis. Add your own entries here.",
+
+  "clean":      {"prompt": "clean modern pixel art, crisp pixels, clear outlines, flat shading", "negative": "blurry, anti-aliased, soft edges"},
+  "detailed":   {"prompt": "detailed pixel art, intricate shading, rich colors, careful dithering", "negative": ""},
+  "minimal":    {"prompt": "minimal pixel art, few colors, simple shapes, lots of empty space", "negative": "busy, cluttered, noisy"},
+
+  "8bit":       {"prompt": "8-bit, NES style, limited palette, chunky pixels, simple bold shapes", "negative": ""},
+  "16bit":      {"prompt": "16-bit, SNES style, detailed sprite, vibrant colors, smooth shading", "negative": ""},
+  "gameboy":    {"prompt": "Game Boy style, 4-shade monochrome green, chunky low-res sprite", "negative": "colorful"},
+
+  "geometric":  {"prompt": "(sharp angular geometric shapes:1.3), hard straight edges, bold faceted forms, jagged spiky silhouette, high contrast", "negative": "rounded, smooth curves, soft, organic, blobby, fuzzy, noodly limbs"},
+  "outline":    {"prompt": "bold dark outline, thick clean outline, strong readable silhouette", "negative": "no outline"},
+  "cute":       {"prompt": "cute chibi, big head, small rounded body, adorable mascot", "negative": ""},
+  "dark":       {"prompt": "dark, gritty, eerie, muted desaturated palette, heavy shadows, ominous mood", "negative": ""},
+  "horror":     {"prompt": "horror, creepy, unsettling, grotesque, menacing, body-horror", "negative": "cute, friendly, cheerful"},
+
+  "hyperlight":   {"prompt": "in the style of Hyper Light Drifter, vibrant neon, minimal, sharp, atmospheric", "negative": ""},
+  "deadcells":    {"prompt": "in the style of Dead Cells, fluid detailed sprite, glowing rim light, dynamic pose", "negative": ""},
+  "blasphemous":  {"prompt": "in the style of Blasphemous, gothic, ornate, dark, highly detailed", "negative": ""},
+  "owlboy":       {"prompt": "in the style of Owlboy, polished hi-bit pixel art, colorful, smooth shading", "negative": ""},
+  "stardew":      {"prompt": "in the style of Stardew Valley, cozy, soft, charming farm-RPG sprite", "negative": ""}
+}

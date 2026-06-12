@@ -58,8 +58,8 @@ pixelmon --list-palettes            # available palettes
 ```
 
 Output PNGs land in `~/ComfyUI/output/pixelmon/`:
-- `*_sprite_*.png` — the **true-size** sprite (e.g. real 64×64) — your game asset
-- `*_preview_*.png` — the same image **enlarged** so you can actually see it
+- `*_sprite_*.png` — the **true-size** sprite (e.g. real 128×128) — your game asset
+- `*_preview_*.png` — an **enlarged** copy to eyeball easily — only with `--preview`
 
 The seed is in every filename, so to make a full-quality version of a fast draft
 you liked, just re-run that seed:
@@ -115,14 +115,32 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 |---|---|---|
 | `-n, --number N` | how many to make, each a different seed | `1` |
 | `--size N` | sprite size in px: 16 / 32 / 64 / 128 (128 = sharpest) | `128` |
-| `--palette NAME` | `none` (model's colors), or one of **55 bundled** palettes (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, GAMEBOY, …) — see `--list-palettes` — or Custom | `none` |
+| `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
+| `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--transparent` | cut out the background → transparent PNG | off |
+| `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--dither` | Floyd-Steinberg dithering (faked shading) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
 | `--seed N` | lock / repeat a result | random |
 | `--steps`, `--cfg` | refinement steps / prompt adherence | 25 / 7 |
 | `--lora-strength N` | how strongly to pixelate | 1.0 |
 | `--custom-hex "…"` | colors for `--palette Custom` | — |
+
+### Style guides (`--style`)
+
+Style guides are proven prompt snippets appended to your prompt to steer the
+look — they live in editable `styles.json` (`--list-styles` shows all). Combine
+them: `--style geometric,detailed`. The `geometric` guide is built to fight
+"too tame / rounded" output — it emphasizes `(sharp angular geometric:1.3)` and
+pushes *rounded, smooth, organic, blobby* into the negative prompt:
+
+```bash
+pixelmon "a spider" --style geometric           # angular, spiky
+pixelmon "a hero" --style 16bit,outline          # detailed + bold outline
+pixelmon "a temple" --style blasphemous           # "in the style of" a game
+```
+Push harder with `--lora-strength 1.3` or a higher `--cfg`. Add your own guides
+by editing `styles.json` (`{"name": {"prompt": "...", "negative": "..."}}`).
 
 **Workflow tip:** explore with `--fast`, then re-run the `--seed` you liked
 *without* `--fast` for the full-quality keeper.
@@ -151,7 +169,8 @@ finishing pass that makes output a *true* sprite:
    color distance; or `none` to keep the model's own colors.
 4. **transparent** (optional) — border flood-fill removes the background, giving
    hard 1-bit alpha (no soft matte fringe — what sprites want).
-5. **preview** — a nearest-neighbour upscaled copy so you can see the tiny sprite.
+5. **preview** (optional, `--preview`) — a nearest-neighbour upscaled copy so you
+   can eyeball the tiny sprite without zooming.
 
 Palettes **auto-load** from `custom_nodes/pixelart_palette/gpl/*.GPL` — 55 are
 bundled (PICO-8, DAWNBRINGER, ENDESGA, NES, Game Boy, C=64, VGA, QUAKE, and more).

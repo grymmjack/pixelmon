@@ -31,6 +31,15 @@ except Exception:
     _pal = None
     PALETTES = ["PICO-8", "DAWNBRINGER-16", "ENDESGA-32", "NES", "GAMEBOY", "C=64"]
 
+# Style guides (prompt snippets) loaded from styles.json next to this script.
+# {name: {"prompt": "...added to positive...", "negative": "...added to negative..."}}
+_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+try:
+    with open(os.path.join(_SCRIPT_DIR, "styles.json"), encoding="utf-8") as _sf:
+        STYLES = {k: v for k, v in json.load(_sf).items() if not k.startswith("_")}
+except Exception:
+    STYLES = {}
+
 
 def _colors():
     """ANSI color codes — auto-disabled when piped or NO_COLOR is set."""
@@ -61,15 +70,16 @@ def print_help():
         "",
         f"{c['b']}{c['cyan']}EXAMPLES{c['rst']}",
         ex('pixelmon "a fierce dragon"', "best quality (the default)"),
-        ex('pixelmon "a cute slime" --palette PICO-8', "lock to a palette"),
-        ex('pixelmon "a goblin" -n 8 --fast', "8 quick variations"),
-        ex('pixelmon "a knight" --size 32 --transparent', "tiny + transparent bg"),
+        ex('pixelmon "a spider" --style geometric', "sharp, angular style guide"),
+        ex('pixelmon "a goblin" -n 8 --palette random', "8 variations, random palettes"),
+        ex('pixelmon "a knight" --transparent --preview', "transparent + zoomed preview"),
         "",
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
         opt("-n, --number N", "how many to make, each a different seed", "1"),
         opt("--size N", "sprite size in px: 16 / 32 / 64 / 128", "128"),
-        opt("--palette NAME", "none = model's own colors, or a named palette", "none"),
+        opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
+        opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
         opt("--dither", "Floyd-Steinberg dithering (faked shading)"),
         opt("--fast", "LCM mode: ~5x faster, slightly softer"),
@@ -80,12 +90,14 @@ def print_help():
         opt("--bg-tolerance N", "bg color match for --transparent", "16"),
         opt('--custom-hex "..."', "colors for --palette Custom"),
         opt("--list-palettes", "show every palette name"),
+        opt("--list-styles", "show every style guide"),
         opt("-h, --help", "show this help"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
         opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
-        opt("--view-scale N", "how much to enlarge the preview", "8"),
+        opt("--preview", "also save an enlarged zoomed-in PNG"),
+        opt("--view-scale N", "enlarge factor for --preview", "8"),
         opt('--negative "..."', "negative prompt (what to avoid)"),
         opt("--name NAME", "output filename base", "from prompt"),
         opt("--res N", "SDXL generation resolution", "1024"),
@@ -94,11 +106,11 @@ def print_help():
         opt("--lora FILE", "pixel-art LoRA", "pixel-art-xl"),
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
         opt("--no-lora", "base model only (skip pixel LoRA)"),
-        opt("--no-open", "don't auto-open the preview"),
+        opt("--no-open", "don't auto-open the result"),
         "",
         f"{c['b']}{c['cyan']}OUTPUT{c['rst']}",
         f"  {c['dim']}{OUTPUT}/pixelmon/{c['rst']}",
-        f"  {c['dim']}true-size _sprite_ PNG  +  enlarged _preview_ PNG{c['rst']}",
+        f"  {c['dim']}true-size _sprite_ PNG  (add --preview for an enlarged _preview_ PNG){c['rst']}",
         "",
         f"  {c['b']}{c['yel']}TIP{c['rst']}  explore with {c['grn']}--fast{c['rst']}, then re-run the "
         f"{c['grn']}--seed{c['rst']} you liked (without --fast) for the full-quality keeper.",
@@ -119,19 +131,39 @@ def print_palettes():
           f"{c['dim']}your own: --custom-hex \"#000000 #ffffff ...\"{c['rst']}")
 
 
+def print_styles():
+    c = C
+    print(f"{c['b']}{c['cyan']}Style guides{c['rst']}  "
+          f"{c['dim']}(append with --style NAME[,NAME2] — combine freely){c['rst']}\n")
+    if not STYLES:
+        print("  (none — styles.json not found)")
+        return
+    for name, spec in STYLES.items():
+        prm = spec.get("prompt", "")
+        prm = prm if len(prm) <= 58 else prm[:57] + "…"
+        print(f"  {c['grn']}{name:<12}{c['rst']} {c['dim']}{prm}{c['rst']}")
+
+
 def slug(text):
     out = "".join(c if c.isalnum() else "_" for c in text.lower()).strip("_")
     return out[:40] or "monster"
 
 
-def build_graph(a, seed):
-    # The Pixel Art XL LoRA does the real work of making the image pixel-shaped;
-    # the prompt just needs the subject plus a light nudge. Keep it simple — the
-    # over-stuffed prompts that a generic model needed actually hurt here.
-    prompt = f"pixel, a {a.prompt}, simple flat colors, solid background"
+def build_graph(a, seed, palette=None):
+    palette = palette or a.palette
+    # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
+    # and --style snippets (a.style_add) do the steering. "game sprite" keeps it
+    # clean. Style negatives (a.style_neg) push away unwanted shapes/looks.
+    parts = [f"pixel, a {a.prompt}"]
+    if a.style_add:
+        parts.append(a.style_add)
+    parts.append("game sprite, simple flat colors, solid background")
+    prompt = ", ".join(parts)
+    negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
+
     name = a.name or slug(a.prompt)
     # seed in the filename so each variation is identifiable and re-runnable.
-    prefix = f"pixelmon/{name}_{a.size}_{a.palette}_s{seed}"
+    prefix = f"pixelmon/{name}_{a.size}_{palette}_s{seed}"
     res = a.res
 
     g = {
@@ -139,7 +171,7 @@ def build_graph(a, seed):
         "5": {"class_type": "EmptyLatentImage",
               "inputs": {"width": res, "height": res, "batch_size": 1}},
         "6": {"class_type": "CLIPTextEncode", "inputs": {"clip": None, "text": prompt}},
-        "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": None, "text": a.negative}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": None, "text": negative}},
         "3": {"class_type": "KSampler",
               "inputs": {"seed": seed, "steps": a.steps, "cfg": a.cfg,
                          "sampler_name": a.sampler, "scheduler": a.scheduler, "denoise": 1.0,
@@ -147,16 +179,17 @@ def build_graph(a, seed):
                          "negative": ["7", 0], "latent_image": ["5", 0]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "10": {"class_type": "PixelArtPalette",
-               "inputs": {"image": ["8", 0], "downscale_to": a.size, "palette": a.palette,
+               "inputs": {"image": ["8", 0], "downscale_to": a.size, "palette": palette,
                           "dithering": "floyd-steinberg" if a.dither else "none",
                           "downscale_filter": a.filter, "smooth": a.smooth,
                           "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                           "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance}},
         "11": {"class_type": "SaveImage",
                "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}},
-        "12": {"class_type": "SaveImage",
-               "inputs": {"filename_prefix": prefix + "_preview", "images": ["10", 1]}},
     }
+    if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
+        g["12"] = {"class_type": "SaveImage",
+                   "inputs": {"filename_prefix": prefix + "_preview", "images": ["10", 1]}}
 
     # Chain LoRAs onto the base: SDXL -> [Pixel Art XL] -> [LCM if --fast].
     # Each LoraLoader patches both the model and the text encoder (clip), so we
@@ -216,9 +249,11 @@ def main():
     p.add_argument("--bg-tolerance", dest="bg_tolerance", type=int, default=16,
                    help="how aggressively to match the background color for --transparent. default 16")
     p.add_argument("--palette", default="none",
-                   help="palette to lock to: 'none' = keep the model's own colors; "
-                        "or PICO-8 / DAWNBRINGER-16 / ENDESGA-32 / NES / ... "
-                        "(55 bundled, see --list-palettes)")
+                   help="palette to lock to: 'none' = keep the model's own colors; 'random' = "
+                        "a random bundled palette per image; or a name (see --list-palettes)")
+    p.add_argument("--style", default="",
+                   help="style guide(s) to append to the prompt, comma-separated "
+                        "(e.g. geometric,detailed). see --list-styles")
     p.add_argument("--dither", action="store_true", help="Floyd-Steinberg dithering")
     p.add_argument("--smooth", choices=["mode", "median", "none"], default="mode",
                    help="flatten noise before downscaling (mode=cleanest). default mode")
@@ -234,8 +269,10 @@ def main():
     p.add_argument("--name", default=None, help="output filename base (default: from prompt)")
     p.add_argument("--custom-hex", dest="custom_hex", default="",
                    help='hex codes when --palette Custom, e.g. "#000 #fff #f00"')
+    p.add_argument("--preview", action="store_true",
+                   help="also save an enlarged, zoomed-in PNG (default: only the true-size sprite)")
     p.add_argument("--view-scale", dest="view_scale", type=int, default=8,
-                   help="how much to enlarge the preview. default 8")
+                   help="enlarge factor for --preview. default 8")
     # --- model / engine ---
     p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
@@ -251,18 +288,36 @@ def main():
     p.add_argument("--lcm-lora", dest="lcm_lora", default="lcm-lora-sdxl.safetensors",
                    help="LCM LoRA filename (used with --fast)")
     p.add_argument("--list-palettes", action="store_true", help="list palettes and exit")
-    p.add_argument("--no-open", action="store_true", help="don't auto-open the preview")
+    p.add_argument("--list-styles", action="store_true", help="list style guides and exit")
+    p.add_argument("--no-open", action="store_true", help="don't auto-open the result image")
     a = p.parse_args()
 
     # Friendly help on -h/--help, or when run with no prompt at all.
-    if a.show_help or (not a.prompt and not a.list_palettes):
+    if a.show_help or (not a.prompt and not a.list_palettes and not a.list_styles):
         print_help()
         return
     if a.list_palettes:
         print_palettes()
         return
-    if a.palette not in ("none", "Custom") and a.palette not in PALETTES:
+    if a.list_styles:
+        print_styles()
+        return
+    if a.palette not in ("none", "random", "Custom") and a.palette not in PALETTES:
         p.error(f"unknown palette {a.palette!r}. See --list-palettes.")
+
+    # Resolve --style guide(s) into prompt/negative additions (used by build_graph).
+    a.style_add, a.style_neg = "", ""
+    if a.style:
+        names = [s.strip() for s in a.style.replace(",", " ").split() if s.strip()]
+        adds, negs = [], []
+        for nm in names:
+            if nm not in STYLES:
+                p.error(f"unknown style {nm!r}. See --list-styles.")
+            adds.append(STYLES[nm].get("prompt", ""))
+            if STYLES[nm].get("negative"):
+                negs.append(STYLES[nm]["negative"])
+        a.style_add = ", ".join(x for x in adds if x)
+        a.style_neg = ", ".join(negs)
 
     # Resolve sampler settings by mode. --fast = LCM (8 steps, low cfg, lcm
     # sampler + sgm_uniform schedule); default = full-quality 25-step euler.
@@ -286,35 +341,42 @@ def main():
         seeds = [random.randint(0, 2**31 - 1) for _ in range(n)]
 
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
-    print(f"🎨 {a.prompt!r}  |  {a.size}px  |  {a.palette}"
-          f"{' |  transparent' if a.transparent else ''}  |  "
+    pal_label = "random" if a.palette == "random" else a.palette
+    style_label = f"  |  style: {a.style}" if a.style else ""
+    print(f"🎨 {a.prompt!r}  |  {a.size}px  |  {pal_label}"
+          f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
           f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {n} image(s)")
     if n > 1:
         eta = n * per
         tip = "" if a.fast else "  (tip: add --fast for quick variations)"
         print(f"   ~{eta // 60}m{eta % 60:02d}s estimated{tip}")
 
-    # Queue every job up front; ComfyUI runs them one at a time, we collect in order.
-    jobs = [(s, submit(build_graph(a, s))) for s in seeds]
+    # Pick a palette per image ('random' draws a fresh one each), then queue all
+    # jobs up front; ComfyUI runs them one at a time and we collect in order.
+    jobs = []
+    for s in seeds:
+        pal = random.choice(PALETTES) if a.palette == "random" else a.palette
+        jobs.append((s, pal, submit(build_graph(a, s, pal))))
     if n > 1:
         print(f"   queued {n} jobs; generating...")
 
     t0 = time.time()
-    first_preview = None
-    for i, (s, pid) in enumerate(jobs, 1):
+    first_open = None
+    for i, (s, pal, pid) in enumerate(jobs, 1):
         outs = wait(pid)
         files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"])
                  for node in outs.values() for im in node.get("images", [])]
         sprite = next((f for f in files if "_sprite_" in f), None)
         preview = next((f for f in files if "_preview_" in f), None)
-        first_preview = first_preview or preview
+        first_open = first_open or preview or sprite      # open preview if saved, else the sprite
         tag = f"[{i}/{n}] " if n > 1 else ""
-        print(f"   ✅ {tag}seed={s}  ->  {sprite}")
+        pal_note = f"  pal={pal}" if a.palette == "random" else ""
+        print(f"   ✅ {tag}seed={s}{pal_note}  ->  {sprite}")
 
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {OUTPUT}/pixelmon/")
-    if first_preview and not a.no_open and shutil.which("xdg-open"):
+    if first_open and not a.no_open and shutil.which("xdg-open"):
         try:
-            subprocess.Popen(["xdg-open", first_preview],
+            subprocess.Popen(["xdg-open", first_open],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
