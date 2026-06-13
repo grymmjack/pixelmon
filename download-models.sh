@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download the models pixelmon needs into ~/ComfyUI/models/.
-# All public on Hugging Face — no login/token required. ~7.5 GB total.
+# Public on Hugging Face / Civitai — no login/token required. ~7.6 GB total.
 set -euo pipefail
 
 COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
@@ -26,5 +26,12 @@ get "https://huggingface.co/nerijs/pixel-art-xl/resolve/main/pixel-art-xl.safete
 # LCM LoRA for --fast mode (394 MB)
 get "https://huggingface.co/latent-consistency/lcm-lora-sdxl/resolve/main/pytorch_lora_weights.safetensors" \
     "$LORA/lcm-lora-sdxl.safetensors"
+
+# "EGA retro style SDXL" LoRA (82 MB) — the vibrant 16-color EGA / Wasteland look.
+# Civitai model 290771 (SDXL 1.0; commercial use + derivatives OK). Trigger word:
+# "dosegagfx style" (injected by --style dosega). Use via: --lora dosegafx.safetensors
+# Page: https://civitai.com/models/290771/ega-retro-style-sdxl
+get "https://civitai.com/api/download/models/356290" \
+    "$LORA/dosegafx.safetensors"
 
 echo "✅ models ready in $COMFY/models/"

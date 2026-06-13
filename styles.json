@@ -33,5 +33,10 @@
   "finalfantasy": {"prompt": "in the style of Final Fantasy VI, 16-bit SNES JRPG sprite, detailed, vibrant fantasy, expressive", "negative": "realistic, photo, 3d render"},
   "pokemon":      {"prompt": "in the style of Pokemon, cute creature sprite, clean bold outline, bright cheerful colors, simple cel shading", "negative": "gritty, dark, realistic, human"},
 
+  "ega":          {"prompt": "16-color EGA graphics, (fully saturated vivid colors:1.3), bright cyan and magenta and red and green, (hard ordered dithering:1.2) for shading, bold thick black outlines, high contrast, vintage MS-DOS PC art", "negative": "muted, desaturated, grey, gray, brown, earthy, drab, pastel, soft shading, smooth gradient, anti-aliased, blurry, 3d render, photorealistic, realistic lighting"},
+  "wasteland":    {"prompt": "in the style of the 1988 game Wasteland and classic EGA MS-DOS CRPG art, (vibrant 16-color EGA palette:1.3), fully saturated colors, heavy dithering, bold black outlines, gritty comic-book post-apocalyptic sci-fi, solid bright single-color background", "negative": "muted, desaturated, grey, gray, brown, drab, pastel, soft, anti-aliased, blurry, gradient, 3d render, photorealistic, modern, anime"},
+  "portrait":     {"prompt": "head-and-shoulders character portrait bust, front view, face clearly visible, framed close-up", "negative": "full body, full figure, tiny, distant, wide shot, landscape, scenery"},
+  "dosega":       {"prompt": "dosegagfx style, 16-color EGA PC graphics, bold black outlines, purposeful ordered dithering for shading, solid bright background", "negative": "blurry, soft, anti-aliased, smooth gradient, muddy, 3d render, photorealistic, modern"},
+
   "item":         {"prompt": "single game item icon, one isolated object, centered, clean", "negative": "character, person, creature, hands, arms, body, face, figure, holding"}
 }
