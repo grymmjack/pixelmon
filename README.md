@@ -1,8 +1,10 @@
-# pixelmon — pixel-art sprite generator on AMD ROCm
+# pixelmon — pixel-art sprite generator (NVIDIA · AMD · CPU)
 
-Generate game-ready pixel-art sprites from a text prompt with **one command**, on
-an **AMD Radeon RX 6600** using ComfyUI + Stable Diffusion XL + the *Pixel Art XL*
-LoRA. Built and battle-tested on Debian 13 with ROCm.
+Generate game-ready pixel-art sprites from a text prompt with **one command**,
+using ComfyUI + Stable Diffusion XL + the *Pixel Art XL* LoRA. Setup
+**auto-detects your GPU** — NVIDIA (CUDA), AMD (ROCm), or CPU — and configures
+itself. Built and battle-tested on an **AMD Radeon RX 6600** (Debian 13, ROCm);
+see [GPU support](#gpu-support-nvidia--amd--cpu) for the NVIDIA path.
 
 ```bash
 pixelmon "a fierce dragon"                     # full-quality sprite
@@ -35,17 +37,60 @@ sprite-shaped — see [Lessons learned](#lessons-learned-the-gotchas).
 
 ---
 
-## Hardware this was built for
+## GPU support (NVIDIA · AMD · CPU)
 
-| | |
-|---|---|
-| GPU | AMD Radeon RX 6600 (Navi 23, **gfx1032**, 8 GB) |
-| OS | Debian 13 (Trixie), kernel 6.x |
-| Stack | ROCm 6.2 · PyTorch 2.5.1+rocm6.2 · Python 3.10 · ComfyUI |
-| RAM | 62 GB (lets SDXL run in `--lowvram` comfortably) |
+`install.sh` and `launch-comfyui.sh` **auto-detect the GPU vendor** and configure
+the matching PyTorch wheel + launch flags — the same repo runs on any of these
+with no flags. The CLI itself (`pixelmon.py`, `animate.py`) is vendor-agnostic: it
+talks to ComfyUI over HTTP and runs CLIPSeg on CPU, so only those two setup
+scripts are GPU-specific.
 
-It will likely work on other RDNA2/RDNA3 AMD cards; you may need a different
-`HSA_OVERRIDE_GFX_VERSION` (see below) or none at all on officially-supported cards.
+| Vendor | PyTorch | Launch config applied |
+|---|---|---|
+| **NVIDIA (CUDA)** | `cu124` wheel | none — ComfyUI auto-manages VRAM (12 GB+ runs SDXL fully loaded) |
+| **AMD (ROCm)** | `2.5.1+rocm6.2` | `HSA_OVERRIDE_GFX_VERSION=10.3.0` · `render` group · `--lowvram` |
+| **CPU** | cpu wheel | `--cpu` (works, but very slow) |
+
+Detection: `nvidia-smi` present → NVIDIA; `/dev/kfd` present → AMD ROCm; else CPU.
+Override with `PIXELMON_GPU=nvidia|amd|cpu`; pick an interpreter with `PYTHON=python3.11`.
+
+### Tested / target machines
+
+| | GPU | OS · stack | Notes |
+|---|---|---|---|
+| **Dev box** (battle-tested) | AMD Radeon RX 6600 (Navi 23, **gfx1032**, 8 GB) | Debian 13 · ROCm 6.2 · torch 2.5.1+rocm6.2 · Py 3.10 · 62 GB RAM | needs the gfx1032→gfx1030 override + `render` group + `--lowvram` |
+| **NVIDIA box** (port target) | NVIDIA Titan Xp (**Pascal**, 12 GB) | Debian 12 · CUDA | no override / group / lowvram needed |
+
+Other RDNA2/RDNA3 AMD cards likely work too (you may need a different
+`HSA_OVERRIDE_GFX_VERSION`, or none on officially-supported cards).
+
+### Running on an NVIDIA box
+
+Simplest model: run pixelmon **on** the NVIDIA machine (everything local — no
+network or filesystem plumbing). With the NVIDIA driver installed so `nvidia-smi`
+works:
+
+```bash
+sudo apt install -y python3.11-venv git          # if needed (Debian 12)
+git clone https://github.com/grymmjack/pixelmon.git ~/pixelmon
+cd ~/pixelmon && ./install.sh                     # auto-detects nvidia → CUDA wheel
+./download-models.sh                              # all models incl. dosegafx
+# confirm CUDA actually sees the card:
+~/ComfyUI/.venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+~/launch-comfyui.sh                               # banner should read "NVIDIA CUDA (…)"
+pixelmon "a fierce dragon"
+```
+
+> **Pascal caveat (Titan Xp = sm_61).** Current PyTorch still ships Pascal kernels.
+> If the `torch.cuda` check above ever errors about an unsupported architecture,
+> pin an older CUDA wheel — swap `cu124` → `cu121` on the torch line in `install.sh`.
+
+**Remote (thin-client) alternative — more plumbing.** Keep ComfyUI on the NVIDIA
+box and run pixelmon elsewhere by pointing `SERVER` (in `pixelmon.py` *and*
+`animate.py`) at its IP. But pixelmon reads/writes images on the **ComfyUI host's
+disk** (`~/ComfyUI/output`, and `animate.py` also writes `~/ComfyUI/input/…`), so
+you'd also need those dirs mounted (NFS/SSHFS) or the I/O refactored to ComfyUI's
+`/upload`+`/view` HTTP endpoints. Running pixelmon on the box itself avoids all of it.
 
 ---
 
@@ -261,7 +306,9 @@ lists directly to the `MY_PALETTES` dict in `palettes.py`.
 
 ## Lessons learned (the gotchas)
 
-These cost real time; they're why the setup looks the way it does.
+These cost real time; they're why the setup looks the way it does. **Items 1, 2,
+4, 5 are AMD/ROCm-specific** — `install.sh`/`launch-comfyui.sh` handle them
+automatically on AMD and skip them on NVIDIA. Item 3 applies to every vendor.
 
 1. **`render` group, not just `video`.** ROCm talks to the GPU through `/dev/kfd`,
    which is owned by the `render` group. Without membership, `torch.cuda.device_count()`
@@ -286,10 +333,13 @@ These cost real time; they're why the setup looks the way it does.
 
 | Symptom | Fix |
 |---|---|
-| `torch.cuda.is_available()` is False / 0 devices | not in `render` group, or missing `HSA_OVERRIDE_GFX_VERSION=10.3.0` |
-| `rocminfo`: *"not a member of render group"* | `sudo usermod -aG render $USER`, log out/in |
+| Wrong vendor detected | force it: `PIXELMON_GPU=nvidia\|amd\|cpu ./install.sh` (and same env for `launch-comfyui.sh`) |
+| **(AMD)** `torch.cuda.is_available()` False / 0 devices | not in `render` group, or missing `HSA_OVERRIDE_GFX_VERSION=10.3.0` |
+| **(AMD)** `rocminfo`: *"not a member of render group"* | `sudo usermod -aG render $USER`, log out/in |
+| **(AMD)** machine hangs / green-screens during generation | run with `--lowvram` (auto on AMD in `launch-comfyui.sh`); prefer `--fast` |
+| **(NVIDIA)** `torch.cuda.is_available()` False | NVIDIA driver not installed/loaded (`nvidia-smi` must work), or you got a CPU torch wheel — re-run `install.sh` |
+| **(NVIDIA)** torch errors about unsupported arch (old card) | pin an older CUDA wheel: `cu124` → `cu121` on the torch line in `install.sh` |
 | Output looks like a blurry photo, not pixels | you're not using the Pixel Art XL LoRA (`--no-lora` is on, or base model only) |
-| Machine hangs / green-screens during generation | run with `--lowvram` (already default in `launch-comfyui.sh`); prefer `--fast` |
 | First generation is slow | normal — it loads the 6.9 GB SDXL model; later runs reuse it |
 
 ---
@@ -299,13 +349,13 @@ These cost real time; they're why the setup looks the way it does.
 ```
 pixelmon/
 ├── README.md
-├── install.sh                 reproducible setup (ComfyUI + venv + links + render group)
+├── install.sh                 reproducible setup — auto-detects NVIDIA/AMD/CPU (venv + torch + links)
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API)
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
 ├── styles.json                --style guide snippets (edit / add your own)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
-├── launch-comfyui.sh          ROCm-correct ComfyUI launcher (gfx override, render group, lowvram)
+├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/
 │   └── pixelart_palette/       the finishing node (smooth→downscale→palette→transparent)
 │       ├── nodes.py
