@@ -76,7 +76,7 @@ pixelmon "a dragon" --seed 12345      # same dragon, full quality
 git clone https://github.com/grymmjack/pixelmon.git ~/pixelmon
 cd ~/pixelmon
 ./install.sh            # clones ComfyUI, builds the venv, links everything
-./download-models.sh    # ~7.5 GB of models from Hugging Face (no login needed)
+./download-models.sh    # ~7.6 GB of models from Hugging Face + Civitai (no login needed)
 ```
 
 Then **log out and back in once** (so the `render` group sticks), and:
@@ -104,6 +104,7 @@ pixelmon "a fierce dragon"
 | `sd_xl_base_1.0.safetensors` | 6.9 GB | `models/checkpoints/` |
 | `pixel-art-xl.safetensors` (Pixel Art XL LoRA) | 171 MB | `models/loras/` |
 | `lcm-lora-sdxl.safetensors` (for `--fast`) | 394 MB | `models/loras/` |
+| `dosegafx.safetensors` (EGA retro style SDXL LoRA, [Civitai 290771](https://civitai.com/models/290771/ega-retro-style-sdxl)) | 82 MB | `models/loras/` |
 
 ---
 
@@ -147,6 +148,46 @@ by editing `styles.json` (`{"name": {"prompt": "...", "negative": "..."}}`).
 
 **Workflow tip:** explore with `--fast`, then re-run the `--seed` you liked
 *without* `--fast` for the full-quality keeper.
+
+### EGA / Wasteland portrait look
+
+The vibrant 16-color **EGA / Wasteland** aesthetic — bold black outlines,
+*purposeful* ordered dithering, saturated colors, like the 1988 game *Wasteland* —
+comes from a dedicated LoRA, **EGA retro style SDXL**
+([Civitai 290771](https://civitai.com/models/290771/ega-retro-style-sdxl), fetched
+by `download-models.sh` as `dosegafx.safetensors`). Use it via `--lora` plus the
+`dosega` style, which injects its `dosegagfx style` trigger word:
+
+```bash
+pixelmon "a grizzled raider" --lora dosegafx.safetensors --style dosega,portrait --palette EGA --size 128
+```
+
+Pair with `--palette EGA` to hard-lock the authentic 16 colors. Companion styles:
+`ega` (palette/dither descriptors), `wasteland` (full Wasteland portrait look),
+`portrait` (head-and-shoulders bust framing). Generate at **128–256px** so the
+dithering reads — it averages out at tiny sizes.
+
+### Animation (experimental)
+
+`--animate` makes a **looping portrait-gesture GIF**, the way the original Wasteland
+portraits animated: generate one base portrait, then re-paint *only* a small masked
+region across a few frames while the rest stays frozen. It auto-masks the region
+with text-prompted segmentation (CLIPSeg), so it understands `"the cigar"` /
+`"the gun"` / `"the dog's mouth"` — not just human faces.
+
+```bash
+pixelmon "a mutant" --animate glow --anim-region "the eyes"          # eye-glow pulse
+pixelmon "a mayor" --animate "smoke rising" --anim-box 0,0,0.5,0.62   # custom gesture + manual mask box
+```
+
+Knobs: `--anim-fps` (speed), `--anim-hold`, `--anim-frames`, `--anim-denoise`,
+`--anim-loop`, and `--anim-region` / `--anim-box` (auto-mask vs. manual). Presets:
+`blink`, `talk`, `glow`, `smoke`, `breathe`. Full list in `pixelmon --help`.
+
+> ⚗ **Experimental.** At sprite scale the model can't author crisp 2-pixel motion —
+> glow/light gestures read well, but subtle ones (blink, small mouths, rising smoke)
+> often misread. For production sprites, render a **static** image and hand-animate
+> it. Fully opt-in: nothing runs unless you pass `--animate`.
 
 ### Batches & organizing output
 
@@ -253,8 +294,10 @@ These cost real time; they're why the setup looks the way it does.
 pixelmon/
 ├── README.md
 ├── install.sh                 reproducible setup (ComfyUI + venv + links + render group)
-├── download-models.sh         fetch SDXL + Pixel Art XL + LCM from Hugging Face
+├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API)
+├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
+├── styles.json                --style guide snippets (edit / add your own)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
 ├── launch-comfyui.sh          ROCm-correct ComfyUI launcher (gfx override, render group, lowvram)
 ├── custom_nodes/
@@ -272,6 +315,8 @@ pixelmon/
 - [SDXL base 1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) — Stability AI (CreativeML Open RAIL++-M)
 - [Pixel Art XL](https://huggingface.co/nerijs/pixel-art-xl) — nerijs
 - [LCM-LoRA SDXL](https://huggingface.co/latent-consistency/lcm-lora-sdxl) — Latent Consistency
+- [EGA retro style SDXL](https://civitai.com/models/290771/ega-retro-style-sdxl) — the EGA/Wasteland look (commercial use + derivatives OK, no credit required)
+- [CLIPSeg](https://huggingface.co/CIDAS/clipseg-rd64-refined) — CIDAS, text-prompted segmentation for `--animate` auto-masking
 - [spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — Hugo Duprez (MIT), used by `--snap-pixels`
 
 The code in this repo (the CLI, wrapper, launcher, and custom node) is released

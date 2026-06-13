@@ -74,6 +74,7 @@ def print_help():
         ex('pixelmon "a goblin" -n 8 --palette random', "8 variations, random palettes"),
         ex('pixelmon "a knight" --transparent --preview', "transparent + zoomed preview"),
         ex('pixelmon --batch "bat,skeleton,spider" -n 128', "128 of each → own folders"),
+        ex('pixelmon "a bandit" --animate "smoke from cigar"', "looping animated GIF"),
         "",
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
@@ -113,6 +114,18 @@ def print_help():
         opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
         opt("--create-dirs", "create output folders if missing"),
+        "",
+        f"{c['b']}{c['cyan']}ANIMATION{c['rst']}  {c['dim']}(EXPERIMENTAL — looping portrait gestures → GIF; "
+        f"best for glow/light. for crisp sprites, hand-animate a static render){c['rst']}",
+        opt("--animate GESTURE", "preset (blink/talk/glow/smoke/breathe) or free text"),
+        opt("--anim-region WHAT", 'what to auto-mask, e.g. "the cigar" (CLIPSeg)', "guessed"),
+        opt("--anim-frames N", "2 = toggle (blink); 3-5 = motion (smoke)", "preset"),
+        opt("--anim-fps N", "loop SPEED (frames/sec during the gesture)", "6"),
+        opt("--anim-hold S", "seconds the resting pose lingers", "1.2"),
+        opt("--anim-denoise D", "region change strength 0.3 subtle .. 0.9 strong", "0.65"),
+        opt("--anim-loop MODE", "pingpong / cycle / once-return", "preset"),
+        opt("--anim-box L,T,R,B", "manual mask box (fractions) if auto-mask misses"),
+        opt("--anim-res N", "base/inpaint gen resolution (detail)", "768"),
         "",
         f"{c['b']}{c['cyan']}OUTPUT{c['rst']}",
         f"  {c['dim']}{OUTPUT}/pixelmon/{c['rst']}",
@@ -311,6 +324,29 @@ def main():
                    help="LCM mode: ~3-4x faster (8 steps); small quality trade-off")
     p.add_argument("--lcm-lora", dest="lcm_lora", default="lcm-lora-sdxl.safetensors",
                    help="LCM LoRA filename (used with --fast)")
+    # --- animation: looping portrait gestures, à la 1988 Wasteland ---
+    p.add_argument("--animate", default=None, metavar="GESTURE",
+                   help='make a looping animated GIF. a preset (blink/talk/glow/smoke/breathe) '
+                        'OR free text like "licks chops", "smoke rising from cigar". '
+                        'generates a base portrait, then animates ONE region.')
+    p.add_argument("--anim-region", dest="anim_region", default=None, metavar="WHAT",
+                   help='what to auto-mask & animate (CLIPSeg text), e.g. "the eyes", "the cigar", '
+                        '"the gun". works on dogs/monsters too. default: guessed from the gesture')
+    p.add_argument("--anim-frames", dest="anim_frames", type=int, default=None,
+                   help="distinct motion frames: 2 = toggle (blink); 3-5 = motion (smoke). default per-preset or 2")
+    p.add_argument("--anim-fps", dest="anim_fps", type=float, default=6.0,
+                   help="loop SPEED in frames/second during the gesture. default 6")
+    p.add_argument("--anim-hold", dest="anim_hold", type=float, default=1.2,
+                   help="seconds to hold the resting pose between gestures. default 1.2")
+    p.add_argument("--anim-denoise", dest="anim_denoise", type=float, default=None,
+                   help="how strongly the region changes per frame (0.3 subtle .. 0.9 strong). default per-preset or 0.65")
+    p.add_argument("--anim-loop", dest="anim_loop", default=None,
+                   choices=["pingpong", "cycle", "once-return"],
+                   help="frame ordering. default per-preset or pingpong")
+    p.add_argument("--anim-box", dest="anim_box", default=None, metavar="L,T,R,B",
+                   help="manual mask box as fractions 0..1 (overrides auto-mask), e.g. 0.25,0.36,0.67,0.49")
+    p.add_argument("--anim-res", dest="anim_res", type=int, default=768,
+                   help="base/inpaint generation resolution (bigger = better region detail). default 768")
     p.add_argument("--list-palettes", action="store_true", help="list palettes and exit")
     p.add_argument("--list-styles", action="store_true", help="list style guides and exit")
     p.add_argument("--no-open", action="store_true", help="don't auto-open the result image")
@@ -373,6 +409,13 @@ def main():
         return max(64, int(round(v / 64.0)) * 64)
     a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
     a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
+
+    # Animation mode is its own pipeline (base -> mask -> inpaint frames -> GIF).
+    if a.animate:
+        sys.path.insert(0, _SCRIPT_DIR)
+        import animate
+        animate.run(a, pal_map=(_pal.ALL_PALETTES if _pal else None), slug=slug)
+        return
 
     n = max(1, a.number)
     # Subjects: one (the prompt) or many (--batch round-robins one of each per pass).
