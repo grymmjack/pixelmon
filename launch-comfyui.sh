@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
-# Launch ComfyUI for an AMD RX 6600 (Navi 23 / gfx1032) on ROCm.
+# Launch ComfyUI, auto-detecting the GPU vendor: NVIDIA (CUDA) / AMD (ROCm) / CPU.
 #
-# Why the special handling:
-#   * gfx1032 isn't officially supported by ROCm, so we make it masquerade as
-#     the supported gfx1030 via HSA_OVERRIDE_GFX_VERSION=10.3.0.
-#   * ROCm compute needs /dev/kfd, which lives behind the "render" group; if the
-#     current shell isn't a member yet we transparently re-exec under `sg render`.
-#   * --lowvram streams SDXL from system RAM instead of fully loading the 8GB
-#     card — much gentler on the GPU (added after a crash under full load).
+# AMD (ROCm) specifics — applied ONLY on the AMD branch:
+#   * gfx1032 (RX 6600) isn't officially supported, so it masquerades as the
+#     supported gfx1030 via HSA_OVERRIDE_GFX_VERSION=10.3.0.
+#   * ROCm compute needs /dev/kfd, gated behind the "render" group; if the shell
+#     isn't a member yet we transparently re-exec under `sg render`.
+#   * --lowvram streams SDXL from system RAM — gentle on the 8GB card (stability).
+# NVIDIA needs none of that (no override, no render group, no --lowvram by default).
+# Force a vendor with  PIXELMON_GPU=nvidia|amd|cpu  if detection ever guesses wrong.
 set -euo pipefail
 
 COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
 
-# Re-exec under the render group if this shell isn't a member yet (e.g. you were
-# added with usermod but haven't logged out/in). No-op once it's permanent.
-if ! id -nG | tr ' ' '\n' | grep -qx render; then
+detect_gpu() {
+    case "${PIXELMON_GPU:-}" in nvidia|amd|cpu) echo "$PIXELMON_GPU"; return;; esac
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        echo nvidia
+    elif [ -e /dev/kfd ] || command -v rocminfo >/dev/null 2>&1; then
+        echo amd
+    else
+        echo cpu
+    fi
+}
+GPU="$(detect_gpu)"
+
+# AMD only: re-exec under the "render" group if this shell isn't a member yet
+# (e.g. you were added with usermod but haven't logged out/in). No-op once permanent.
+if [ "$GPU" = amd ] && ! id -nG | tr ' ' '\n' | grep -qx render; then
     echo "[launch] 'render' group not active in this shell; re-exec via sg render..."
     exec sg render -c "$(readlink -f "$0")"
 fi
@@ -22,15 +35,30 @@ fi
 cd "$COMFY"
 source .venv/bin/activate
 
-export HSA_OVERRIDE_GFX_VERSION=10.3.0   # treat gfx1032 as the supported gfx1030
-export HIP_VISIBLE_DEVICES=0             # discrete RX 6600 only, ignore the iGPU
-export TORCH_BLAS_PREFER_HIPBLASLT=0     # silence the unsupported-hipBLASLt warning
+EXTRA=()
+case "$GPU" in
+    amd)
+        export HSA_OVERRIDE_GFX_VERSION=10.3.0   # treat gfx1032 as the supported gfx1030
+        export HIP_VISIBLE_DEVICES=0             # discrete RX 6600 only, ignore the iGPU
+        export TORCH_BLAS_PREFER_HIPBLASLT=0     # silence the unsupported-hipBLASLt warning
+        EXTRA+=(--lowvram)                       # keep the 8GB card out of the danger zone
+        LABEL="AMD ROCm  (gfx1032 -> gfx1030 override, --lowvram)"
+        ;;
+    nvidia)
+        # CUDA needs no special env; ComfyUI auto-manages VRAM. The Titan-class
+        # 12GB+ cards run SDXL fully loaded (faster — no --lowvram needed).
+        LABEL="NVIDIA CUDA  ($(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1))"
+        ;;
+    cpu)
+        EXTRA+=(--cpu)
+        LABEL="CPU  (no GPU detected — this will be slow)"
+        ;;
+esac
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║  ComfyUI — AMD RX 6600 (gfx1032 → gfx1030 override)         ║"
+printf  "║  ComfyUI — %-48.48s║\n" "$LABEL"
 echo "║  Open:  http://localhost:8188                              ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 
-# --lowvram keeps the 8GB card out of the danger zone (stability). Remove it for
-# maximum speed once you're confident the GPU is stable under full load.
-exec python main.py --listen 0.0.0.0 --lowvram "$@"
+# Pass through any extra args you give (e.g. add --lowvram on a small NVIDIA card).
+exec python main.py --listen 0.0.0.0 "${EXTRA[@]}" "$@"

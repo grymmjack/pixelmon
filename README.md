@@ -79,7 +79,13 @@ cd ~/pixelmon
 ./download-models.sh    # ~7.6 GB of models from Hugging Face + Civitai (no login needed)
 ```
 
-Then **log out and back in once** (so the `render` group sticks), and:
+> **GPU auto-detection.** `install.sh` and `launch-comfyui.sh` detect your card —
+> **NVIDIA (CUDA)**, **AMD (ROCm)**, or **CPU** — and configure the matching
+> PyTorch wheel and launch flags automatically. The `render`-group + HSA-override
+> + `--lowvram` steps are **AMD-only**; NVIDIA skips them. Force a vendor with
+> `PIXELMON_GPU=nvidia|amd|cpu`, and pick an interpreter with `PYTHON=python3.11`.
+
+On **AMD/ROCm**, log out and back in once (so the `render` group sticks). Then:
 ```bash
 pixelmon "a fierce dragon"
 ```
