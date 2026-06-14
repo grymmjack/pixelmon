@@ -33,7 +33,9 @@ if [ "$GPU" = amd ] && ! id -nG | tr ' ' '\n' | grep -qx render; then
 fi
 
 cd "$COMFY"
-source .venv/bin/activate
+# Run via the venv interpreter directly — no `source activate` needed. Some venvs
+# only ship bin/python (no activate scripts); this works regardless.
+VENV_PY="$COMFY/.venv/bin/python"
 
 EXTRA=()
 case "$GPU" in
@@ -61,4 +63,4 @@ echo "║  Open:  http://localhost:8188                              ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 
 # Pass through any extra args you give (e.g. add --lowvram on a small NVIDIA card).
-exec python main.py --listen 0.0.0.0 "${EXTRA[@]}" "$@"
+exec "$VENV_PY" main.py --listen 0.0.0.0 "${EXTRA[@]}" "$@"

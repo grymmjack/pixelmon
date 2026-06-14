@@ -48,23 +48,31 @@ if [ ! -x "$COMFY/.venv/bin/python" ]; then
     echo "==> creating venv ($PY)"
     "$PY" -m venv "$COMFY/.venv"
 fi
-PIP="$COMFY/.venv/bin/pip"
-"$PIP" install --upgrade pip wheel
+VENV_PY="$COMFY/.venv/bin/python"
+# Always invoke pip as `python -m pip` — robust even when the venv's bin/pip
+# wrapper was never created (e.g. a venv made with --without-pip). Bootstrap the
+# pip *module* first if it's missing, so we can reuse a pre-existing venv.
+"$VENV_PY" -m pip --version >/dev/null 2>&1 || {
+    echo "==> bootstrapping pip into the venv (ensurepip)"
+    "$VENV_PY" -m ensurepip --upgrade
+}
+pip() { "$VENV_PY" -m pip "$@"; }
+pip install --upgrade pip wheel
 echo "==> installing torch for '$GPU' — the big one"
 case "$GPU" in
     nvidia)
         # CUDA build. Pascal (Titan Xp, sm_61) is still supported by current wheels;
         # if a future wheel drops it, pin an older cuXX index here.
-        "$PIP" install torch torchvision torchaudio \
+        pip install torch torchvision torchaudio \
             --index-url https://download.pytorch.org/whl/cu124 ;;
     amd)
-        "$PIP" install torch==2.5.1+rocm6.2 torchvision==0.20.1+rocm6.2 torchaudio==2.5.1+rocm6.2 \
+        pip install torch==2.5.1+rocm6.2 torchvision==0.20.1+rocm6.2 torchaudio==2.5.1+rocm6.2 \
             --index-url https://download.pytorch.org/whl/rocm6.2 ;;
     cpu)
         echo "   ⚠  no GPU detected — installing CPU torch (generation will be very slow)"
-        "$PIP" install torch torchvision torchaudio ;;
+        pip install torch torchvision torchaudio ;;
 esac
-"$PIP" install -r "$COMFY/requirements.txt"
+pip install -r "$COMFY/requirements.txt"
 
 # 3. link our files into place (this repo stays the source of truth)
 link() { ln -sfn "$1" "$2"; echo "   linked $2 -> $1"; }
