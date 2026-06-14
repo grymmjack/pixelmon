@@ -144,6 +144,7 @@ def print_help():
         opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
         opt("--create-dirs", "create output folders if missing"),
+        opt("--no-subdirs", "with --batch/--output-to: dump all into one flat folder"),
         "",
         f"{c['b']}{c['cyan']}ANIMATION{c['rst']}  {c['dim']}(EXPERIMENTAL — looping portrait gestures → GIF; "
         f"best for glow/light. for crisp sprites, hand-animate a static render){c['rst']}",
@@ -434,6 +435,9 @@ def main():
                    help="organize each run into its own subdir named after the prompt (or --name)")
     p.add_argument("--create-dirs", dest="create_dirs", action="store_true",
                    help="create the output dir(s) if they don't exist")
+    p.add_argument("--no-subdirs", dest="no_subdirs", action="store_true",
+                   help="with --batch/--output-to: dump everything flat into the one folder "
+                        "(no per-subject subdirs) — files are uniquely named, so all viewable together")
     p.add_argument("--custom-hex", dest="custom_hex", default="",
                    help='hex codes when --palette Custom, e.g. "#000 #fff #f00"')
     p.add_argument("--preview", action="store_true",
@@ -571,13 +575,19 @@ def main():
     base = os.path.abspath(os.path.expanduser(a.output_to)) if a.output_to else os.getcwd()
 
     def dest_for(subject):
-        if a.batch:
+        if a.no_subdirs:
+            # flatten: everything into the one base folder (files are uniquely named,
+            # so you can browse them all in a single dir)
+            d = base if (a.output_to or a.batch or a.move_to_dirs) else None
+        elif a.batch:
             d = os.path.join(base, slug(subject))
         elif a.move_to_dirs:
             d = os.path.join(base, a.name or slug(a.prompt))
         elif a.output_to:
             d = base
         else:
+            d = None
+        if d is None:
             return None
         if not os.path.isdir(d):
             if a.create_dirs or a.move_to_dirs or a.batch:
