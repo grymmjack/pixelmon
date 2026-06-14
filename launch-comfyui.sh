@@ -76,4 +76,5 @@ echo "║  Open:  http://localhost:8188                              ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 
 # Pass through any extra args you give (e.g. add --lowvram on a small NVIDIA card).
-exec "$VENV_PY" main.py --listen 0.0.0.0 "${EXTRA[@]}" "$@"
+# ${EXTRA[@]+"${EXTRA[@]}"} safely expands an empty array under `set -u` on bash 3.2 (macOS).
+exec "$VENV_PY" main.py --listen 0.0.0.0 ${EXTRA[@]+"${EXTRA[@]}"} "$@"
