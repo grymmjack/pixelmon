@@ -21,9 +21,13 @@ command -v "$PY" >/dev/null 2>&1 || {
     echo "Need Python 3.10–3.12 (e.g. sudo apt install python3.11 python3.11-venv)"; exit 1; }
 
 detect_gpu() {
-    case "${PIXELMON_GPU:-}" in nvidia|amd|cpu) echo "$PIXELMON_GPU"; return;; esac
-    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    case "${PIXELMON_GPU:-}" in nvidia|amd|cpu|mps) echo "$PIXELMON_GPU"; return;; esac
+    if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+        echo mps               # Apple Silicon -> PyTorch Metal (MPS) backend
+    elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
         echo nvidia
+    elif [ -x /usr/lib/wsl/lib/nvidia-smi ] && /usr/lib/wsl/lib/nvidia-smi -L >/dev/null 2>&1; then
+        echo nvidia            # WSL2: driver libs live in /usr/lib/wsl/lib (not on PATH)
     elif [ -e /dev/kfd ] || command -v rocminfo >/dev/null 2>&1; then
         echo amd
     else
@@ -68,6 +72,9 @@ case "$GPU" in
     amd)
         pip install torch==2.5.1+rocm6.2 torchvision==0.20.1+rocm6.2 torchaudio==2.5.1+rocm6.2 \
             --index-url https://download.pytorch.org/whl/rocm6.2 ;;
+    mps)
+        # Apple Silicon: the default macOS arm64 wheels include the Metal (MPS) backend.
+        pip install torch torchvision torchaudio ;;
     cpu)
         echo "   ⚠  no GPU detected — installing CPU torch (generation will be very slow)"
         pip install torch torchvision torchaudio ;;

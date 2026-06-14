@@ -14,9 +14,13 @@ set -euo pipefail
 COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
 
 detect_gpu() {
-    case "${PIXELMON_GPU:-}" in nvidia|amd|cpu) echo "$PIXELMON_GPU"; return;; esac
-    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    case "${PIXELMON_GPU:-}" in nvidia|amd|cpu|mps) echo "$PIXELMON_GPU"; return;; esac
+    if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+        echo mps               # Apple Silicon -> PyTorch Metal (MPS) backend
+    elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
         echo nvidia
+    elif [ -x /usr/lib/wsl/lib/nvidia-smi ] && /usr/lib/wsl/lib/nvidia-smi -L >/dev/null 2>&1; then
+        echo nvidia            # WSL2: driver libs live in /usr/lib/wsl/lib (not on PATH)
     elif [ -e /dev/kfd ] || command -v rocminfo >/dev/null 2>&1; then
         echo amd
     else
@@ -47,9 +51,18 @@ case "$GPU" in
         LABEL="AMD ROCm  (gfx1032 -> gfx1030 override, --lowvram)"
         ;;
     nvidia)
-        # CUDA needs no special env; ComfyUI auto-manages VRAM. The Titan-class
-        # 12GB+ cards run SDXL fully loaded (faster — no --lowvram needed).
+        # CUDA needs no special env; ComfyUI auto-manages VRAM. 12GB+ cards run SDXL
+        # fully loaded (no --lowvram); on an 8GB NVIDIA card add --lowvram if you OOM.
+        if [ -d /usr/lib/wsl/lib ]; then   # WSL2: driver bins + libcuda live here, not on PATH
+            export PATH="/usr/lib/wsl/lib:$PATH"
+            export LD_LIBRARY_PATH="/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}"
+        fi
         LABEL="NVIDIA CUDA  ($(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1))"
+        ;;
+    mps)
+        # Apple Silicon (Metal). Let ops not yet implemented in MPS fall back to CPU.
+        export PYTORCH_ENABLE_MPS_FALLBACK=1
+        LABEL="Apple Silicon  (MPS / Metal)"
         ;;
     cpu)
         EXTRA+=(--cpu)
