@@ -16,7 +16,13 @@ import time
 import urllib.error
 import urllib.request
 
+# pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
+# target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
+# or the PIXELMON_SERVER env var. Default is local. When the target is remote, results
+# are fetched back over HTTP (/view) — no shared filesystem needed. Actual resolution
+# happens in main(); these module-level values are the local default.
 SERVER = "http://127.0.0.1:8188"
+REMOTE = False
 COMFY = os.path.expanduser("~/ComfyUI")
 OUTPUT = os.path.join(COMFY, "output")
 PAL_DIR = os.path.join(COMFY, "custom_nodes", "pixelart_palette")
@@ -39,6 +45,28 @@ try:
         STYLES = {k: v for k, v in json.load(_sf).items() if not k.startswith("_")}
 except Exception:
     STYLES = {}
+
+# Named ComfyUI targets for `--server NAME`. Your personal servers.json (gitignored)
+# is loaded if present; otherwise just the built-in 'local'. Copy servers.example.json
+# to servers.json and add your machines, e.g. {"titan": "http://192.168.1.50:8188"}.
+try:
+    with open(os.path.join(_SCRIPT_DIR, "servers.json"), encoding="utf-8") as _svf:
+        SERVERS = {k: v for k, v in json.load(_svf).items() if not k.startswith("_")}
+except Exception:
+    SERVERS = {}
+SERVERS.setdefault("local", "http://127.0.0.1:8188")
+
+
+def resolve_server(value):
+    """Resolve a --server value (a servers.json alias, or host[:port]/full URL) to a URL."""
+    import urllib.parse
+    url = SERVERS.get(value, value)            # alias if known, else treat as host/URL
+    if "://" not in url:
+        url = "http://" + url
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.port:                        # default ComfyUI port
+        url = f"{parsed.scheme}://{parsed.hostname}:8188"
+    return url.rstrip("/")
 
 
 def _colors():
@@ -98,6 +126,7 @@ def print_help():
         opt("-h, --help", "show this help"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
+        opt("--server NAME|host", "render on a remote ComfyUI (servers.json alias or host/URL); results fetched back", "local"),
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
         opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
         opt("--preview", "also save an enlarged zoomed-in PNG"),
@@ -255,6 +284,20 @@ def wait(pid, timeout=600):
     sys.exit("Timed out waiting for the image.")
 
 
+def fetch_image(im, dest_dir):
+    """Download one server-side output image via /view into dest_dir; return local path.
+    Used when --server is remote (the files live on the server's disk, not ours)."""
+    import urllib.parse
+    q = urllib.parse.urlencode({"filename": im["filename"],
+                                "subfolder": im.get("subfolder", ""),
+                                "type": im.get("type", "output")})
+    os.makedirs(dest_dir, exist_ok=True)
+    out = os.path.join(dest_dir, im["filename"])
+    with urllib.request.urlopen(f"{SERVER}/view?{q}", timeout=180) as r, open(out, "wb") as f:
+        shutil.copyfileobj(r, f)
+    return out
+
+
 def main():
     # add_help=False so we can render our own friendly, colorized help instead
     # of argparse's plain default (shown via print_help on -h or no args).
@@ -311,6 +354,9 @@ def main():
     p.add_argument("--view-scale", dest="view_scale", type=int, default=8,
                    help="enlarge factor for --preview. default 8")
     # --- model / engine ---
+    p.add_argument("--server", default=None, metavar="NAME|HOST",
+                   help="render on a remote ComfyUI: a servers.json alias (e.g. 'titan') "
+                        "or host[:port]/URL. default: local (also honors $PIXELMON_SERVER)")
     p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
     p.add_argument("--lora-strength", dest="lora_strength", type=float, default=1.0,
@@ -351,6 +397,14 @@ def main():
     p.add_argument("--list-styles", action="store_true", help="list style guides and exit")
     p.add_argument("--no-open", action="store_true", help="don't auto-open the result image")
     a = p.parse_args()
+
+    # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > local default.
+    # Sets the module globals used by submit() / wait() / fetch_image().
+    global SERVER, REMOTE
+    _target = a.server or os.environ.get("PIXELMON_SERVER")
+    if _target:
+        SERVER = resolve_server(_target)
+        REMOTE = not any(h in SERVER for h in ("127.0.0.1", "localhost", "[::1]"))
 
     # Friendly help on -h/--help, or when run with no prompt at all.
     if a.show_help or (not a.prompt and not a.batch and not a.list_palettes and not a.list_styles):
@@ -452,6 +506,8 @@ def main():
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
     size_label = f"{a.sw}x{a.sh}" if a.sw != a.sh else f"{a.sw}px"
+    if REMOTE:
+        print(f"🌐 rendering on remote server {SERVER} (results fetched back here)")
     print(f"🎨 {subj_label}  |  {size_label}  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
           f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {count_label}")
@@ -481,16 +537,21 @@ def main():
     first_open = None
     for i, (subj, seed, pal, d, pid) in enumerate(jobs, 1):
         outs = wait(pid)
-        files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"])
-                 for node in outs.values() for im in node.get("images", [])]
-        if d:  # move finished files out of ComfyUI's output into the target folder
-            moved = []
-            for f in files:
-                if os.path.exists(f):
-                    tgt = os.path.join(d, os.path.basename(f))
-                    shutil.move(f, tgt)
-                    moved.append(tgt)
-            files = moved
+        imgs = [im for node in outs.values() for im in node.get("images", [])]
+        if REMOTE:
+            # Files live on the remote server's disk — download them here over HTTP.
+            dest_dir = d or os.path.join(OUTPUT, "pixelmon")
+            files = [fetch_image(im, dest_dir) for im in imgs]
+        else:
+            files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"]) for im in imgs]
+            if d:  # move finished files out of ComfyUI's output into the target folder
+                moved = []
+                for f in files:
+                    if os.path.exists(f):
+                        tgt = os.path.join(d, os.path.basename(f))
+                        shutil.move(f, tgt)
+                        moved.append(tgt)
+                files = moved
         sprite = next((f for f in files if "_sprite_" in f), None)
         preview = next((f for f in files if "_preview_" in f), None)
         first_open = first_open or preview or sprite      # open preview if saved, else the sprite

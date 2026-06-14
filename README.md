@@ -64,6 +64,22 @@ Override with `PIXELMON_GPU=nvidia|amd|cpu`; pick an interpreter with `PYTHON=py
 Other RDNA2/RDNA3 AMD cards likely work too (you may need a different
 `HSA_OVERRIDE_GFX_VERSION`, or none on officially-supported cards).
 
+### Performance note
+
+Raw SDXL speed tracks the GPU's **fp16 throughput**, not its age or VRAM. Measured
+on the two machines above — one 128px sprite (SDXL + Pixel-Art-XL, 25 steps, warm):
+
+| GPU | per sprite |
+|---|---|
+| AMD RX 6600 (RDNA2, 8 GB) | ~49 s |
+| NVIDIA Titan Xp (Pascal, 12 GB) | ~66 s |
+
+The newer RDNA2 card is ~1.35× faster here — Pascal has weak native fp16. An older
+big-VRAM card's edge is **headroom** (runs SDXL fully loaded, bigger batches/res)
+and **stability** (CUDA, no ROCm driver hangs), not throughput. Benchmark your own:
+`pixelmon "a dragon" --size 128` and read the `all done in …s` line (use a fresh
+`--seed` each run — identical prompts hit ComfyUI's cache and report ~0s).
+
 ### Running on an NVIDIA box
 
 Simplest model: run pixelmon **on** the NVIDIA machine (everything local — no
@@ -85,12 +101,39 @@ pixelmon "a fierce dragon"
 > If the `torch.cuda` check above ever errors about an unsupported architecture,
 > pin an older CUDA wheel — swap `cu124` → `cu121` on the torch line in `install.sh`.
 
-**Remote (thin-client) alternative — more plumbing.** Keep ComfyUI on the NVIDIA
-box and run pixelmon elsewhere by pointing `SERVER` (in `pixelmon.py` *and*
-`animate.py`) at its IP. But pixelmon reads/writes images on the **ComfyUI host's
-disk** (`~/ComfyUI/output`, and `animate.py` also writes `~/ComfyUI/input/…`), so
-you'd also need those dirs mounted (NFS/SSHFS) or the I/O refactored to ComfyUI's
-`/upload`+`/view` HTTP endpoints. Running pixelmon on the box itself avoids all of it.
+**Keep it running headless.** A ComfyUI you start over SSH gets killed when the
+session ends — unless you (a) enable lingering once so your processes survive
+logout, and (b) run it under `tmux`:
+
+```bash
+loginctl enable-linger "$USER"
+tmux new-session -d -s comfy '~/launch-comfyui.sh 2>&1 | tee ~/comfyui.log'
+# watch it:   tmux attach -t comfy        (detach: Ctrl-b then d)
+# or the GUI: http://<gpu-host-ip>:8188   (ComfyUI shows live generation progress)
+```
+
+### Render from another machine (`--server`)
+
+Once ComfyUI is up on the GPU box, drive it from **any other machine** on the LAN —
+pixelmon submits over HTTP and **fetches the results back to you** (no NFS/SSHFS):
+
+```bash
+pixelmon "a dragon" --server 192.168.1.50            # raw host (defaults to :8188)
+pixelmon "a dragon" --server http://192.168.1.50:8188
+pixelmon "a dragon" --server gpubox                  # a named alias (below)
+```
+
+Name your machines in **`servers.json`** (copy `servers.example.json`) so you can
+use short aliases — it's gitignored, so your IPs stay out of the repo:
+
+```json
+{ "local": "http://127.0.0.1:8188", "gpubox": "http://192.168.1.50:8188" }
+```
+
+`$PIXELMON_SERVER` works too. The remote box just needs ComfyUI + models running;
+the client only needs this repo (no GPU/torch). Results land in your local
+`~/ComfyUI/output/pixelmon/` (or wherever `--output-to` points). The `--server`
+flag also makes pixelmon **not** try to start a local server for a remote target.
 
 ---
 
@@ -176,6 +219,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
 | `--dither` | Floyd-Steinberg dithering (faked shading) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
+| `--server NAME\|host` | render on a remote ComfyUI (alias from `servers.json`, or `host[:port]`/URL); results fetched back over HTTP — see [Render from another machine](#render-from-another-machine---server) | local |
 | `--seed N` | lock / repeat a result | random |
 | `--steps`, `--cfg` | refinement steps / prompt adherence | 25 / 7 |
 | `--lora-strength N` | how strongly to pixelate | 1.0 |
@@ -341,6 +385,9 @@ automatically on AMD and skip them on NVIDIA. Item 3 applies to every vendor.
 | **(NVIDIA)** torch errors about unsupported arch (old card) | pin an older CUDA wheel: `cu124` → `cu121` on the torch line in `install.sh` |
 | Output looks like a blurry photo, not pixels | you're not using the Pixel Art XL LoRA (`--no-lora` is on, or base model only) |
 | First generation is slow | normal — it loads the 6.9 GB SDXL model; later runs reuse it |
+| `Illegal instruction (core dumped)` when ComfyUI starts (older CPU) | a prebuilt wheel uses CPU instructions (e.g. AVX2) your CPU lacks. Find the culprit (`python -c "import kornia"` etc.) and remove it if optional — e.g. `pip uninstall -y kornia kornia_rs` (only used by ComfyUI post-processing nodes pixelmon doesn't need) |
+| Server dies when you log out / close SSH | `loginctl enable-linger "$USER"` once, then run ComfyUI under `tmux` (see [Keep it running headless](#running-on-an-nvidia-box)) |
+| `--server` job runs but no file appears locally | the result is fetched to `~/ComfyUI/output/pixelmon/` on the *client*; make sure that path is writable, or pass `--output-to DIR` |
 
 ---
 
@@ -354,6 +401,7 @@ pixelmon/
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API)
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
 ├── styles.json                --style guide snippets (edit / add your own)
+├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/

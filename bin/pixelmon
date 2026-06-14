@@ -12,9 +12,24 @@ up() { curl -fsS "$URL/system_stats" >/dev/null 2>&1; }
 # Help / palette listing / no args don't touch the GPU — never start the server.
 needs_server=1
 case " $* " in
-    *" -h "*|*" --help "*|*" --list-palettes "*) needs_server=0 ;;
+    *" -h "*|*" --help "*|*" --list-palettes "*|*" --list-styles "*) needs_server=0 ;;
 esac
 [ "$#" -eq 0 ] && needs_server=0
+
+# A remote render target (--server NAME|HOST, or $PIXELMON_SERVER) is managed elsewhere
+# (e.g. another box on the LAN) — don't try to start a local ComfyUI for it.
+TARGET="${PIXELMON_SERVER:-}"
+prev=""
+for arg in "$@"; do
+    [ "$prev" = "--server" ] && TARGET="$arg"
+    prev="$arg"
+done
+if [ -n "$TARGET" ]; then
+    case "$TARGET" in
+        local|localhost|127.0.0.1*|http://127.0.0.1*|http://localhost*) ;;
+        *) needs_server=0 ;;
+    esac
+fi
 
 if [ "$needs_server" = 1 ] && ! up; then
     echo "[pixelmon] ComfyUI server isn't running — starting it (first run ~15s)..."

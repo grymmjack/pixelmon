@@ -1,0 +1,5 @@
+{
+  "_comment": "Named ComfyUI render targets for `pixelmon --server NAME`. Copy this file to servers.json and add your machines. Keys starting with _ are ignored. You can also skip the file and pass a raw host/URL directly: `--server 192.168.1.50` or `--server http://host:8188`.",
+  "local": "http://127.0.0.1:8188",
+  "_example_gpubox": "http://192.168.1.50:8188"
+}

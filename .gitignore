@@ -22,6 +22,9 @@ venv/
 output/
 *.tmp
 
+# Personal --server aliases (your machines/IPs). Ship servers.example.json instead.
+servers.json
+
 # OS / editor cruft
 .DS_Store
 *.swp
