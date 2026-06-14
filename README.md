@@ -447,7 +447,7 @@ pixelmon/
 │   └── pixelart_palette/       the finishing node (smooth→downscale→palette→transparent)
 │       ├── nodes.py
 │       └── palettes.py         palette registry — add your own here
-└── examples/                   sample sprites
+└── examples/                   sample sprites + the full style gallery (examples/README.md)
 ```
 
 ---
@@ -464,3 +464,68 @@ pixelmon/
 
 The code in this repo (the CLI, wrapper, launcher, and custom node) is released
 under the MIT License — see `LICENSE`.
+
+---
+
+## Style gallery
+
+Every `--style` rendered against the **same 12 subjects** (`castle, knight, dragon,
+spaceship, starbase, alien, cowboy, bandit, banker, thug, treasure, halloween`) — and
+crucially, with the **same seed per subject across every style**, so the *only* variable
+between sheets is the style itself. `castle` in `dark` and `castle` in `mario` share an
+identical seed/composition; the difference you see is purely the style. Full details +
+the regenerate scripts: [`examples/`](examples/README.md).
+
+> Hardware-palette looks (Game Boy, EGA, NES) are *exact* color sets — a text prompt
+> can only nudge hue, so those styles **lock to a real palette** via `--palette`; the
+> prompt just sets the vibe. Prompt-driven styles keep the model's own colors.
+
+### Palette-locked (true hardware palettes)
+
+| | |
+|---|---|
+| **8bit** — NES palette | **gameboy** — Game Boy DMG 4-shade green |
+| ![8bit](examples/styles/8bit.png) | ![gameboy](examples/styles/gameboy.png) |
+| **ega** — 16-color IBM EGA | **wasteland** — EGA, 1988 Wasteland CRPG |
+| ![ega](examples/styles/ega.png) | ![wasteland](examples/styles/wasteland.png) |
+
+### LoRA-driven
+
+| | |
+|---|---|
+| **dosega** — dosegafx EGA LoRA + EGA palette | **r3tr0** — retro-game-art LoRA |
+| ![dosega](examples/styles/dosega.png) | ![r3tr0](examples/styles/r3tr0.png) |
+| **pixelartredmond** — PixelArtRedmond LoRA | |
+| ![pixelartredmond](examples/styles/pixelartredmond.png) | |
+
+### Prompt-driven (default Pixel Art XL LoRA)
+
+| | |
+|---|---|
+| **clean** — crisp, flat shading | **detailed** — intricate shading, rich color |
+| ![clean](examples/styles/clean.png) | ![detailed](examples/styles/detailed.png) |
+| **minimal** — few colors, open space | **16bit** — vibrant SNES-era sprite |
+| ![minimal](examples/styles/minimal.png) | ![16bit](examples/styles/16bit.png) |
+| **geometric** — sharp angular forms | **outline** — bold outline, strong silhouette |
+| ![geometric](examples/styles/geometric.png) | ![outline](examples/styles/outline.png) |
+| **cute** — chibi mascot | **dark** — gritty, muted, ominous |
+| ![cute](examples/styles/cute.png) | ![dark](examples/styles/dark.png) |
+| **horror** — creepy, grotesque | **hyperlight** — Hyper Light Drifter neon |
+| ![horror](examples/styles/horror.png) | ![hyperlight](examples/styles/hyperlight.png) |
+| **deadcells** — fluid, glowing rim light | **blasphemous** — gothic, ornate, dark |
+| ![deadcells](examples/styles/deadcells.png) | ![blasphemous](examples/styles/blasphemous.png) |
+| **owlboy** — polished hi-bit, colorful | **stardew** — cozy farm-RPG |
+| ![owlboy](examples/styles/owlboy.png) | ![stardew](examples/styles/stardew.png) |
+| **dosrpg** — MS-DOS CRPG portrait, VGA | **darkest** — Darkest Dungeon ink gothic |
+| ![dosrpg](examples/styles/dosrpg.png) | ![darkest](examples/styles/darkest.png) |
+| **undertale** — simple, white-outline | **mario** — bright Nintendo platformer |
+| ![undertale](examples/styles/undertale.png) | ![mario](examples/styles/mario.png) |
+| **zelda** — SNES top-down action-RPG | **hollowknight** — inky monochrome gothic |
+| ![zelda](examples/styles/zelda.png) | ![hollowknight](examples/styles/hollowknight.png) |
+| **metroid** — moody sci-fi, armored | **finalfantasy** — 16-bit JRPG sprite |
+| ![metroid](examples/styles/metroid.png) | ![finalfantasy](examples/styles/finalfantasy.png) |
+| **pokemon** — cute creature, bold outline | |
+| ![pokemon](examples/styles/pokemon.png) | |
+
+*Combine styles with modifiers like `solo` (one centered subject), `item` (object icon),
+or `portrait` (head-and-shoulders) — e.g. `--style "dark,solo"`. Full list: `pixelmon --list-styles`.*

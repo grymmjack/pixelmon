@@ -1,0 +1,4 @@
+# Ship the contact sheets (styles/*.png) but not the 720 raw per-subject sprites,
+# which are large and regenerable via generate-style-demos.sh.
+styles/*/
+gallery.log
