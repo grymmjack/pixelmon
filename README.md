@@ -300,6 +300,30 @@ Pair with `--palette EGA` to hard-lock the authentic 16 colors. Companion styles
 `portrait` (head-and-shoulders bust framing). Generate at **128–256px** so the
 dithering reads — it averages out at tiny sizes.
 
+### Steering with reference images (`--steer`)
+
+Nudge output toward the *look* of a folder of reference images — palette, texture,
+mood — via **IPAdapter** (a CLIP-vision "image prompt" injected alongside your text
+prompt and the pixel LoRA). Great for matching a target art style, or a feedback loop
+("make more like the sprites I already liked").
+
+```bash
+pixelmon "a knight" --steer ~/refs/wasteland --steer-strength 0.5
+```
+
+- `--steer DIR|IMG` — a folder (blended) or a single image. pixelmon uploads them to the
+  target ComfyUI (so it works on remote/farm boxes too) and batches them in.
+- `--steer-strength` (0.7) — **~0.5 keeps your subject and just borrows the look; 0.8+
+  starts dictating composition.**
+- `--steer-combine` (`concat`) — `average` blends many refs into one style centroid
+  (best for big folders); `--steer-max` (16) caps how many are sampled.
+- Animated GIFs: extract a static first frame first (`magick in.gif[0] out.png`) —
+  ComfyUI's loader otherwise explodes a GIF into all its frames.
+
+**Setup:** the `ComfyUI_IPAdapter_plus` node (cloned by `install.sh`) + the IPAdapter
+models (`./download-models.sh --steer`, ~3.4 GB). **VRAM:** the CLIP-ViT-H encoder is
+heavy — on an 8 GB card launch ComfyUI with `--lowvram` or it OOMs; 12 GB+ is fine.
+
 ### Animation (experimental)
 
 `--animate` makes a **looping portrait-gesture GIF**, the way the original Wasteland
@@ -405,6 +429,8 @@ ADVANCED
   --lora FILE         pixel-art LoRA  [pixel-art-xl]
   --lcm-lora FILE     LCM LoRA (used with --fast)  [lcm-lora-sdxl]
   --no-lora           base model only (skip pixel LoRA)
+  --steer DIR         steer toward a folder of reference images (IPAdapter)
+  --steer-strength N  how strongly the refs influence the result  [0.7]
   --no-open           don't auto-open the result
   --output-to DIR     move outputs into DIR (relative to cwd)
   --move-to-dirs      put a run in its own ./<prompt>/ folder

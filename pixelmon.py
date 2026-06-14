@@ -140,6 +140,8 @@ def print_help():
         opt("--lora FILE", "pixel-art LoRA", "pixel-art-xl"),
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
         opt("--no-lora", "base model only (skip pixel LoRA)"),
+        opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
+        opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
         opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
@@ -199,7 +201,7 @@ def slug(text):
     return out[:40] or "monster"
 
 
-def build_graph(a, seed, palette=None, subject=None):
+def build_graph(a, seed, palette=None, subject=None, server=None):
     palette = palette or a.palette
     subject = subject if subject is not None else a.prompt
     # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
@@ -258,6 +260,36 @@ def build_graph(a, seed, palette=None, subject=None):
                               "strength_model": 1.0, "strength_clip": 1.0}}
         model_src, clip_src = ["16", 0], ["16", 1]
 
+    # --- Steering (IPAdapter): blend a folder of reference images into the model ---
+    # Sits between the LoRA-loaded model and the sampler, alongside the text prompt.
+    # The refs are CLIP-vision encoded and injected as a soft "image prompt", so the
+    # output borrows their look without copying any one of them.
+    if getattr(a, "steer", None):
+        names = steer_files(a, server or SERVER)          # uploaded to THIS server, cached
+        g["20"] = {"class_type": "IPAdapterModelLoader",
+                   "inputs": {"ipadapter_file": a.steer_model}}
+        g["21"] = {"class_type": "CLIPVisionLoader",
+                   "inputs": {"clip_name": a.steer_clip}}
+        # Load each reference and chain ImageBatch to feed them all in as one batch.
+        batch_src = None
+        for i, nm in enumerate(names):
+            lid = str(30 + i)
+            g[lid] = {"class_type": "LoadImage", "inputs": {"image": nm}}
+            if batch_src is None:
+                batch_src = [lid, 0]
+            else:
+                bid = str(60 + i)
+                g[bid] = {"class_type": "ImageBatch",
+                          "inputs": {"image1": batch_src, "image2": [lid, 0]}}
+                batch_src = [bid, 0]
+        g["22"] = {"class_type": "IPAdapterAdvanced",
+                   "inputs": {"model": model_src, "ipadapter": ["20", 0],
+                              "image": batch_src, "clip_vision": ["21", 0],
+                              "weight": a.steer_strength, "weight_type": a.steer_weight_type,
+                              "combine_embeds": a.steer_combine, "start_at": 0.0,
+                              "end_at": 1.0, "embeds_scaling": "V only"}}
+        model_src = ["22", 0]
+
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
     g["3"]["inputs"]["model"] = model_src
@@ -275,6 +307,71 @@ def submit(graph, server=None):
         sys.exit("ComfyUI rejected the request:\n" + e.read().decode()[:1200])
     except urllib.error.URLError:
         sys.exit("Couldn't reach ComfyUI at " + server + " — is the server running?")
+
+
+_STEER_UPLOADS = {}   # server -> [uploaded reference filenames] (uploaded once per server)
+
+
+def _gather_steer_paths(spec, cap):
+    """Resolve --steer (a folder or a single image) to a sorted list of image paths."""
+    p = os.path.abspath(os.path.expanduser(spec))
+    exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+    if os.path.isdir(p):
+        files = sorted(os.path.join(p, n) for n in os.listdir(p)
+                       if n.lower().endswith(exts) and os.path.isfile(os.path.join(p, n)))
+    elif os.path.isfile(p):
+        files = [p]
+    else:
+        sys.exit(f"--steer: no such file or folder: {spec}")
+    if not files:
+        sys.exit(f"--steer: no image files (png/jpg/webp/bmp/gif) in {spec}")
+    if len(files) > cap:
+        # evenly sample across the (sorted) set so the blend spans all of them,
+        # not just the first N alphabetically (which would skew to early subjects).
+        step = len(files) / float(cap)
+        files = [files[int(i * step)] for i in range(cap)]
+        print(f"   \U0001f9ed steer: evenly sampling {cap} of the references (raise with --steer-max)")
+    return files
+
+
+def _upload_image(path, server):
+    """POST one image to ComfyUI's /upload/image (so LoadImage can reference it). Returns the server-side name."""
+    import mimetypes, hashlib
+    with open(path, "rb") as f:
+        content = f.read()
+    name = "pmsteer_" + hashlib.md5(path.encode()).hexdigest()[:8] + "_" + os.path.basename(path)
+    ct = mimetypes.guess_type(name)[0] or "image/png"
+    b = "----pixelmonSteerBoundary"
+    crlf = "\r\n"
+    body = b"".join([
+        ("--%s%s" % (b, crlf)).encode(),
+        ('Content-Disposition: form-data; name="overwrite"%s%strue%s' % (crlf, crlf, crlf)).encode(),
+        ("--%s%s" % (b, crlf)).encode(),
+        ('Content-Disposition: form-data; name="image"; filename="%s"%s' % (name, crlf)).encode(),
+        ("Content-Type: %s%s%s" % (ct, crlf, crlf)).encode(),
+        content,
+        ("%s--%s--%s" % (crlf, b, crlf)).encode(),
+    ])
+    req = urllib.request.Request(f"{server}/upload/image", data=body,
+                                 headers={"Content-Type": "multipart/form-data; boundary=" + b})
+    try:
+        resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        return resp.get("name", name)
+    except urllib.error.HTTPError as e:
+        sys.exit("--steer upload failed: " + e.read().decode()[:500])
+    except urllib.error.URLError:
+        sys.exit("--steer: couldn't reach " + server + " to upload references.")
+
+
+def steer_files(a, server):
+    """Reference filenames available on `server` (uploads once per server, then caches)."""
+    paths = getattr(a, "_steer_paths", None)
+    if paths is None:
+        paths = a._steer_paths = _gather_steer_paths(a.steer, a.steer_max)
+    if server not in _STEER_UPLOADS:
+        _STEER_UPLOADS[server] = [_upload_image(p, server) for p in paths]
+        print(f"   \U0001f9ed steer: {len(_STEER_UPLOADS[server])} reference(s) -> {_short(server)}")
+    return _STEER_UPLOADS[server]
 
 
 def wait(pid, server=None, timeout=600):
@@ -344,7 +441,7 @@ def run_farm(a, work):
         while pending:
             subj, seed, pal, d = pending.pop(0)
             try:
-                pid = submit(build_graph(a, seed, pal, subject=subj), srv)
+                pid = submit(build_graph(a, seed, pal, subject=subj, server=srv), srv)
             except SystemExit:
                 pending.insert(0, (subj, seed, pal, d))   # couldn't submit; keep the job
                 return False
@@ -451,6 +548,21 @@ def main():
                         "GPUs (e.g. 'rtx,titan,local'). default: local (also honors $PIXELMON_SERVER)")
     p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
+    # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
+    p.add_argument("--steer", default=None, metavar="DIR|IMG",
+                   help="steer output toward reference image(s) via IPAdapter (a folder, or one image)")
+    p.add_argument("--steer-strength", dest="steer_strength", type=float, default=0.7,
+                   help="IPAdapter weight: 0=off .. ~1 strong (default 0.7)")
+    p.add_argument("--steer-weight-type", dest="steer_weight_type", default="style transfer",
+                   help="IPAdapter weight_type (default 'style transfer'; e.g. 'linear', 'composition')")
+    p.add_argument("--steer-combine", dest="steer_combine", default="concat",
+                   help="blend multiple refs: concat / average / norm average / add / subtract")
+    p.add_argument("--steer-max", dest="steer_max", type=int, default=16,
+                   help="max reference images to pull from a folder (default 16)")
+    p.add_argument("--steer-model", dest="steer_model", default="ip-adapter-plus_sdxl_vit-h.safetensors",
+                   help="IPAdapter model file (in models/ipadapter/)")
+    p.add_argument("--steer-clip", dest="steer_clip", default="CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+                   help="CLIP-vision model file (in models/clip_vision/)")
     p.add_argument("--lora-strength", dest="lora_strength", type=float, default=1.0,
                    help="LoRA strength. default 1.0 (try 1.2 for stronger pixelation)")
     p.add_argument("--res", type=int, default=1024, help="SDXL generation resolution. default 1024")
@@ -635,7 +747,7 @@ def main():
         run_farm(a, work)
     else:
         # Single server: queue everything up front; ComfyUI runs them one at a time.
-        jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj)))
+        jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj, server=SERVER)))
                 for (subj, seed, pal, d) in work]
         if total > 1:
             print(f"   queued {total} jobs; generating...")

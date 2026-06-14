@@ -34,4 +34,20 @@ get "https://huggingface.co/latent-consistency/lcm-lora-sdxl/resolve/main/pytorc
 get "https://civitai.com/api/download/models/356290" \
     "$LORA/dosegafx.safetensors"
 
+# --- Optional: IPAdapter models for --steer (reference-image steering) ---
+# ~3.4 GB. Skipped unless you ask: ./download-models.sh --steer  (or STEER_MODELS=1)
+if [ "${1:-}" = "--steer" ] || [ "${STEER_MODELS:-0}" = 1 ]; then
+    IPA="$COMFY/models/ipadapter"; CLIPV="$COMFY/models/clip_vision"
+    mkdir -p "$IPA" "$CLIPV"
+    # IPAdapter SDXL "plus" model (~848 MB)
+    get "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors" \
+        "$IPA/ip-adapter-plus_sdxl_vit-h.safetensors"
+    # CLIP-ViT-H image encoder (~2.5 GB) — what IPAdapter encodes the references with
+    get "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors" \
+        "$CLIPV/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    echo "✅ IPAdapter models ready (for --steer). On an 8 GB card, run ComfyUI with --lowvram."
+else
+    echo "ℹ️  --steer models skipped (~3.4 GB). Fetch them with:  ./download-models.sh --steer"
+fi
+
 echo "✅ models ready in $COMFY/models/"
