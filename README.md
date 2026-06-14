@@ -135,6 +135,25 @@ the client only needs this repo (no GPU/torch). Results land in your local
 `~/ComfyUI/output/pixelmon/` (or wherever `--output-to` points). The `--server`
 flag also makes pixelmon **not** try to start a local server for a remote target.
 
+### Render farm — fan jobs across multiple GPUs
+
+Pass `--server` a **comma-list** and pixelmon turns into a render farm: it spreads
+the work across every box and fetches all results back to you.
+
+```bash
+pixelmon --batch "bat,skeleton,spider" -n 30 --server rtx,titan,local
+#   -> 90 sprites fanned across 3 GPUs; all land in your local output
+```
+
+It uses **dynamic dispatch** — each GPU is handed its next job the moment it goes
+free, so faster cards automatically do more (no manual balancing) and nobody idles.
+Unreachable boxes are skipped; if one drops mid-run its job is requeued to another.
+Throughput scales ~linearly with the number of boxes. (Each ComfyUI still runs one
+job at a time, so parallelism = number of boxes.)
+
+> **Windows + NVIDIA?** See **[README-WINDOWS-NVIDIA.md](README-WINDOWS-NVIDIA.md)**
+> for the WSL2 setup (GPU passthrough + the networking needed to join the farm).
+
 ---
 
 ## Quickstart (already installed)
@@ -396,6 +415,7 @@ automatically on AMD and skip them on NVIDIA. Item 3 applies to every vendor.
 ```
 pixelmon/
 ├── README.md
+├── README-WINDOWS-NVIDIA.md   Windows + NVIDIA (WSL2) setup guide
 ├── install.sh                 reproducible setup — auto-detects NVIDIA/AMD/CPU (venv + torch + links)
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API)

@@ -23,6 +23,7 @@ import urllib.request
 # happens in main(); these module-level values are the local default.
 SERVER = "http://127.0.0.1:8188"
 REMOTE = False
+POOL = []   # >1 entry (--server a,b,c) turns on render-farm mode (jobs fan across GPUs)
 COMFY = os.path.expanduser("~/ComfyUI")
 OUTPUT = os.path.join(COMFY, "output")
 PAL_DIR = os.path.join(COMFY, "custom_nodes", "pixelart_palette")
@@ -126,7 +127,7 @@ def print_help():
         opt("-h, --help", "show this help"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
-        opt("--server NAME|host", "render on a remote ComfyUI (servers.json alias or host/URL); results fetched back", "local"),
+        opt("--server NAMES", "render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs", "local"),
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
         opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
         opt("--preview", "also save an enlarged zoomed-in PNG"),
@@ -262,21 +263,23 @@ def build_graph(a, seed, palette=None, subject=None):
     return g
 
 
-def submit(graph):
+def submit(graph, server=None):
+    server = server or SERVER
     data = json.dumps({"prompt": graph}).encode()
-    req = urllib.request.Request(f"{SERVER}/prompt", data=data,
+    req = urllib.request.Request(f"{server}/prompt", data=data,
                                  headers={"Content-Type": "application/json"})
     try:
         return json.loads(urllib.request.urlopen(req, timeout=30).read())["prompt_id"]
     except urllib.error.HTTPError as e:
         sys.exit("ComfyUI rejected the request:\n" + e.read().decode()[:1200])
     except urllib.error.URLError:
-        sys.exit("Couldn't reach ComfyUI at " + SERVER + " — is the server running?")
+        sys.exit("Couldn't reach ComfyUI at " + server + " — is the server running?")
 
 
-def wait(pid, timeout=600):
+def wait(pid, server=None, timeout=600):
+    server = server or SERVER
     for _ in range(timeout):
-        with urllib.request.urlopen(f"{SERVER}/history/{pid}", timeout=30) as r:
+        with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
             hist = json.loads(r.read())
         if pid in hist and hist[pid].get("outputs"):
             return hist[pid]["outputs"]
@@ -284,18 +287,102 @@ def wait(pid, timeout=600):
     sys.exit("Timed out waiting for the image.")
 
 
-def fetch_image(im, dest_dir):
+def poll(pid, server):
+    """One non-blocking /history check; returns the outputs dict, or None if not ready."""
+    with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
+        hist = json.loads(r.read())
+    if pid in hist and hist[pid].get("outputs"):
+        return hist[pid]["outputs"]
+    return None
+
+
+def server_up(server):
+    try:
+        urllib.request.urlopen(f"{server}/system_stats", timeout=5).read()
+        return True
+    except Exception:
+        return False
+
+
+def _short(url):
+    return url.split("//", 1)[-1]
+
+
+def fetch_image(im, dest_dir, server=None):
     """Download one server-side output image via /view into dest_dir; return local path.
-    Used when --server is remote (the files live on the server's disk, not ours)."""
+    Used for remote servers and render-farm members (files live on the server's disk)."""
     import urllib.parse
+    server = server or SERVER
     q = urllib.parse.urlencode({"filename": im["filename"],
                                 "subfolder": im.get("subfolder", ""),
                                 "type": im.get("type", "output")})
     os.makedirs(dest_dir, exist_ok=True)
     out = os.path.join(dest_dir, im["filename"])
-    with urllib.request.urlopen(f"{SERVER}/view?{q}", timeout=180) as r, open(out, "wb") as f:
+    with urllib.request.urlopen(f"{server}/view?{q}", timeout=180) as r, open(out, "wb") as f:
         shutil.copyfileobj(r, f)
     return out
+
+
+def run_farm(a, work):
+    """Render farm: distribute jobs across POOL with dynamic dispatch (feed the free GPU).
+    Faster boxes naturally pull more jobs; results are fetched back from whichever GPU made them."""
+    live = [s for s in POOL if server_up(s)]
+    down = [s for s in POOL if s not in live]
+    if down:
+        print(f"   ⚠ skipping unreachable: {', '.join(_short(s) for s in down)}")
+    if not live:
+        sys.exit("render farm: no reachable servers in the pool.")
+    print(f"   \U0001f69c render farm: {len(live)} GPU(s) — {', '.join(_short(s) for s in live)}")
+    pending = list(work)        # (subject, seed, palette, dest)
+    inflight = {}               # server -> (subject, seed, palette, dest, pid)
+    total = len(work)
+    done = 0
+
+    def launch(srv):
+        """Submit the next pending job to srv. False = server unusable (drop it)."""
+        while pending:
+            subj, seed, pal, d = pending.pop(0)
+            try:
+                pid = submit(build_graph(a, seed, pal, subject=subj), srv)
+            except SystemExit:
+                pending.insert(0, (subj, seed, pal, d))   # couldn't submit; keep the job
+                return False
+            inflight[srv] = (subj, seed, pal, d, pid)
+            return True
+        return True             # nothing left to do
+
+    for srv in list(live):
+        if launch(srv) is False:
+            live.remove(srv)
+
+    while inflight:
+        advanced = False
+        for srv, (subj, seed, pal, d, pid) in list(inflight.items()):
+            try:
+                outs = poll(pid, srv)
+            except Exception:
+                print(f"   ⚠ {_short(srv)} unreachable — requeueing its job")
+                pending.append((subj, seed, pal, d))
+                del inflight[srv]
+                advanced = True
+                continue
+            if outs is None:
+                continue
+            advanced = True
+            imgs = [im for node in outs.values() for im in node.get("images", [])]
+            dest_dir = d or os.path.join(OUTPUT, "pixelmon")
+            files = [fetch_image(im, dest_dir, srv) for im in imgs]
+            sprite = next((f for f in files if "_sprite_" in f), None)
+            done += 1
+            sj = f"{subj}  " if a.batch else ""
+            print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
+            del inflight[srv]
+            launch(srv)          # feed the now-free GPU its next job
+        if not advanced:
+            time.sleep(1)
+
+    if pending:
+        print(f"   ⚠ {len(pending)} job(s) left undone (all GPUs dropped).")
 
 
 def main():
@@ -354,9 +441,10 @@ def main():
     p.add_argument("--view-scale", dest="view_scale", type=int, default=8,
                    help="enlarge factor for --preview. default 8")
     # --- model / engine ---
-    p.add_argument("--server", default=None, metavar="NAME|HOST",
+    p.add_argument("--server", default=None, metavar="NAME|HOST[,...]",
                    help="render on a remote ComfyUI: a servers.json alias (e.g. 'titan') "
-                        "or host[:port]/URL. default: local (also honors $PIXELMON_SERVER)")
+                        "or host[:port]/URL. comma-list = RENDER FARM, jobs fan across all "
+                        "GPUs (e.g. 'rtx,titan,local'). default: local (also honors $PIXELMON_SERVER)")
     p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
     p.add_argument("--lora-strength", dest="lora_strength", type=float, default=1.0,
@@ -400,10 +488,11 @@ def main():
 
     # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > local default.
     # Sets the module globals used by submit() / wait() / fetch_image().
-    global SERVER, REMOTE
+    global SERVER, REMOTE, POOL
     _target = a.server or os.environ.get("PIXELMON_SERVER")
     if _target:
-        SERVER = resolve_server(_target)
+        POOL = [resolve_server(s.strip()) for s in _target.split(",") if s.strip()]
+        SERVER = POOL[0]                       # first entry is the single-server default
         REMOTE = not any(h in SERVER for h in ("127.0.0.1", "localhost", "[::1]"))
 
     # Friendly help on -h/--help, or when run with no prompt at all.
@@ -506,7 +595,9 @@ def main():
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
     size_label = f"{a.sw}x{a.sh}" if a.sw != a.sh else f"{a.sw}px"
-    if REMOTE:
+    if len(POOL) > 1:
+        print(f"🚜 render farm: {len(POOL)} servers — {', '.join(_short(s) for s in POOL)}")
+    elif REMOTE:
         print(f"🌐 rendering on remote server {SERVER} (results fetched back here)")
     print(f"🎨 {subj_label}  |  {size_label}  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
@@ -527,38 +618,41 @@ def main():
             work.append((subj, seed, pal, dests[subj]))
             k += 1
 
-    # Queue everything up front; ComfyUI runs them one at a time, in order.
-    jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj)))
-            for (subj, seed, pal, d) in work]
-    if total > 1:
-        print(f"   queued {total} jobs; generating...")
-
     t0 = time.time()
     first_open = None
-    for i, (subj, seed, pal, d, pid) in enumerate(jobs, 1):
-        outs = wait(pid)
-        imgs = [im for node in outs.values() for im in node.get("images", [])]
-        if REMOTE:
-            # Files live on the remote server's disk — download them here over HTTP.
-            dest_dir = d or os.path.join(OUTPUT, "pixelmon")
-            files = [fetch_image(im, dest_dir) for im in imgs]
-        else:
-            files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"]) for im in imgs]
-            if d:  # move finished files out of ComfyUI's output into the target folder
-                moved = []
-                for f in files:
-                    if os.path.exists(f):
-                        tgt = os.path.join(d, os.path.basename(f))
-                        shutil.move(f, tgt)
-                        moved.append(tgt)
-                files = moved
-        sprite = next((f for f in files if "_sprite_" in f), None)
-        preview = next((f for f in files if "_preview_" in f), None)
-        first_open = first_open or preview or sprite      # open preview if saved, else the sprite
-        tag = f"[{i}/{total}] " if total > 1 else ""
-        subj_note = f"{subj}  " if a.batch else ""
-        pal_note = f"pal={pal}  " if a.palette == "random" else ""
-        print(f"   ✅ {tag}{subj_note}{pal_note}seed={seed}  ->  {sprite}")
+    if len(POOL) > 1:
+        # Render farm: fan the whole work list out across all the GPUs in the pool.
+        run_farm(a, work)
+    else:
+        # Single server: queue everything up front; ComfyUI runs them one at a time.
+        jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj)))
+                for (subj, seed, pal, d) in work]
+        if total > 1:
+            print(f"   queued {total} jobs; generating...")
+        for i, (subj, seed, pal, d, pid) in enumerate(jobs, 1):
+            outs = wait(pid)
+            imgs = [im for node in outs.values() for im in node.get("images", [])]
+            if REMOTE:
+                # Files live on the remote server's disk — download them here over HTTP.
+                dest_dir = d or os.path.join(OUTPUT, "pixelmon")
+                files = [fetch_image(im, dest_dir) for im in imgs]
+            else:
+                files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"]) for im in imgs]
+                if d:  # move finished files out of ComfyUI's output into the target folder
+                    moved = []
+                    for f in files:
+                        if os.path.exists(f):
+                            tgt = os.path.join(d, os.path.basename(f))
+                            shutil.move(f, tgt)
+                            moved.append(tgt)
+                    files = moved
+            sprite = next((f for f in files if "_sprite_" in f), None)
+            preview = next((f for f in files if "_preview_" in f), None)
+            first_open = first_open or preview or sprite   # open preview if saved, else the sprite
+            tag = f"[{i}/{total}] " if total > 1 else ""
+            subj_note = f"{subj}  " if a.batch else ""
+            pal_note = f"pal={pal}  " if a.palette == "random" else ""
+            print(f"   ✅ {tag}{subj_note}{pal_note}seed={seed}  ->  {sprite}")
 
     where = ", ".join(sorted({str(x) for x in dests.values() if x})) or f"{OUTPUT}/pixelmon/"
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {where}")
