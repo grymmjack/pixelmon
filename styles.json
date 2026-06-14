@@ -39,5 +39,8 @@
   "dosega":       {"prompt": "dosegagfx style, 16-color EGA PC graphics, bold black outlines, purposeful ordered dithering for shading, solid bright background", "negative": "blurry, soft, anti-aliased, smooth gradient, muddy, 3d render, photorealistic, modern"},
 
   "item":         {"prompt": "single game item icon, one isolated object, centered, clean", "negative": "character, person, creature, hands, arms, body, face, figure, holding"},
-  "solo":         {"prompt": "(exactly one single subject:1.3), one only, centered, the whole subject filling the frame, plain solid flat background, nothing else around it", "negative": "(multiple:1.4), (sprite sheet:1.4), (item sheet:1.4), (collection:1.3), many, two, three, several, pair, group, set of, row of, grid, tiled, montage, variations, duplicated, repeated, scattered objects, scenery, landscape, background scene, room, dungeon, environment, ornate frame, picture frame, border, text, labels"}
+  "solo":         {"prompt": "(exactly one single subject:1.3), one only, centered, the whole subject filling the frame, plain solid flat background, nothing else around it", "negative": "(multiple:1.4), (sprite sheet:1.4), (item sheet:1.4), (collection:1.3), many, two, three, several, pair, group, set of, row of, grid, tiled, montage, variations, duplicated, repeated, scattered objects, scenery, landscape, background scene, room, dungeon, environment, ornate frame, picture frame, border, text, labels"},
+
+  "r3tr0":        {"prompt": "r3tr0, retro video game pixel art, low color depth", "negative": ""},
+  "pixelartredmond": {"prompt": "Pixel Art, PixArFK, pixel art style", "negative": ""}
 }
