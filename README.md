@@ -352,6 +352,85 @@ lock the snapped result to specific colors.
 
 ---
 
+## Full command reference (`pixelmon --help`)
+
+The complete, self-documenting CLI — every flag, default in `[brackets]`:
+
+```text
+pixelmon — generate pixel-art sprites from a text prompt
+
+USAGE
+  pixelmon "a prompt" [options]
+
+EXAMPLES
+  pixelmon "a fierce dragon"                        best quality (the default)
+  pixelmon "a spider" --style geometric             sharp, angular style guide
+  pixelmon "a goblin" -n 8 --palette random         8 variations, random palettes
+  pixelmon "a knight" --transparent --preview       transparent + zoomed preview
+  pixelmon --batch "bat,skeleton,spider" -n 128     128 of each → own folders
+  pixelmon "a bandit" --animate "smoke from cigar"  looping animated GIF
+
+OPTIONS
+  prompt              what to draw (in quotes)
+  -n, --number N      how many to make, each a different seed  [1]
+  --batch "a,b,c"     round-robin subjects → a folder each (N of each)
+  --size N|WxH        square N, or non-square WxH e.g. 32x48  [128]
+  --palette NAME      none / random / a name (--list-palettes)  [none]
+  --style NAMES       append proven style guide(s) — see --list-styles
+  --transparent       cut out background -> transparent PNG
+  --dither            Floyd-Steinberg dithering (faked shading)
+  --snap-pixels       snap to a perfect grid (pixel-snapper) — extra crisp
+  --fast              LCM mode: ~5x faster, slightly softer
+  --seed N            lock / repeat a result (re-run a favorite)  [random]
+  --steps N           refinement steps (more = slower)  [25]
+  --cfg N             prompt adherence (higher = stricter)  [7]
+  --lora-strength N   how strongly to pixelate  [1.0]
+  --bg-tolerance N    bg color match for --transparent  [16]
+  --custom-hex "..."  colors for --palette Custom
+  --list-palettes     show every palette name
+  --list-styles       show every style guide
+  -h, --help          show this help
+
+ADVANCED
+  --server NAMES      render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs  [local]
+  --smooth MODE       pre-downscale flatten: mode / median / none  [mode]
+  --filter MODE       downscale: nearest (crisp) / box (soft)  [nearest]
+  --preview           also save an enlarged zoomed-in PNG
+  --view-scale N      enlarge factor for --preview  [8]
+  --negative "..."    negative prompt (what to avoid)
+  --name NAME         output filename base  [from prompt]
+  --res N             SDXL generation resolution  [1024]
+  --sampler NAME      ksampler sampler  [euler / lcm]
+  --base FILE         SDXL checkpoint  [sd_xl_base_1.0]
+  --lora FILE         pixel-art LoRA  [pixel-art-xl]
+  --lcm-lora FILE     LCM LoRA (used with --fast)  [lcm-lora-sdxl]
+  --no-lora           base model only (skip pixel LoRA)
+  --no-open           don't auto-open the result
+  --output-to DIR     move outputs into DIR (relative to cwd)
+  --move-to-dirs      put a run in its own ./<prompt>/ folder
+  --create-dirs       create output folders if missing
+  --no-subdirs        with --batch/--output-to: dump all into one flat folder
+
+ANIMATION  (EXPERIMENTAL — looping portrait gestures → GIF; best for glow/light. for crisp sprites, hand-animate a static render)
+  --animate GESTURE   preset (blink/talk/glow/smoke/breathe) or free text
+  --anim-region WHAT  what to auto-mask, e.g. "the cigar" (CLIPSeg)  [guessed]
+  --anim-frames N     2 = toggle (blink); 3-5 = motion (smoke)  [preset]
+  --anim-fps N        loop SPEED (frames/sec during the gesture)  [6]
+  --anim-hold S       seconds the resting pose lingers  [1.2]
+  --anim-denoise D    region change strength 0.3 subtle .. 0.9 strong  [0.65]
+  --anim-loop MODE    pingpong / cycle / once-return  [preset]
+  --anim-box L,T,R,B  manual mask box (fractions) if auto-mask misses
+  --anim-res N        base/inpaint gen resolution (detail)  [768]
+
+OUTPUT
+  ~/ComfyUI/output/pixelmon/
+  true-size _sprite_ PNG  (add --preview for an enlarged _preview_ PNG)
+
+  TIP  explore with --fast, then re-run the --seed you liked (without --fast) for the full-quality keeper.
+```
+
+---
+
 ## How it works
 
 ```
