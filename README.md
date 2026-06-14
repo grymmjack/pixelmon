@@ -33,6 +33,7 @@ Pick your machine — each is a self-contained walkthrough:
 | **Linux + NVIDIA (CUDA)** | [README-LINUX-NVIDIA.md](README-LINUX-NVIDIA.md) |
 | **Windows + NVIDIA (WSL2)** | [README-WINDOWS-NVIDIA.md](README-WINDOWS-NVIDIA.md) |
 | **macOS (Apple Silicon / MPS)** | [README-MACOS-APPLE-SILICON.md](README-MACOS-APPLE-SILICON.md) |
+| **Multi-GPU render farm** | [README-RENDER-FARM.md](README-RENDER-FARM.md) |
 
 `install.sh` auto-detects your GPU, so the core is the same everywhere
 (`./install.sh` → `./download-models.sh` → `pixelmon "…"`); the guides just cover
