@@ -23,6 +23,24 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 
 ---
 
+## Platform setup guides
+
+Pick your machine — each is a self-contained walkthrough:
+
+| Platform | Guide |
+|---|---|
+| **Linux + AMD (ROCm)** | [README-LINUX-AMD-ROCM.md](README-LINUX-AMD-ROCM.md) |
+| **Linux + NVIDIA (CUDA)** | [README-LINUX-NVIDIA.md](README-LINUX-NVIDIA.md) |
+| **Windows + NVIDIA (WSL2)** | [README-WINDOWS-NVIDIA.md](README-WINDOWS-NVIDIA.md) |
+| **macOS (Apple Silicon / MPS)** | [README-MACOS-APPLE-SILICON.md](README-MACOS-APPLE-SILICON.md) |
+
+`install.sh` auto-detects your GPU, so the core is the same everywhere
+(`./install.sh` → `./download-models.sh` → `pixelmon "…"`); the guides just cover
+each platform's quirks (drivers, networking, persistence). Mixed fleets work great
+together — see [Render farm](#render-farm--fan-jobs-across-multiple-gpus).
+
+---
+
 ## What this is
 
 A thin, friendly CLI (`pixelmon`) over a local **ComfyUI** server, plus a custom
