@@ -232,6 +232,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "10": {"class_type": "PixelArtPalette",
                "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
+                          "pixel_grid": (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128),
                           "dithering": "floyd-steinberg" if a.dither else "none",
                           "downscale_filter": a.filter, "smooth": a.smooth,
                           "view_scale": a.view_scale, "custom_hex": a.custom_hex,

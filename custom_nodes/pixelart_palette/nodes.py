@@ -173,7 +173,7 @@ class PixelArtPalette:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "downscale_to": ("INT", {"default": 128, "min": 8, "max": 256, "step": 1}),
+                "downscale_to": ("INT", {"default": 128, "min": 8, "max": 512, "step": 1}),
                 "palette": (palette_names,),
                 "dithering": (["none", "floyd-steinberg"],),
                 "downscale_filter": (list(_RESAMPLE.keys()), {"default": "nearest"}),
@@ -181,7 +181,7 @@ class PixelArtPalette:
             },
             "optional": {
                 "smooth": (["mode", "median", "none"], {"default": "mode"}),
-                "pixel_grid": ("INT", {"default": 128, "min": 32, "max": 256, "step": 8}),
+                "pixel_grid": ("INT", {"default": 128, "min": 32, "max": 512, "step": 8}),
                 "transparent_bg": ("BOOLEAN", {"default": False}),
                 "bg_tolerance": ("INT", {"default": 16, "min": 0, "max": 128, "step": 1}),
                 "snap_pixels": ("BOOLEAN", {"default": False}),
