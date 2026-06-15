@@ -41,6 +41,8 @@
   "item":         {"prompt": "single game item icon, one isolated object, centered, clean", "negative": "character, person, creature, hands, arms, body, face, figure, holding"},
   "solo":         {"prompt": "(exactly one single subject:1.3), one only, centered, the whole subject filling the frame, plain solid flat background, nothing else around it", "negative": "(multiple:1.4), (sprite sheet:1.4), (item sheet:1.4), (collection:1.3), many, two, three, several, pair, group, set of, row of, grid, tiled, montage, variations, duplicated, repeated, scattered objects, scenery, landscape, background scene, room, dungeon, environment, ornate frame, picture frame, border, text, labels"},
 
+  "scene":        {"prompt": "(wide establishing shot:1.3), the entire scene viewed from a distance, the whole subject small and fully visible within a larger environment, generous empty space and margins around it, ground below and sky or backdrop behind, sense of place and setting, scenic landscape composition", "negative": "(extreme close-up:1.4), (cropped:1.4), (zoomed in:1.3), cut off at the edges, subject touching the frame edges, filling the entire frame, tightly framed, macro, single centered object, portrait"},
+
   "r3tr0":        {"prompt": "r3tr0, retro video game pixel art, low color depth", "negative": ""},
   "pixelartredmond": {"prompt": "Pixel Art, PixArFK, pixel art style", "negative": ""}
 }

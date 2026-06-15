@@ -232,7 +232,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "10": {"class_type": "PixelArtPalette",
                "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
-                          "pixel_grid": (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128),
+                          "pixel_grid": (a.pixel_grid if getattr(a, "pixel_grid", 0) > 0
+                                         else (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128)),
                           "dithering": "floyd-steinberg" if a.dither else "none",
                           "downscale_filter": a.filter, "smooth": a.smooth,
                           "view_scale": a.view_scale, "custom_hex": a.custom_hex,
@@ -567,6 +568,10 @@ def main():
     p.add_argument("--lora-strength", dest="lora_strength", type=float, default=1.0,
                    help="LoRA strength. default 1.0 (try 1.2 for stronger pixelation)")
     p.add_argument("--res", type=int, default=1024, help="SDXL generation resolution. default 1024")
+    p.add_argument("--pixel-grid", dest="pixel_grid", type=int, default=0,
+                   help="logical pixel resolution (long side) before upscaling to --size; "
+                        "0 = auto. For clean pixel art at a big --size, set a value that divides "
+                        "it evenly (e.g. 160 for 320x200 = clean 2x blocks).")
     p.add_argument("--sampler", default=None,
                    help="ksampler sampler_name (default euler, or lcm with --fast)")
     p.add_argument("--no-lora", dest="no_lora", action="store_true",
