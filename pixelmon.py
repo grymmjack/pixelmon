@@ -99,6 +99,7 @@ def print_help():
         "",
         f"{c['b']}{c['cyan']}EXAMPLES{c['rst']}",
         ex('pixelmon "a fierce dragon"', "best quality (the default)"),
+        ex('pixelmon "a fierce dragon" --art', "full-res digital art, not pixels"),
         ex('pixelmon "a spider" --style geometric', "sharp, angular style guide"),
         ex('pixelmon "a goblin" -n 8 --palette random', "8 variations, random palettes"),
         ex('pixelmon "a knight" --transparent --preview', "transparent + zoomed preview"),
@@ -110,6 +111,7 @@ def print_help():
         opt("-n, --number N", "how many to make, each a different seed", "1"),
         opt('--batch "a,b,c"', "round-robin subjects → a folder each (N of each)"),
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
+        opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
@@ -201,22 +203,53 @@ def slug(text):
     return out[:40] or "monster"
 
 
+# Default negatives differ by mode. The pixel one pushes AWAY from realism/gradients
+# (things that ruin a sprite); the art one keeps those but pushes away from junk
+# (blur, artifacts, bad anatomy). Used only when the user doesn't pass --negative.
+PIXEL_NEGATIVE = ("3d render, realistic, photograph, blurry, smooth gradient, "
+                  "antialiased, jpeg artifacts, text, watermark, signature")
+ART_NEGATIVE = ("lowres, blurry, jpeg artifacts, text, watermark, signature, "
+                "deformed, bad anatomy, extra limbs, disfigured, ugly, out of frame")
+
+
+def art_positive(subject, style_add):
+    """Build the POSITIVE prompt for --art (full-res digital art) mode.
+
+    Unlike the pixel scaffold ("pixel, a X, game sprite, flat colors"), this leans
+    INTO detail and lighting. `subject` is what to draw; `style_add` is any joined
+    --style snippet(s). Returns the finished comma-joined positive prompt string.
+
+    This is the taste-driven knob of art mode — tune the quality boosters below to
+    steer the house look (painterly vs. photoreal vs. concept-art, etc.).
+    """
+    parts = [f"a {subject}"]
+    if style_add:
+        parts.append(style_add)
+    parts.append("highly detailed digital painting, intricate detail, "
+                 "dramatic lighting, sharp focus, professional illustration")
+    return ", ".join(parts)
+
+
 def build_graph(a, seed, palette=None, subject=None, server=None):
     palette = palette or a.palette
     subject = subject if subject is not None else a.prompt
     # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
     # and --style snippets (a.style_add) do the steering. "game sprite" keeps it
     # clean. Style negatives (a.style_neg) push away unwanted shapes/looks.
-    parts = [f"pixel, a {subject}"]
-    if a.style_add:
-        parts.append(a.style_add)
-    parts.append("game sprite, simple flat colors, solid background")
-    prompt = ", ".join(parts)
+    if a.art:
+        prompt = art_positive(subject, a.style_add)
+    else:
+        parts = [f"pixel, a {subject}"]
+        if a.style_add:
+            parts.append(a.style_add)
+        parts.append("game sprite, simple flat colors, solid background")
+        prompt = ", ".join(parts)
     negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
 
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
-    prefix = f"pixelmon/{name}_{a.sw}x{a.sh}_{palette}_s{seed}"
+    tag = "art" if a.art else palette
+    prefix = f"pixelmon/{name}_{a.sw}x{a.sh}_{tag}_s{seed}"
 
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": a.base}},
@@ -230,28 +263,34 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                          "model": None, "positive": ["6", 0],
                          "negative": ["7", 0], "latent_image": ["5", 0]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
-        "10": {"class_type": "PixelArtPalette",
-               "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
-                          "pixel_grid": (a.pixel_grid if getattr(a, "pixel_grid", 0) > 0
-                                         else (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128)),
-                          "dithering": "floyd-steinberg" if a.dither else "none",
-                          "downscale_filter": a.filter, "smooth": a.smooth,
-                          "view_scale": a.view_scale, "custom_hex": a.custom_hex,
-                          "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
-                          "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
-                          "out_width": a.sw, "out_height": a.sh}},
-        "11": {"class_type": "SaveImage",
-               "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}},
     }
-    if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
-        g["12"] = {"class_type": "SaveImage",
-                   "inputs": {"filename_prefix": prefix + "_preview", "images": ["10", 1]}}
+    if a.art:
+        # Digital-art mode: save VAEDecode (node 8) straight to disk. No downscale,
+        # no palette lock — SDXL's full-resolution image IS the output.
+        g["11"] = {"class_type": "SaveImage",
+                   "inputs": {"filename_prefix": prefix + "_art", "images": ["8", 0]}}
+    else:
+        g["10"] = {"class_type": "PixelArtPalette",
+                   "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
+                              "pixel_grid": (a.pixel_grid if getattr(a, "pixel_grid", 0) > 0
+                                             else (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128)),
+                              "dithering": "floyd-steinberg" if a.dither else "none",
+                              "downscale_filter": a.filter, "smooth": a.smooth,
+                              "view_scale": a.view_scale, "custom_hex": a.custom_hex,
+                              "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
+                              "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
+                              "out_width": a.sw, "out_height": a.sh}}
+        g["11"] = {"class_type": "SaveImage",
+                   "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}}
+        if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
+            g["12"] = {"class_type": "SaveImage",
+                       "inputs": {"filename_prefix": prefix + "_preview", "images": ["10", 1]}}
 
     # Chain LoRAs onto the base: SDXL -> [Pixel Art XL] -> [LCM if --fast].
     # Each LoraLoader patches both the model and the text encoder (clip), so we
     # thread the "current" source through and wire the sampler/prompts to the end.
     model_src, clip_src = ["4", 0], ["4", 1]
-    if not a.no_lora:
+    if not a.no_lora and not a.art:  # art mode never applies the pixel-art LoRA
         g["15"] = {"class_type": "LoraLoader",
                    "inputs": {"model": model_src, "clip": clip_src, "lora_name": a.lora,
                               "strength_model": a.lora_strength, "strength_clip": a.lora_strength}}
@@ -472,7 +511,7 @@ def run_farm(a, work):
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             dest_dir = d or os.path.join(OUTPUT, "pixelmon")
             files = [fetch_image(im, dest_dir, srv) for im in imgs]
-            sprite = next((f for f in files if "_sprite_" in f), None)
+            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
             done += 1
             sj = f"{subj}  " if a.batch else ""
             print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
@@ -491,8 +530,9 @@ def main():
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)
     p.add_argument("-h", "--help", action="store_true", dest="show_help")
     p.add_argument("prompt", nargs="?", help='what to draw, e.g. "a goblin warrior"')
-    p.add_argument("--size", default="128",
-                   help="sprite size: N (square) or WxH, e.g. 32x48. default 128")
+    p.add_argument("--size", default=None,
+                   help="output size: N (square) or WxH, e.g. 32x48. "
+                        "default 128 (pixel sprite) or 1024 (--art)")
     p.add_argument("-n", "--number", type=int, default=1,
                    help="how many to generate, each with a different seed. default 1 "
                         "(with --batch: how many of EACH subject)")
@@ -524,8 +564,9 @@ def main():
     p.add_argument("--cfg", type=float, default=None,
                    help="prompt strength (default 7, or 1.5 with --fast)")
     p.add_argument("--seed", type=int, default=-1, help="-1 = random each run")
-    p.add_argument("--negative", default="3d render, realistic, photograph, blurry, "
-                   "smooth gradient, antialiased, jpeg artifacts, text, watermark, signature")
+    p.add_argument("--negative", default=None,
+                   help="negative prompt (what to avoid). default: a pixel-art-tuned list, "
+                        "or an illustration-tuned list with --art")
     p.add_argument("--name", default=None, help="output filename base (default: from prompt)")
     # --- where finished files go (relative to the directory you run pixelmon FROM) ---
     p.add_argument("--output-to", dest="output_to", default=None, metavar="DIR",
@@ -576,6 +617,10 @@ def main():
                    help="ksampler sampler_name (default euler, or lcm with --fast)")
     p.add_argument("--no-lora", dest="no_lora", action="store_true",
                    help="generate from the base model only (no pixel-art LoRA)")
+    p.add_argument("--art", action="store_true",
+                   help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no "
+                        "downscale, no palette lock. Saves SDXL's native full-res image "
+                        "(default 1024px). For real illustrations, not sprites.")
     p.add_argument("--fast", action="store_true",
                    help="LCM mode: ~3-4x faster (8 steps); small quality trade-off")
     p.add_argument("--lcm-lora", dest="lcm_lora", default="lcm-lora-sdxl.safetensors",
@@ -630,6 +675,22 @@ def main():
     if a.palette not in ("none", "random", "Custom") and a.palette not in PALETTES:
         p.error(f"unknown palette {a.palette!r}. See --list-palettes.")
 
+    # Mode-dependent defaults (only when the user didn't override them):
+    #   --art  -> full-res illustration: bigger canvas, illustration-tuned negative.
+    #   pixel  -> small sprite, pixel-tuned negative.
+    if a.size is None:
+        a.size = "1024" if a.art else "128"
+    if a.negative is None:
+        a.negative = ART_NEGATIVE if a.art else PIXEL_NEGATIVE
+    if a.art:
+        ignored = [f for f, on in [
+            ("--transparent", a.transparent), ("--dither", a.dither),
+            ("--snap-pixels", a.snap_pixels), ("--pixel-grid", a.pixel_grid > 0),
+            ("--palette", a.palette not in ("none", "random"))] if on]
+        if ignored:
+            print(f"   note: {', '.join(ignored)} have no effect in --art mode "
+                  f"(there's no pixelation step to apply them to)")
+
     # Resolve --style guide(s) into prompt/negative additions (used by build_graph).
     a.style_add, a.style_neg = "", ""
     if a.style:
@@ -675,6 +736,12 @@ def main():
     a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
     a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
 
+    if a.art:
+        # No downscale in art mode: the generated image IS the output, so --size
+        # sets the SDXL resolution directly (rounded to a /64 multiple SDXL likes).
+        a.gen_w, a.gen_h = _r64(a.sw), _r64(a.sh)
+        a.sw, a.sh = a.gen_w, a.gen_h   # filename/labels reflect the true output size
+
     # Animation mode is its own pipeline (base -> mask -> inpaint frames -> GIF).
     if a.animate:
         sys.path.insert(0, _SCRIPT_DIR)
@@ -718,7 +785,7 @@ def main():
 
     total = n * len(subjects)
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
-    pal_label = "random" if a.palette == "random" else a.palette
+    pal_label = "ART / full-res" if a.art else ("random" if a.palette == "random" else a.palette)
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
@@ -774,7 +841,7 @@ def main():
                             shutil.move(f, tgt)
                             moved.append(tgt)
                     files = moved
-            sprite = next((f for f in files if "_sprite_" in f), None)
+            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
             preview = next((f for f in files if "_preview_" in f), None)
             first_open = first_open or preview or sprite   # open preview if saved, else the sprite
             tag = f"[{i}/{total}] " if total > 1 else ""
