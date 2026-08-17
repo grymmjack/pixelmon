@@ -1,48 +1,155 @@
 {
   "_comment": "Style guides appended to your prompt with --style NAME[,NAME2]. Each adds 'prompt' to the positive and 'negative' to the negative prompt. SDXL honors (term:weight) emphasis. Add your own entries here.",
-
-  "clean":      {"prompt": "clean modern pixel art, crisp pixels, clear outlines, flat shading", "negative": "blurry, anti-aliased, soft edges"},
-  "detailed":   {"prompt": "detailed pixel art, intricate shading, rich colors, careful dithering", "negative": ""},
-  "minimal":    {"prompt": "minimal pixel art, few colors, simple shapes, lots of empty space", "negative": "busy, cluttered, noisy"},
-
-  "8bit":       {"prompt": "8-bit, NES style, limited palette, chunky pixels, simple bold shapes", "negative": ""},
-  "16bit":      {"prompt": "16-bit, SNES style, detailed sprite, vibrant colors, smooth shading", "negative": ""},
-  "gameboy":    {"prompt": "Game Boy style, 4-shade monochrome green, chunky low-res sprite", "negative": "colorful"},
-
-  "geometric":  {"prompt": "(sharp angular geometric shapes:1.3), hard straight edges, bold faceted forms, jagged spiky silhouette, high contrast", "negative": "rounded, smooth curves, soft, organic, blobby, fuzzy, noodly limbs"},
-  "outline":    {"prompt": "bold dark outline, thick clean outline, strong readable silhouette", "negative": "no outline"},
-  "cute":       {"prompt": "cute chibi, big head, small rounded body, adorable mascot", "negative": ""},
-  "dark":       {"prompt": "dark, gritty, eerie, muted desaturated palette, heavy shadows, ominous mood", "negative": ""},
-  "horror":     {"prompt": "horror, creepy, unsettling, grotesque, menacing, body-horror", "negative": "cute, friendly, cheerful"},
-
-  "hyperlight":   {"prompt": "in the style of Hyper Light Drifter, vibrant neon, minimal, sharp, atmospheric", "negative": ""},
-  "deadcells":    {"prompt": "in the style of Dead Cells, fluid detailed sprite, glowing rim light, dynamic pose", "negative": ""},
-  "blasphemous":  {"prompt": "in the style of Blasphemous, gothic, ornate, dark, highly detailed", "negative": ""},
-  "owlboy":       {"prompt": "in the style of Owlboy, polished hi-bit pixel art, colorful, smooth shading", "negative": ""},
-  "stardew":      {"prompt": "in the style of Stardew Valley, cozy, soft, charming farm-RPG sprite", "negative": ""},
-
-  "dosrpg":       {"prompt": "retro MS-DOS CRPG character portrait, head-and-shoulders bust, front view, 256-color VGA, (heavy dithering:1.2), painterly pixel shading, in the style of Ultima VII and Wasteland, gritty dark fantasy, muted earthy palette", "negative": "full body, full figure, modern, anime, cel shaded, smooth gradient, 3d render, photograph, clean vector"},
-
-  "darkest":      {"prompt": "in the style of Darkest Dungeon, gothic horror, (high contrast:1.2), heavy black ink shadows, grim desaturated palette, dramatic rim lighting, ornate", "negative": "bright, cheerful, colorful, flat even lighting"},
-  "undertale":    {"prompt": "in the style of Undertale, simple charming low-res sprite, clean white outline, minimal shapes, retro RPG monster, limited palette", "negative": "detailed, realistic, painterly, photo"},
-  "mario":        {"prompt": "in the style of classic Super Mario Bros, bright bold primary colors, chunky cheerful platformer sprite, thick clean outline, NES SNES", "negative": "dark, gritty, realistic, muted"},
-  "zelda":        {"prompt": "in the style of The Legend of Zelda A Link to the Past, 16-bit SNES, top-down action-RPG sprite, clean colorful fantasy, bold outline", "negative": "dark, gritty, realistic, photo"},
-
-  "hollowknight": {"prompt": "in the style of Hollow Knight, dark atmospheric, monochrome with stark white accents, elegant gothic, hand-drawn inky linework", "negative": "bright, colorful, busy, cluttered"},
-  "metroid":      {"prompt": "in the style of Super Metroid, sci-fi, dark moody atmosphere, 16-bit SNES, armored, alien tech", "negative": "fantasy, cute, bright, medieval"},
-  "finalfantasy": {"prompt": "in the style of Final Fantasy VI, 16-bit SNES JRPG sprite, detailed, vibrant fantasy, expressive", "negative": "realistic, photo, 3d render"},
-  "pokemon":      {"prompt": "in the style of Pokemon, cute creature sprite, clean bold outline, bright cheerful colors, simple cel shading", "negative": "gritty, dark, realistic, human"},
-
-  "ega":          {"prompt": "16-color EGA graphics, (fully saturated vivid colors:1.3), bright cyan and magenta and red and green, (hard ordered dithering:1.2) for shading, bold thick black outlines, high contrast, vintage MS-DOS PC art", "negative": "muted, desaturated, grey, gray, brown, earthy, drab, pastel, soft shading, smooth gradient, anti-aliased, blurry, 3d render, photorealistic, realistic lighting"},
-  "wasteland":    {"prompt": "in the style of the 1988 game Wasteland and classic EGA MS-DOS CRPG art, (vibrant 16-color EGA palette:1.3), fully saturated colors, heavy dithering, bold black outlines, gritty comic-book post-apocalyptic sci-fi, solid bright single-color background", "negative": "muted, desaturated, grey, gray, brown, drab, pastel, soft, anti-aliased, blurry, gradient, 3d render, photorealistic, modern, anime"},
-  "portrait":     {"prompt": "head-and-shoulders character portrait bust, front view, face clearly visible, framed close-up", "negative": "full body, full figure, tiny, distant, wide shot, landscape, scenery"},
-  "dosega":       {"prompt": "dosegagfx style, 16-color EGA PC graphics, bold black outlines, purposeful ordered dithering for shading, solid bright background", "negative": "blurry, soft, anti-aliased, smooth gradient, muddy, 3d render, photorealistic, modern"},
-
-  "item":         {"prompt": "single game item icon, one isolated object, centered, clean", "negative": "character, person, creature, hands, arms, body, face, figure, holding"},
-  "solo":         {"prompt": "(exactly one single subject:1.3), one only, centered, the whole subject filling the frame, plain solid flat background, nothing else around it", "negative": "(multiple:1.4), (sprite sheet:1.4), (item sheet:1.4), (collection:1.3), many, two, three, several, pair, group, set of, row of, grid, tiled, montage, variations, duplicated, repeated, scattered objects, scenery, landscape, background scene, room, dungeon, environment, ornate frame, picture frame, border, text, labels"},
-
-  "scene":        {"prompt": "(full environment scene:1.2), (the subject clearly visible as the main focal point:1.2) set within its surroundings, depth with foreground midground and background, ground and sky, scenery and props around it, establishing shot, sense of place", "negative": "(extreme close-up:1.3), cropped, cut off at the frame edges, filling the entire frame, plain empty background, isolated subject on a blank flat background, (tiny:1.1), distant, lost in the scene, barren"},
-
-  "r3tr0":        {"prompt": "r3tr0, retro video game pixel art, low color depth", "negative": ""},
-  "pixelartredmond": {"prompt": "Pixel Art, PixArFK, pixel art style", "negative": ""}
+  "clean": {
+    "prompt": "clean modern pixel art, crisp pixels, clear outlines, flat shading",
+    "negative": "blurry, anti-aliased, soft edges"
+  },
+  "detailed": {
+    "prompt": "detailed pixel art, intricate shading, rich colors, careful dithering",
+    "negative": ""
+  },
+  "minimal": {
+    "prompt": "minimal pixel art, few colors, simple shapes, lots of empty space",
+    "negative": "busy, cluttered, noisy"
+  },
+  "8bit": {
+    "prompt": "8-bit, NES style, limited palette, chunky pixels, simple bold shapes",
+    "negative": ""
+  },
+  "16bit": {
+    "prompt": "16-bit, SNES style, detailed sprite, vibrant colors, smooth shading",
+    "negative": ""
+  },
+  "gameboy": {
+    "prompt": "Game Boy style, 4-shade monochrome green, chunky low-res sprite",
+    "negative": "colorful"
+  },
+  "geometric": {
+    "prompt": "(sharp angular geometric shapes:1.3), hard straight edges, bold faceted forms, jagged spiky silhouette, high contrast",
+    "negative": "rounded, smooth curves, soft, organic, blobby, fuzzy, noodly limbs"
+  },
+  "outline": {
+    "prompt": "bold dark outline, thick clean outline, strong readable silhouette",
+    "negative": "no outline"
+  },
+  "cute": {
+    "prompt": "cute chibi, big head, small rounded body, adorable mascot",
+    "negative": ""
+  },
+  "dark": {
+    "prompt": "dark, gritty, eerie, muted desaturated palette, heavy shadows, ominous mood",
+    "negative": ""
+  },
+  "horror": {
+    "prompt": "horror, creepy, unsettling, grotesque, menacing, body-horror",
+    "negative": "cute, friendly, cheerful"
+  },
+  "hyperlight": {
+    "prompt": "in the style of Hyper Light Drifter, vibrant neon, minimal, sharp, atmospheric",
+    "negative": ""
+  },
+  "deadcells": {
+    "prompt": "in the style of Dead Cells, fluid detailed sprite, glowing rim light, dynamic pose",
+    "negative": ""
+  },
+  "blasphemous": {
+    "prompt": "in the style of Blasphemous, gothic, ornate, dark, highly detailed",
+    "negative": ""
+  },
+  "owlboy": {
+    "prompt": "in the style of Owlboy, polished hi-bit pixel art, colorful, smooth shading",
+    "negative": ""
+  },
+  "stardew": {
+    "prompt": "in the style of Stardew Valley, cozy, soft, charming farm-RPG sprite",
+    "negative": ""
+  },
+  "dosrpg": {
+    "prompt": "retro MS-DOS CRPG character portrait, head-and-shoulders bust, front view, 256-color VGA, (heavy dithering:1.2), painterly pixel shading, in the style of Ultima VII and Wasteland, gritty dark fantasy, muted earthy palette",
+    "negative": "full body, full figure, modern, anime, cel shaded, smooth gradient, 3d render, photograph, clean vector"
+  },
+  "darkest": {
+    "prompt": "in the style of Darkest Dungeon, gothic horror, (high contrast:1.2), heavy black ink shadows, grim desaturated palette, dramatic rim lighting, ornate",
+    "negative": "bright, cheerful, colorful, flat even lighting"
+  },
+  "undertale": {
+    "prompt": "in the style of Undertale, simple charming low-res sprite, clean white outline, minimal shapes, retro RPG monster, limited palette",
+    "negative": "detailed, realistic, painterly, photo"
+  },
+  "mario": {
+    "prompt": "in the style of classic Super Mario Bros, bright bold primary colors, chunky cheerful platformer sprite, thick clean outline, NES SNES",
+    "negative": "dark, gritty, realistic, muted"
+  },
+  "zelda": {
+    "prompt": "in the style of The Legend of Zelda A Link to the Past, 16-bit SNES, top-down action-RPG sprite, clean colorful fantasy, bold outline",
+    "negative": "dark, gritty, realistic, photo"
+  },
+  "hollowknight": {
+    "prompt": "in the style of Hollow Knight, dark atmospheric, monochrome with stark white accents, elegant gothic, hand-drawn inky linework",
+    "negative": "bright, colorful, busy, cluttered"
+  },
+  "metroid": {
+    "prompt": "in the style of Super Metroid, sci-fi, dark moody atmosphere, 16-bit SNES, armored, alien tech",
+    "negative": "fantasy, cute, bright, medieval"
+  },
+  "finalfantasy": {
+    "prompt": "in the style of Final Fantasy VI, 16-bit SNES JRPG sprite, detailed, vibrant fantasy, expressive",
+    "negative": "realistic, photo, 3d render"
+  },
+  "pokemon": {
+    "prompt": "in the style of Pokemon, cute creature sprite, clean bold outline, bright cheerful colors, simple cel shading",
+    "negative": "gritty, dark, realistic, human"
+  },
+  "ega": {
+    "prompt": "16-color EGA graphics, (fully saturated vivid colors:1.3), bright cyan and magenta and red and green, (hard ordered dithering:1.2) for shading, bold thick black outlines, high contrast, vintage MS-DOS PC art",
+    "negative": "muted, desaturated, grey, gray, brown, earthy, drab, pastel, soft shading, smooth gradient, anti-aliased, blurry, 3d render, photorealistic, realistic lighting"
+  },
+  "wasteland": {
+    "prompt": "in the style of the 1988 game Wasteland and classic EGA MS-DOS CRPG art, (vibrant 16-color EGA palette:1.3), fully saturated colors, heavy dithering, bold black outlines, gritty comic-book post-apocalyptic sci-fi, solid bright single-color background",
+    "negative": "muted, desaturated, grey, gray, brown, drab, pastel, soft, anti-aliased, blurry, gradient, 3d render, photorealistic, modern, anime"
+  },
+  "portrait": {
+    "prompt": "head-and-shoulders character portrait bust, front view, face clearly visible, framed close-up",
+    "negative": "full body, full figure, tiny, distant, wide shot, landscape, scenery"
+  },
+  "dosega": {
+    "prompt": "dosegagfx style, 16-color EGA PC graphics, bold black outlines, purposeful ordered dithering for shading, solid bright background",
+    "negative": "blurry, soft, anti-aliased, smooth gradient, muddy, 3d render, photorealistic, modern"
+  },
+  "item": {
+    "prompt": "single game item icon, one isolated object, centered, clean",
+    "negative": "character, person, creature, hands, arms, body, face, figure, holding"
+  },
+  "solo": {
+    "prompt": "(exactly one single subject:1.3), one only, centered, the whole subject filling the frame, plain solid flat background, nothing else around it",
+    "negative": "(multiple:1.4), (sprite sheet:1.4), (item sheet:1.4), (collection:1.3), many, two, three, several, pair, group, set of, row of, grid, tiled, montage, variations, duplicated, repeated, scattered objects, scenery, landscape, background scene, room, dungeon, environment, ornate frame, picture frame, border, text, labels"
+  },
+  "scene": {
+    "prompt": "(full environment scene:1.2), (the subject clearly visible as the main focal point:1.2) set within its surroundings, depth with foreground midground and background, ground and sky, scenery and props around it, establishing shot, sense of place",
+    "negative": "(extreme close-up:1.3), cropped, cut off at the frame edges, filling the entire frame, plain empty background, isolated subject on a blank flat background, (tiny:1.1), distant, lost in the scene, barren"
+  },
+  "r3tr0": {
+    "prompt": "r3tr0, retro video game pixel art, low color depth",
+    "negative": ""
+  },
+  "pixelartredmond": {
+    "prompt": "Pixel Art, PixArFK, pixel art style",
+    "negative": ""
+  },
+  "bourassa": {
+    "prompt": "in the style of Chris Bourassa and Darkest Dungeon, (hand-painted gouache illustration:1.2), heavy black ink, textured visible brushstrokes, high-contrast chiaroscuro, gothic horror, grim desaturated muted palette, ornate",
+    "negative": "3d render, photograph, smooth airbrush, glossy, plastic skin, flat even lighting, bright cheerful, clean vector"
+  },
+  "mignola": {
+    "prompt": "in the style of Mike Mignola, (bold flat spot-black shapes:1.3), stark high-contrast chiaroscuro, angular expressionist shadows, noir comic ink, limited muted palette, heavy blacks",
+    "negative": "3d render, photograph, soft gradient, airbrush, glossy, busy detail in shadow, pastel, bright"
+  },
+  "painterly": {
+    "prompt": "(hand-painted painterly illustration:1.3), in the style of Chris Bourassa and Mike Mignola, Darkest Dungeon gouache concept art, heavy black ink linework, bold flat spot-black shadows, high-contrast chiaroscuro, textured visible brushstrokes, gothic horror, grim desaturated palette",
+    "negative": "3d render, photograph, smooth airbrush, glossy plastic, flat even lighting, bright cheerful, clean vector, anime"
+  },
+  "painterlyscene": {
+    "prompt": "(hand-painted painterly environment illustration:1.3), gouache and ink, high-contrast chiaroscuro, textured visible brushstrokes, gothic grimdark atmosphere, moody dramatic lighting, empty scene",
+    "negative": "(person:1.4), character, portrait, face, human, figure, man, warrior, knight, creature, 3d render, photograph"
+  }
 }
