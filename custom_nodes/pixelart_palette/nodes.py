@@ -17,6 +17,7 @@ from PIL import Image, ImageFilter
 
 from .palettes import ALL_PALETTES, parse_palette
 from .pixel_angles import ANGLE_SETS, snap_angles
+from .thin_lines import thin_lines
 
 _RESAMPLE = {"nearest": Image.NEAREST, "box (area average)": Image.BOX}
 
@@ -310,6 +311,7 @@ class PixelArtPalette:
                 "dither_amount": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "pixel_angles": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 3.0, "step": 0.25}),
                 "angle_grid": (list(ANGLE_SETS.keys()), {"default": "pixel"}),
+                "thin_lines": ("INT", {"default": 0, "min": 0, "max": 12, "step": 1}),  # 0 = off; max stroke width
                 "pixel_w": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),   # 0 = auto
                 "pixel_h": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
@@ -325,7 +327,7 @@ class PixelArtPalette:
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
                 snap_pixels=False, snap_colors=0, out_width=0, out_height=0, despeckle=2,
-                dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0):
+                dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0, thin_lines_w=0, **kw):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -398,6 +400,11 @@ class PixelArtPalette:
 
         # Snap region outlines to clean pixel-art angles (integer run:rise ratios, as in DRAW),
         # at the native grid so the steps are real art pixels. 0 = off.
+        # 1-px outlines: skeletonize strokes of the darkest color (keeps solid dark fills), before the
+        # angle snap so the thinned lines then get clean angles too
+        thin_w = kw.get("thin_lines", thin_lines_w)
+        if thin_w and thin_w > 0:
+            pixels = thin_lines(pixels, max_width=thin_w)
         if pixel_angles > 0:
             pixels = snap_angles(pixels, strength=pixel_angles, angle_set=angle_grid)
 

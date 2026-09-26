@@ -147,6 +147,29 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .btable tr.bad td { color: var(--bad); } .btable tr.skip td { opacity: .45; }
 .grow { flex: 1; min-width: 200px; }
 
+/* ---- LAB ---- */
+.lab { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 1300px) { .lab { grid-template-columns: 1fr; } }
+.lab-col { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.lab-col h3 { margin: 0 0 8px; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.lab-drop { border: 2px dashed var(--line); border-radius: var(--radius); min-height: 220px; display: grid; place-items: center;
+  text-align: center; color: var(--dim); cursor: pointer; padding: 8px; }
+.lab-drop.over { border-color: var(--accent); color: var(--accent); }
+.lab-drop img { max-width: 100%; max-height: 420px; image-rendering: auto; display: block; }
+.lab-recent { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.lab-recent img { width: 54px; height: 54px; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+.lab-recent img.on { border-color: var(--accent); }
+.lab-out .thumbs { margin-top: 0; }
+.lab-note { font-size: 11.5px; color: var(--dim); margin-top: 6px; }
+.adj { margin-top: 10px; }
+.adj .row3 { grid-template-columns: 1fr 1fr 1fr; gap: 4px 10px; }
+.adj label { margin: 4px 0 1px; } .adj label b { color: var(--text); font-weight: 500; }
+.adj input[type=range] { margin: 0; }
+.lab-prev { margin-top: 10px; border: 1px dashed var(--line); border-radius: var(--radius); min-height: 60px; padding: 6px;
+  display: grid; place-items: center; text-align: center; font: 11px var(--mono); color: var(--dim); }
+.lab-prev img { max-width: 100%; image-rendering: pixelated; cursor: pointer; display: block; margin: 0 auto 4px; }
+.lab-prev.busy { border-color: var(--warn); }
+
 /* ---- palette readout ---- */
 .pal { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 10.5px var(--mono); color: var(--dim);
   min-height: 16px; justify-content: center; flex-wrap: wrap; }
@@ -318,54 +341,54 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
     </fieldset>
 
     <fieldset>
-      <legend>Prompt</legend>
+      <legend>Prompt<i class="help" data-help="prompt">i</i></legend>
       <textarea id="subject" placeholder="a dark castle with bright windows and a drawbridge set on a cliff side at dusk"></textarea>
       <div class="inline" style="margin-top:6px">
         <button type="button" class="btn small" id="diceSubject" title="random prompt for the current Kind / Genre / styles — shift-click to roll AND render">🎲 random</button>
         <select id="history" title="recent prompts"><option value="">🕘 recent prompts…</option></select>
       </div>
-      <label>LoRA</label>
+      <label>LoRA<i class="help" data-help="lora">i</i></label>
       <div class="row" style="grid-template-columns: 1fr 90px">
         <select id="lora"></select>
         <input type="number" id="lora_strength" step="0.05" min="0" max="2" title="LoRA strength">
       </div>
       <div id="kindsBox">
         <div class="row3">
-          <div><label>Kind</label><select id="kind">
+          <div><label>Kind<i class="help" data-help="kind">i</i></label><select id="kind">
             <option value="">(none)</option><option>scene background</option><option>character portrait</option><option>game sprite</option></select></div>
-          <div><label>Genre</label><select id="genre">
+          <div><label>Genre<i class="help" data-help="genre">i</i></label><select id="genre">
             <option value="">(none)</option><option>adventure game</option><option>role-playing game</option><option>action game</option>
             <option>strategy game</option><option>puzzle game</option><option>simulation game</option><option>sports game</option><option>education game</option></select></div>
-          <div><label>Era</label><select id="era">
+          <div><label>Era<i class="help" data-help="era">i</i></label><select id="era">
             <option value="">(none)</option><option>1980s DOS game</option><option>1990s DOS game</option></select></div>
         </div>
       </div>
-      <label>Style guides</label>
+      <label>Style guides<i class="help" data-help="styles">i</i></label>
       <div class="chips" id="styles"></div>
       <div class="final" id="finalPrompt" title="your prompt + LoRA tags"></div>
       <label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="showFull"> Show full prompt</label>
       <div class="full hidden" id="fullPrompt"></div>
       <div class="warns hidden" id="promptWarns"></div>
       <div class="steer-sum hidden" id="steerSum" title="open the Steering tab"></div>
-      <details><summary>Negative prompt</summary>
+      <details><summary>Negative prompt<i class="help" data-help="negative">i</i></summary>
         <label>Replaces pixelmon's default — keep the defaults and add to them.
           <a href="#" id="negReset" style="color:var(--accent)">reset to default</a></label>
         <textarea id="negative"></textarea></details>
     </fieldset>
 
     <fieldset>
-      <legend>Canvas</legend>
+      <legend>Canvas<i class="help" data-help="canvas">i</i></legend>
       <div class="row">
-        <div><label>Output size (exact)</label><select id="outPreset"></select></div>
+        <div><label>Output size (exact)<i class="help" data-help="outsize">i</i></label><select id="outPreset"></select></div>
         <div><label>Custom W × H</label>
           <div class="inline"><input type="number" id="outW" min="1" max="1024"><span>×</span><input type="number" id="outH" min="1" max="1024"></div></div>
       </div>
       <div class="checks">
-        <label><input type="checkbox" id="snap_pixels"> snap pixels</label>
-        <label><input type="checkbox" id="transparent"> transparent bg</label>
-        <label><input type="checkbox" id="art"> art mode (no pixelation)</label>
+        <label><input type="checkbox" id="snap_pixels"> snap pixels<i class="help" data-help="snap">i</i></label>
+        <label><input type="checkbox" id="transparent"> transparent bg<i class="help" data-help="transparent">i</i></label>
+        <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
         <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
-          <input type="checkbox" id="no_sprite_suffix"> no sprite suffix</label>
+          <input type="checkbox" id="no_sprite_suffix"> no sprite suffix<i class="help" data-help="suffix">i</i></label>
       </div>
       <div class="row">
         <div><label>Pixel size<i class="help" data-help="pxsize">i</i></label><select id="pixel_size">
@@ -378,15 +401,21 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
     </fieldset>
 
     <fieldset id="colorBox">
-      <legend>Palette &amp; dither</legend>
+      <legend>Palette &amp; dither<i class="help" data-help="palette">i</i></legend>
       <select id="palette"></select>
       <div class="swatches" id="swatches"></div>
       <div class="row">
-        <div><label>Dither</label><select id="dither"></select></div>
-        <div><label>Amount <span id="amtVal"></span></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
+        <div><label>Dither<i class="help" data-help="dither">i</i></label><select id="dither"></select></div>
+        <div><label>Amount <span id="amtVal"></span><i class="help" data-help="amount">i</i></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
       </div>
       <div class="row">
-        <div><label>Despeckle (px, 0 = off)</label><input type="number" id="despeckle" min="0" max="64"></div>
+        <div><label>Despeckle (px, 0 = off)<i class="help" data-help="despeckle">i</i></label><input type="number" id="despeckle" min="0" max="64"></div>
+        <div><label>1-px outlines<i class="help" data-help="thin">i</i></label>
+          <select id="thin_lines"><option value="0">off</option><option value="2">thin strokes ≤ 2 px</option>
+            <option value="3">≤ 3 px</option><option value="4">≤ 4 px (recommended)</option><option value="6">≤ 6 px</option>
+            <option value="8">≤ 8 px — aggressive</option></select></div>
+      </div>
+      <div class="row">
         <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
           <input type="range" id="pixel_angles" min="0" max="3" step="0.25"></div>
       </div>
@@ -400,24 +429,24 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
     </fieldset>
 
     <fieldset>
-      <legend>Seed &amp; batch</legend>
+      <legend>Seed &amp; batch<i class="help" data-help="seed">i</i></legend>
       <div class="row" style="grid-template-columns: 1fr auto auto">
         <input type="number" id="seed" min="0" placeholder="random each run">
         <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="seedLock"> lock</label>
         <button type="button" class="btn small" id="dice" title="new random seed">🎲</button>
       </div>
       <div class="row">
-        <div><label>Count (-n)</label><input type="number" id="n" min="1" max="32"></div>
-        <div><label>Name (optional)</label><input type="text" id="name" placeholder="from prompt"></div>
+        <div><label>Count (-n)<i class="help" data-help="count">i</i></label><input type="number" id="n" min="1" max="32"></div>
+        <div><label>Name (optional)<i class="help" data-help="name">i</i></label><input type="text" id="name" placeholder="from prompt"></div>
       </div>
       <details><summary>Sampler</summary>
         <div class="row3">
-          <div><label>Steps</label><input type="number" id="steps" min="1" max="150" placeholder="25"></div>
-          <div><label>CFG</label><input type="number" id="cfg" step="0.5" min="0" max="30" placeholder="7"></div>
-          <div><label>&nbsp;</label><label class="inline" style="margin:6px 0;color:var(--text)"><input type="checkbox" id="fast"> fast (LCM)</label></div>
+          <div><label>Steps<i class="help" data-help="steps">i</i></label><input type="number" id="steps" min="1" max="150" placeholder="25"></div>
+          <div><label>CFG<i class="help" data-help="cfg">i</i></label><input type="number" id="cfg" step="0.5" min="0" max="30" placeholder="7"></div>
+          <div><label>&nbsp;</label><label class="inline" style="margin:6px 0;color:var(--text)"><input type="checkbox" id="fast"> fast (LCM)<i class="help" data-help="fast">i</i></label></div>
         </div>
       </details>
-      <details id="sweepBox"><summary>Sweep (same seed, vary one setting)</summary>
+      <details id="sweepBox"><summary>Sweep (same seed, vary one setting)<i class="help" data-help="sweep">i</i></summary>
         <div class="row">
           <div><label>Setting</label><select id="sweepField">
             <option value="lora_strength">LoRA strength</option><option value="dither">dither method</option>
@@ -426,7 +455,7 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
             <option value="steps">steps</option><option value="cfg">CFG</option>
             <option value="despeckle">despeckle</option><option value="out">output size</option>
             <option value="steer_strength">steering strength</option><option value="steer_end">steering end (fraction of steps)</option>
-            <option value="steer_start">steering start</option><option value="pixel_angles">pixel-art angles</option><option value="angle_grid">grid (angle set)</option><option value="pixel_size">pixel size</option></select></div>
+            <option value="steer_start">steering start</option><option value="pixel_angles">pixel-art angles</option><option value="angle_grid">grid (angle set)</option><option value="pixel_size">pixel size</option><option value="thin_lines">1-px outlines</option></select></div>
           <div><label>Values (comma-separated)</label><input type="text" id="sweepValues" placeholder="0.5, 0.7, 0.9"></div>
         </div>
         <div class="err" style="color:var(--dim)" id="sweepHint">styles: join several with + e.g. darkest+outline</div>
@@ -449,6 +478,7 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
       <div class="tab" data-tab="steer">Steering <span id="steerTabN"></span></div>
       <div class="tab" data-tab="presets">Presets</div>
       <div class="tab" data-tab="batch">Batch</div>
+      <div class="tab" data-tab="lab">⚗ Lab</div>
       <span style="flex:1"></span>
       <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
       <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
@@ -456,6 +486,57 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
     <div class="pane" id="queuePane"><div class="empty">Nothing rendered yet this session.</div></div>
     <div class="pane hidden" id="galleryPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
+    <div class="pane hidden" id="labPane">
+      <div class="lab">
+        <div class="lab-col"><h3>1 · Input image</h3>
+          <div class="lab-drop" id="labDrop"><span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span></div>
+          <input type="file" id="labFile" accept="image/*" hidden>
+          <div class="lab-recent" id="labRecent"></div>
+          <details class="adj" id="adjBox"><summary>Adjust source<i class="help" data-help="adjust">i</i></summary>
+            <div class="row3">
+              <div><label>brightness <b id="vbrightness"></b></label><input type="range" data-adj="brightness" min="-60" max="60" step="5"></div>
+              <div><label>contrast <b id="vcontrast"></b></label><input type="range" data-adj="contrast" min="-60" max="100" step="5"></div>
+              <div><label>gamma <b id="vgamma"></b></label><input type="range" data-adj="gamma" min="0.4" max="2.5" step="0.05"></div>
+              <div><label>saturation <b id="vsaturation"></b></label><input type="range" data-adj="saturation" min="0" max="250" step="5"></div>
+              <div><label>hue <b id="vhue"></b></label><input type="range" data-adj="hue" min="-180" max="180" step="5"></div>
+              <div><label>clean (JPEG) <b id="vclean"></b></label><input type="range" data-adj="clean" min="0" max="4" step="1"></div>
+              <div><label>sharpen <b id="vsharpen"></b></label><input type="range" data-adj="sharpen" min="0" max="4" step="0.25"></div>
+              <div><label>posterize <b id="vposterize"></b></label><input type="range" data-adj="posterize" min="0" max="7" step="1"></div>
+              <div></div>
+            </div>
+            <div class="inline" style="margin-top:6px;flex-wrap:wrap">
+              <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="gray"> grayscale</label>
+              <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="invert"> invert</label>
+              <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="adjEdges"> 👁 what the AI sees<i class="help" data-help="edges">i</i></label>
+              <button type="button" class="btn small" id="adjReset">↺ reset</button>
+            </div>
+          </details></div>
+        <div class="lab-col"><h3>2 · Steering</h3>
+          <label>What is it? <span style="color:var(--dim)">(helps the model keep the subject)</span><i class="help" data-help="labsubject">i</i></label>
+          <input type="text" id="labSubject" placeholder="a dog sitting on grass">
+          <label>Keep the input's<i class="help" data-help="labmode">i</i></label>
+          <select id="labMode"><option value="canny">shape — follow its outlines (most restyle)</option>
+            <option value="tile">layout + colors — closer to the input</option></select>
+          <label>Keep shape ↔ free <b id="labStrVal"></b><i class="help" data-help="labstrength">i</i></label>
+          <input type="range" id="labStrength" min="0.2" max="1.3" step="0.05">
+          <div class="hint" id="hLab"></div>
+          <label class="inline" style="color:var(--text)"><input type="checkbox" id="labInit"> also start from the input (img2img) — change <b id="labDenVal"></b><i class="help" data-help="labinit">i</i></label>
+          <input type="range" id="labDenoise" min="0.3" max="0.95" step="0.05">
+          <div class="hint" id="hLabInit"></div>
+          <div class="lab-note" id="labStyle"></div>
+          <div class="row"><div><label>Width<i class="help" data-help="labwidth">i</i></label><input type="number" id="labW" min="16" max="1024"></div>
+            <div><label>Results<i class="help" data-help="labresults">i</i></label><input type="number" id="labN" min="1" max="8"></div></div>
+          <div class="lab-note" id="labSize"></div>
+          <button type="button" class="btn primary" id="labGo" style="width:100%;margin-top:10px">⚗ Convert</button>
+          <div class="inline" style="margin-top:10px;justify-content:space-between">
+            <label class="inline" style="color:var(--text);margin:0"><input type="checkbox" id="labLive"> live preview (--fast, 1 image)<i class="help" data-help="labprev">i</i></label>
+            <button type="button" class="btn small" id="labPSeed" title="new preview seed">🎲 seed</button></div>
+          <div class="lab-prev hidden" id="labPrev"></div>
+          <button type="button" class="btn" id="labSave" style="width:100%;margin-top:10px"
+            title="save everything — input, adjustments, steering, and the style in the left panel — as a preset">💾 Save LAB preset</button></div>
+        <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
+      </div>
+    </div>
     <div class="pane hidden" id="batchPane">
       <div class="steer-top">
         <input type="text" id="batchPath" class="grow" placeholder="~/git/qb64-dungeon/assets/data/default/art-prompts.txt">
@@ -521,6 +602,7 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
   <label><input type="checkbox" id="nfDone"> when done</label>
   <label><input type="checkbox" id="nfErr"> on error</label>
   <label><input type="checkbox" id="nfSound"> sound</label>
+  <label title="play a coin sound every time an image finishes"><input type="checkbox" id="nfCoin"> per image 🪙</label>
   <span class="sep">|</span>
   <label title="before rendering, warn if the setup fights itself"><input type="checkbox" id="preflightOn"> setup check</label>
   <span class="sep">|</span><span id="sbCount"></span>
@@ -578,7 +660,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "seed", "seedLock",
+  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull"];
 let activeStyles = new Set();
 
@@ -608,7 +690,7 @@ function params(f = readForm()) {
     styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
     no_sprite_suffix: f.no_sprite_suffix,
     palette: f.palette, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
-    pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size,
+    pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
     steps: f.steps, cfg: f.cfg, fast: f.fast,
     ...steerParams(),
@@ -635,6 +717,7 @@ function cliFor(p) {
     if (+p.pixel_angles > 0) a.push("--pixel-angles", p.pixel_angles);
     if (+p.pixel_angles > 0 && p.angle_grid && p.angle_grid !== "pixel") a.push("--angle-grid", p.angle_grid);
     if (p.pixel_size) a.push("--pixel-size", p.pixel_size);
+    if (+p.thin_lines > 0) a.push("--thin-lines", p.thin_lines);
     if (p.snap_pixels) a.push("--snap-pixels");
     if (p.transparent) a.push("--transparent");
     if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
@@ -677,6 +760,7 @@ function refresh() {
   $("seed").placeholder = f.seedLock ? "seed" : "random each run";
   $("fullPrompt").classList.toggle("hidden", !f.showFull);
   queueFullPrompt();   // always: it also brings back conflict warnings
+  if (typeof LABS !== "undefined" && LABS.live && !$("labPane").classList.contains("hidden")) { renderLab(); labSchedule(); }
   store.set("form", f);
 }
 // exact prompts from pixelmon's own final_prompts(), fetched as you type
@@ -878,6 +962,84 @@ const HINT = {
   })[c] || "",
 };
 const HELP = {
+  prompt: `<span class="tipk">Prompt</span>: describe what you want to see, in short phrases separated by commas —
+    <i>"a castle on a cliff, night, full moon, winding road"</i>. Put the most important thing first.
+    Don't write "no …" here (the model ignores "no" and adds the thing) — unwanted things go in the negative prompt.
+    🎲 invents a prompt for you; 🕘 brings back ones you used before.`,
+  lora: `<span class="tipk">LoRA</span>: a small add-on that teaches the model a look. <b>EGA art</b> = 16-color 1980s PC
+    games, <b>DOS VGA art</b> = 256-color 1990s games, <b>Pixel Art XL</b> = modern pixel art. The number next to it is how
+    strongly it's applied: <b>0.8</b> is a good start; lower = weaker look, higher (above ~1.1) starts to warp things.`,
+  kind: `<span class="tipk">Kind</span>: what sort of picture it is — <b>scene background</b> (a whole place / screen),
+    <b>character portrait</b> (a face or bust) or <b>game sprite</b> (one character or object on its own). The EGA/VGA
+    LoRAs learned with these labels, so picking the right one helps a lot.`,
+  genre: `<span class="tipk">Genre</span>: nudges the flavor, the way those games looked — adventure (Sierra/LucasArts
+    rooms), role-playing (dungeons, portraits), action, strategy… Optional.`,
+  era: `<span class="tipk">Era</span>: 1980s = chunkier, simpler, fewer colors; 1990s = more detailed. Optional.`,
+  styles: `<span class="tipk">Style guides</span>: ready-made bits of prompt that push a look — click to toggle,
+    combine freely. Hover a chip to see an example and what it adds. Some are only for certain things (e.g.
+    "painterlyscene" is for empty landscapes) — the yellow warning box tells you if one fights your picture.`,
+  negative: `<span class="tipk">Negative prompt</span>: things you DON'T want — <i>"thick outlines, blurry, text"</i>.
+    It starts with good defaults; add to them rather than replacing them. Plain words, no "no" needed.`,
+  canvas: `<span class="tipk">Canvas</span>: the final picture size, and how its pixels are made.`,
+  outsize: `<span class="tipk">Output size</span>: the exact width × height of the finished image, in pixels.
+    320×200 is a classic DOS game screen; 128×128 suits a character or item.`,
+  snap: `<span class="tipk">Snap pixels</span>: straightens the image onto a perfect pixel grid for a crisper look.
+    Set a <b>Pixel size</b> too, or it may pick very big pixels on its own.`,
+  transparent: `<span class="tipk">Transparent bg</span>: removes the plain background around a single sprite or
+    character, so it can be placed in a game. Not for scenes.`,
+  artmode: `<span class="tipk">Art mode</span>: makes a full-resolution painting/illustration instead of pixel art
+    (no palette, no pixel steps).`,
+  suffix: `<span class="tipk">No sprite suffix</span>: pixelmon normally adds "game sprite, solid background" to every
+    prompt. Tick this for full scenes (it happens automatically when Kind is "scene background").`,
+  palette: `<span class="tipk">Palette</span>: the exact set of colors the picture may use. <b>EGA</b> = the 16 colors of
+    1980s PCs; <b>none</b> = keep whatever colors the model painted. Locking a palette is what makes it look authentic.
+    The swatches show the colors.`,
+  dither: `<span class="tipk">Dither</span>: fakes in-between colors by mixing dots of two colors in a pattern (like
+    old games did for skies and shading). <b>bayer</b> = regular cross-hatch patterns; <b>floyd/stucki/atkinson…</b> =
+    softer scattered dots; <b>none</b> = flat colors.`,
+  amount: `<span class="tipk">Dither amount</span>: how much dithering — <b>0.3–0.5</b> only on real gradients,
+    <b>0.75+</b> almost everywhere.`,
+  despeckle: `<span class="tipk">Despeckle</span>: removes stray single dots of color ("noise"). <b>2</b> is a good
+    default; 0 turns it off.`,
+  seed: `<span class="tipk">Seed</span>: the number that decides the random starting point. Same seed + same settings =
+    the same picture. Tick <b>lock</b> to keep it (to compare settings fairly); 🎲 picks a new one.`,
+  count: `<span class="tipk">Count</span>: how many pictures to make in one go — each gets the next seed.`,
+  name: `<span class="tipk">Name</span>: the start of the saved file names. Optional — it's made from the prompt otherwise.`,
+  steps: `<span class="tipk">Steps</span>: how many times the model refines the picture. 25 is plenty; more is slower
+    and barely better.`,
+  cfg: `<span class="tipk">CFG</span>: how literally the prompt is followed. 5–9 is the sweet spot; higher gets harsh and
+    burnt-looking. Leave empty for the default.`,
+  fast: `<span class="tipk">Fast (LCM)</span>: about 5× quicker, slightly softer. Great for trying ideas, then turn it off
+    for the keeper.`,
+  sweep: `<span class="tipk">Sweep</span>: renders the SAME picture (same seed) several times, changing just one setting
+    — e.g. LoRA strength 0.5, 0.7, 0.9 — shown side by side, so you can see exactly what that setting does.`,
+  adjust: `<span class="tipk">Adjust source</span>: tune your input picture before it's converted — like a photo editor.
+    The preview updates as you drag, and exactly this adjusted version is what gets used.
+    <ul><li><b>brightness / contrast / gamma</b>: lighten, add punch, lift or deepen the mid-tones</li>
+    <li><b>saturation / hue</b>: stronger or weaker colors, or shift them around the color wheel</li>
+    <li><b>clean</b>: smooths JPEG blockiness and grain — noisy photos give messy outlines</li>
+    <li><b>sharpen</b>: crisper edges, so the "shape" mode follows them better</li>
+    <li><b>posterize</b>: fewer color levels (1–7 bits) — flatter shapes, closer to pixel art before restyling</li></ul>
+    Tip: turn on <b>👁 what the AI sees</b> while adjusting — you want clean, continuous outlines around your subject
+    and not much speckle in the background.`,
+  edges: `<span class="tipk">What the AI sees</span>: shows (approximately) the outline map the "shape" mode follows.
+    Clean, connected lines around your subject = good results. Lots of speckle = messy results: raise <b>clean</b> or
+    lower <b>sharpen</b>. Faint or missing outlines: raise <b>contrast</b> or <b>sharpen</b>.`,
+  labsubject: `<span class="tipk">What is it?</span>: a few words describing your input — "a dog", "a red sports car".
+    The model follows the input's outlines, but it needs to know <i>what</i> it's drawing to draw it well.`,
+  labstrength: `<span class="tipk">Keep shape ↔ free</span>: how closely the result follows the outlines of your input.
+    <b>0.5–0.8</b>: clearly the same subject, fully in the new style (start here). Lower: a looser interpretation.
+    Higher: traced very closely, and can get noisy.`,
+  labinit: `<span class="tipk">Also start from the input</span> (img2img): normally the result is drawn fresh, only
+    following your input's outlines. Tick this and it starts from your actual picture instead — so it keeps some of its
+    <b>colors and lighting</b>. The <b>change</b> slider is how much gets redrawn:
+    <ul><li>0.3–0.5: stays close to your picture's colors and details — only a light restyle</li>
+    <li>0.6–0.75: your colors guide it, the new style redraws most of it</li>
+    <li>0.8+: almost fully redrawn; your colors are just a hint</li></ul>
+    Leave it off for the strongest style change.`,
+  labwidth: `<span class="tipk">Width</span>: how wide the result is, in pixels. The height follows your input's shape.`,
+  labresults: `<span class="tipk">Results</span>: how many versions CONVERT makes (each a different seed), so you can pick
+    the best.`,
   denoise: `<span class="tipk">Change</span> (img2img denoise). The child starts from the parent image with this much of it
     replaced by noise, then re-rendered. <ul><li>0.2–0.3: polish</li><li>0.4–0.5: mutate (good default)</li>
     <li>0.6–0.7: bigger jumps</li><li>0.8+: nearly a fresh render in the parent's rough layout</li></ul>
@@ -902,6 +1064,22 @@ const HELP = {
     <ul><li>« more different / more similar »: big step (change ±0.10, strength ±0.20)</li>
     <li>‹ less similar / less different ›: small step (change ±0.05, strength ±0.10)</li></ul>
     Only the levers that are switched on move. The line underneath shows exactly what changed.`,
+  labprev: `<span class="tipk">Live preview</span>: every change to the LAB controls — and to the style in the left panel —
+    re-renders ONE image with --fast (≈5–8 s) with a fixed seed, so what changes is your settings, not luck.
+    Changes are debounced and older waiting previews are cancelled, so you only wait for the latest.
+    🎲 seed picks a new preview seed. Previews aren't added to the gallery (only the newest 40 are kept on disk).
+    When it looks right, ⚗ CONVERT renders the full-quality batch.`,
+  labmode: `<span class="tipk">Keep the input's…</span> (ControlNet)<ul>
+    <li><b>shape</b>: traces the input's edges and makes the model draw its <i>own</i> picture along them — the style
+    (LoRA, palette, styles from the left panel) takes over completely. Best for "same dog, EGA style".</li>
+    <li><b>layout + colors</b>: keeps the composition and color blocks too — a gentler conversion.</li></ul>
+    <b>Keep shape ↔ free</b>: how strictly the outlines are followed. Low = loose interpretation, high = traced.
+    "Also start from the input" adds img2img on top, pulling colors/lighting from the photo.`,
+  thin: `<span class="tipk">1-px outlines</span>: the model draws outlines 6–10 px thick at full size, which become
+    2–3 px after downscaling — no prompt can make them exactly 1 px. This thins them afterwards: strokes of the
+    darkest color (EGA black) up to the chosen width are skeletonized to connected single-pixel lines, and the freed
+    pixels take the surrounding color. Dark areas thicker than that (shadows, doorways, night sky) are kept.
+    Runs before pixel-art angles, so thinned lines get clean angles too.`,
   pxsize: `<span class="tipk">Pixel size</span>: how many output pixels one <i>art</i> pixel covers. The art is drawn on a
     grid of (output size ÷ pixel size) and every art pixel is scaled up by exactly that much at the end.
     <ul><li><b>1×1</b>: full detail at your output size</li><li><b>2×1</b>: wide pixels — the EGA/CGA 160-wide look</li>
@@ -954,6 +1132,8 @@ function initHelp() {
     tip.style.top = (r.bottom + 8 + tip.offsetHeight > window.innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
   });
   document.addEventListener("mouseout", e => { if (e.target.closest("[data-help]")) tip.classList.add("hidden"); });
+  // an ⓘ inside a <label>/<summary> must not tick the checkbox or fold the section
+  document.addEventListener("click", e => { if (e.target.closest(".help")) { e.preventDefault(); e.stopPropagation(); } }, true);
 }
 
 // ---------------- evolve ----------------
@@ -1063,8 +1243,13 @@ function initEvo() {
 
 // ---------------- presets (lab snapshots) ----------------
 let PRESETS = [];
-function snapshot() {
-  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO } };
+const LAB_KEYS = ["file", "size", "subject", "mode", "strength", "init", "denoise", "w", "n", "adj", "edges", "live", "pseed"];
+function labSnapshot(active) {
+  const l = Object.fromEntries(LAB_KEYS.map(k => [k, LABS[k]]));
+  return { ...l, adj: { ...LABS.adj }, active: !!active };
+}
+function snapshot(fromLab) {
+  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO }, lab: labSnapshot(fromLab) };
 }
 function snapshotOfJob(job, o) {
   const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
@@ -1072,6 +1257,11 @@ function snapshotOfJob(job, o) {
     steer: { ...STEER, use: !!(p.steer && p.steer.length), sel: [...(p.steer || [])], strength: p.steer_strength ?? STEER.strength,
              weight: p.steer_weight_type || STEER.weight, combine: p.steer_combine || STEER.combine },
     evo: { ...EVO, parent: p.parent ? { ...p.parent, gen: (p.gen || 1) - 1 } : null },
+    lab: p.control ? {          // a LAB result: the settings that made it
+      ...labSnapshot(true), file: p.control.file, mode: p.control.mode, strength: p.control.strength,
+      init: !!p.lab_init, denoise: p.lab_denoise ?? LABS.denoise, adj: { ...ADJ0, ...(p.lab_adjust || {}) },
+      subject: (p.form && p.form.subject) || LABS.subject, w: +(String(p.out || "").split("x")[0]) || LABS.w,
+      pseed: o.seed, n: LABS.n } : labSnapshot(false),
     from: { dir: job.dir, file: o.file, command: job.command } };
 }
 function applySnapshot(snap) {
@@ -1082,6 +1272,15 @@ function applySnapshot(snap) {
   $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
   renderRefs(); saveSteer();
   Object.assign(EVO, snap.evo || {}); renderEvo(); refresh();
+  if (snap.lab) {
+    Object.assign(LABS, snap.lab, { adj: { ...ADJ0, ...(snap.lab.adj || {}) }, group: null, prevJob: null });
+    store.set("lab", LABS);
+    loadLab().then(() => {
+      if (snap.lab.file && LABS.file !== snap.lab.file)
+        showErr(`This preset's LAB input “${snap.lab.file}” isn't in lab-inputs any more — pick an input; everything else was restored.`);
+    });
+    if (snap.lab.active) switchTab("lab");
+  }
 }
 async function loadPresets(select) {
   try { PRESETS = (await api("/api/presets")).presets; } catch { return; }
@@ -1093,7 +1292,8 @@ async function loadPresets(select) {
     const bits = [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
                   f.dither && f.dither !== "none" && f.dither, f.seedLock && f.seed && `seed ${f.seed}`,
                   p.snapshot && p.snapshot.steer && p.snapshot.steer.use && `🧭 ${p.snapshot.steer.sel.length}`,
-                  p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬"].filter(Boolean).join(" · ");
+                  p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬",
+                  p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`].filter(Boolean).join(" · ");
     return `<div class="pcard">${p.image ? `<img src="/preset-img/${encodeURIComponent(p.image)}" alt="">` : `<div class="noimg">no picture</div>`}
       <div class="body"><h4>${esc(p.name)}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
@@ -1472,6 +1672,7 @@ function initCork() {
     const ref = e.target.closest && e.target.closest(".ref[data-ref]");
     if (th) { const job = JOBS[th.dataset.job] || GALLERY.find(j => j.id === th.dataset.job); if (job) payload = { src: { dir: job.dir, file: th.dataset.file } }; }
     else if (ref) payload = { ref: ref.dataset.ref };
+    else if (e.target.closest && e.target.closest("[data-cork]")) payload = { board: CORK.board, file: e.target.closest("[data-cork]").dataset.cork };
     else if (e.target.id === "lbImg" && lbItem) payload = { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
     else if (e.target.id === "peekImg" && PEEK.stack[PEEK.idx]) {
       const it = PEEK.stack[PEEK.idx], job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
@@ -1522,11 +1723,25 @@ function initCork() {
 }
 
 // ---------------- status bar + notifications ----------------
-const NF = Object.assign({ on: false, done: true, err: true, sound: false }, store.get("notify", {}));
-let prevStatus = null;
+const NF = Object.assign({ on: false, done: true, err: true, sound: false, coin: false }, store.get("notify", {}));
+let prevStatus = null, prevOutputs = null, AC = null;
+function audio() {   // one shared AudioContext (browsers limit how many a page may create)
+  try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); } catch {}
+  return AC;
+}
+function coin(delay = 0) {
+  // the classic two-note coin: a short B5, then a ringing E6 (square wave)
+  const ac = audio(); if (!ac) return;
+  const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+  o.type = "square"; o.connect(g); g.connect(ac.destination);
+  o.frequency.setValueAtTime(987.77, t); o.frequency.setValueAtTime(1318.51, t + 0.075);
+  g.gain.setValueAtTime(0.045, t); g.gain.setValueAtTime(0.045, t + 0.075);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
+  o.start(t); o.stop(t + 0.52);
+}
 function chime(bad) {
   try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
+    const ac = audio(), o = ac.createOscillator(), g = ac.createGain();
     o.type = "square"; o.frequency.value = bad ? 220 : 880; g.gain.value = 0.05;
     o.connect(g); g.connect(ac.destination); o.start();
     if (!bad) o.frequency.setValueAtTime(1175, ac.currentTime + 0.09);
@@ -1541,28 +1756,40 @@ function notify(title, body, bad) {
 }
 function statusUpdate(jobs) {
   // session count: finished images vs images asked for
-  const want = jobs.filter(j => j.status !== "cancelled").reduce((n, j) => n + (j.total || 1), 0);
-  const made = jobs.reduce((n, j) => n + j.outputs.length, 0);
+  const real = jobs.filter(j => !j.params.preview);
+  const want = real.filter(j => j.status !== "cancelled").reduce((n, j) => n + (j.total || 1), 0);
+  const made = real.reduce((n, j) => n + j.outputs.length, 0);
   $("sbCount").innerHTML = `<b>${made}</b> of <b>${want}</b> images created this session`;
   const run = jobs.find(j => j.status === "running"), queued = jobs.filter(j => j.status === "queued").length;
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
   $("sbStatus").innerHTML = run
     ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
     : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? `<span class="err">● rtx unreachable</span>` : "● idle";
+  // 🪙 per image: a coin for every newly finished image (previews excluded), staggered if several land at once
+  const outs = Object.fromEntries(jobs.map(j => [j.id, j.outputs.length]));
+  if (prevOutputs && NF.coin) {
+    let k = 0;
+    for (const j of jobs) {
+      if (j.params.preview) continue;
+      const fresh = (outs[j.id] || 0) - (prevOutputs[j.id] || 0);
+      for (let i = 0; i < fresh && k < 4; i++) coin(0.14 * k++);
+    }
+  }
+  prevOutputs = outs;
   // notifications on transitions — one per finished card (a whole batch/evolve round, not every image)
   const now = Object.fromEntries(jobs.map(j => [j.id, j.status]));
   if (prevStatus) {
     const doneGroups = new Set();
     for (const j of jobs) {
       const was = prevStatus[j.id];
-      if (!was || was === j.status || !["done", "failed"].includes(j.status)) continue;
+      if (!was || was === j.status || !["done", "failed"].includes(j.status) || j.params.preview) continue;
       if (j.status === "failed" && NF.err) notify("pixelmon: render failed", `${nm(j)} — ${(j.log.slice(-1)[0] || "").slice(0, 120)}`, true);
       if (j.status === "done" && NF.done) {
         if (j.group) {
           const g = jobs.filter(x => x.group === j.group);
           if (g.every(x => ["done", "failed", "cancelled"].includes(x.status)) && !doneGroups.has(j.group)) {
             doneGroups.add(j.group);
-            notify(`pixelmon: ${j.group.startsWith("evo-") ? "evolve round" : j.group.startsWith("batch-") ? "batch" : "sweep"} done`,
+            notify(`pixelmon: ${j.group.startsWith("evo-") ? "evolve round" : j.group.startsWith("batch-") ? "batch" : j.group.startsWith("lab-") ? "lab conversion" : "sweep"} done`,
                    `${g.reduce((n, x) => n + x.outputs.length, 0)} images · ${nm(g[0])}`);
           }
         } else notify("pixelmon: done", `${j.outputs.length} image${j.outputs.length === 1 ? "" : "s"} · ${nm(j)}`);
@@ -1573,6 +1800,7 @@ function statusUpdate(jobs) {
 }
 function initStatus() {
   const sync = () => { $("nfOn").checked = NF.on; $("nfDone").checked = NF.done; $("nfErr").checked = NF.err; $("nfSound").checked = NF.sound;
+                       $("nfCoin").checked = NF.coin;
                        ["nfDone", "nfErr"].forEach(id => $(id).disabled = !NF.on); store.set("notify", NF); };
   $("nfOn").onchange = async e => {
     NF.on = e.target.checked;
@@ -1585,6 +1813,7 @@ function initStatus() {
   $("nfDone").onchange = e => { NF.done = e.target.checked; sync(); };
   $("nfErr").onchange = e => { NF.err = e.target.checked; sync(); };
   $("nfSound").onchange = e => { NF.sound = e.target.checked; sync(); if (NF.sound) chime(); };
+  $("nfCoin").onchange = e => { NF.coin = e.target.checked; sync(); if (NF.coin) coin(); };   // preview it
   $("preflightOn").checked = store.get("preflight", true);
   $("preflightOn").onchange = e => store.set("preflight", e.target.checked);
   sync();
@@ -1605,6 +1834,16 @@ function applyFix(f) {
     let n = $("negative").value;
     for (const w of f.value) n = n.replace(new RegExp(`\\b${w}\\b`, "gi"), "");
     $("negative").value = n.split(",").map(x => x.trim()).filter(Boolean).join(", ");
+  }
+  else if (f.action === "neg_move") {
+    let subj = $("subject").value, neg = $("negative").value;
+    for (const n of f.value) {
+      subj = subj.replace(n, " ");
+      const what = n.replace(/^\s*(no|not|without|never|avoid|don'?t)\s+/i, "").trim();
+      if (what) neg = neg ? `${neg}, ${what}` : what;
+    }
+    $("subject").value = subj.replace(/\s{2,}/g, " ").replace(/\s+,/g, ",").replace(/,\s*,/g, ",").replace(/^[\s,]+|[\s,]+$/g, "");
+    $("negative").value = neg;
   }
   else if (f.action === "evo") { EVO[f.field] = f.value; renderEvo(); }
   else if (f.action === "steer") { STEER[f.field] = f.value; $("steerStrength").value = STEER.strength; saveSteer(); }
@@ -1717,6 +1956,176 @@ function initPromptTools() {
   renderHistory();
 }
 
+// ---------------- ⚗ LAB: input image -> restyled by the current setup, shape kept by ControlNet ----------------
+const ADJ0 = { brightness: 0, contrast: 0, gamma: 1, saturation: 100, hue: 0, clean: 0, sharpen: 0, posterize: 0, gray: false, invert: false };
+const LABS = Object.assign({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8, init: false,
+                             denoise: 0.7, w: 320, n: 4, group: null }, store.get("lab", {}));
+async function loadLab() {
+  let r; try { r = await api("/api/lab/inputs"); } catch { return; }
+  $("labRecent").innerHTML = r.inputs.map(x => `<img src="/lab/${encodeURIComponent(x.file)}" data-labfile="${esc(x.file)}"
+      data-w="${x.size[0]}" data-h="${x.size[1]}" class="${x.file === LABS.file ? "on" : ""}" title="${esc(x.file)}" alt="">`).join("");
+  if (LABS.file && !r.inputs.some(x => x.file === LABS.file)) LABS.file = null;
+  renderLab();
+}
+function labOut() {   // LAB's height follows the input's proportions, rounded to the pixel size
+  const [iw, ih] = LABS.size, w = Math.max(16, +LABS.w || 320);
+  const m = /^(\d+)x(\d+)$/.exec($("pixel_size").value || ""), ph = m ? +m[2] : 1;
+  const h = iw && ih ? Math.max(16, Math.round((w * ih / iw) / ph) * ph) : Math.round(w * 0.625);
+  return [w, h];
+}
+const adjTouched = () => Object.keys(ADJ0).some(k => LABS.adj[k] !== undefined && LABS.adj[k] != ADJ0[k]);
+function labSrcUrl() {   // the (adjusted) input as the server will use it — or its edge view
+  if (!adjTouched() && !LABS.edges) return `/lab/${encodeURIComponent(LABS.file)}`;
+  return `/api/lab/preview?file=${encodeURIComponent(LABS.file)}&adj=${encodeURIComponent(JSON.stringify(LABS.adj))}${LABS.edges ? "&edges=1" : ""}`;
+}
+let adjTimer = null;
+function adjUpdate() {   // debounced: sliders fire many events
+  clearTimeout(adjTimer);
+  adjTimer = setTimeout(() => { const i = $("labDrop").querySelector("img"); if (i && LABS.file) i.src = labSrcUrl(); }, 180);
+}
+function renderAdj() {
+  document.querySelectorAll("[data-adj]").forEach(el => {
+    const k = el.dataset.adj, v = LABS.adj[k] ?? ADJ0[k];
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+    const out = $("v" + k);
+    if (out) out.textContent = k === "posterize" ? (+v ? `${v} bit` : "off") : k === "clean" ? (+v ? v : "off")
+      : k === "gamma" ? (+v).toFixed(2) : k === "saturation" ? `${v}%` : k === "hue" ? `${v}°` : (+v > 0 ? "+" : "") + v;
+  });
+  $("adjEdges").checked = !!LABS.edges;
+  $("adjBox").querySelector("summary").childNodes[0].nodeValue = adjTouched() ? "Adjust source (tuned) " : "Adjust source ";
+}
+function renderLab() {
+  renderAdj();
+  $("labDrop").innerHTML = LABS.file ? `<img src="${labSrcUrl()}" alt="">`
+    : `<span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span>`;
+  document.querySelectorAll("#labRecent img").forEach(i => i.classList.toggle("on", i.dataset.labfile === LABS.file));
+  $("labSubject").value = LABS.subject; $("labMode").value = LABS.mode; $("labStrength").value = LABS.strength;
+  $("labStrVal").textContent = (+LABS.strength).toFixed(2);
+  $("labInit").checked = LABS.init; $("labDenoise").value = LABS.denoise; $("labDenoise").disabled = !LABS.init;
+  $("labDenVal").textContent = (+LABS.denoise).toFixed(2); $("labW").value = LABS.w; $("labN").value = LABS.n;
+  const dn = +LABS.denoise;
+  $("hLabInit").textContent = !LABS.init ? "off — drawn fresh along your input's outlines (strongest restyle)"
+    : dn < 0.5 ? "stays close to your picture's colors and details — only a light restyle"
+    : dn < 0.78 ? "your colors guide it; the new style redraws most of it"
+    : "almost fully redrawn — your colors are just a hint";
+  const st = +LABS.strength;
+  $("hLab").textContent = st < 0.5 ? "loose — only the rough shape survives; the style reinterprets freely"
+    : st < 0.9 ? "balanced — recognizably the same subject, fully in the new style" : "strict — traces the input closely";
+  const f = readForm(), lp = META && META.presets[f.lora];
+  $("labStyle").innerHTML = `style from the left panel: <b>${esc(lp ? lp.label : f.lora)}</b> @ ${f.lora_strength}`
+    + ` · palette <b>${esc(f.palette)}</b>${f.dither !== "none" ? ` · ${esc(f.dither)}` : ""}${f.styles.length ? ` · ${esc(f.styles.join(", "))}` : ""}`
+    + `${f.pixel_size ? ` · pixels ${esc(f.pixel_size)}` : ""}${STEER.use && STEER.sel.length ? ` · 🧭 ${STEER.sel.length} style refs` : ""}`;
+  const [w, h] = labOut();
+  $("labSize").textContent = LABS.file ? `input ${LABS.size[0]}×${LABS.size[1]} → output ${w}×${h}` : "";
+  $("labLive").checked = !!LABS.live;
+  renderLabPreview();
+  $("labGo").disabled = !LABS.file;
+  store.set("lab", LABS);
+  if (LABS.group) {
+    const jobs = Object.values(JOBS).filter(j => j.group === LABS.group && !j.params.preview).sort((a, b) => a.created - b.created);
+    if (jobs.length) { $("labOut").innerHTML = jobCard(jobs.length > 1 ? jobs : [jobs[0]]); fillPalettes($("labOut")); }
+  }
+}
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; await loadLab(); labSchedule(); }
+function labParams() {
+  const f = readForm(), [w, h] = labOut();
+  const subject = (LABS.subject || "the subject").trim();
+  const form = { ...f, subject, outW: w, outH: h, n: 1 };
+  const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
+                 control: { file: LABS.file, mode: LABS.mode, strength: LABS.strength, end: LABS.strength >= 1 ? 0.9 : 0.8 } };
+  delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen;
+  if (LABS.init) { base.lab_init = LABS.file; base.lab_denoise = LABS.denoise; }
+  if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  return base;
+}
+// ---- live preview: one --fast image per settled change, fixed seed, only the latest one matters
+let labPrevTimer = null;
+function labSchedule() {
+  if (!LABS.live || !LABS.file) return;
+  clearTimeout(labPrevTimer);
+  labPrevTimer = setTimeout(labPreview, 900);
+  renderLabPreview(true);
+}
+async function labPreview() {
+  if (!LABS.live || !LABS.file) return;
+  if (!LABS.pseed) LABS.pseed = Math.floor(Math.random() * 2 ** 31);
+  for (const j of Object.values(JOBS)) if (j.params.preview && j.status === "queued") api("/api/cancel/" + j.id, {}).catch(() => {});
+  const p = { ...labParams(), fast: true, steps: "", cfg: "", seed: LABS.pseed, preview: true, group: "labprev", label: "preview" };
+  try { const r = await api("/api/render", p); LABS.prevJob = r.jobs[0]; store.set("lab", LABS); poll(); }
+  catch (e) { $("labPrev").innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+}
+function renderLabPreview(pending) {
+  const box = $("labPrev");
+  box.classList.toggle("hidden", !LABS.live);
+  if (!LABS.live) return;
+  const j = LABS.prevJob && JOBS[LABS.prevJob], o = j && j.outputs[0];
+  const busy = pending || (j && (j.status === "queued" || j.status === "running"));
+  box.classList.toggle("busy", !!busy);
+  const secs = j && j.started && j.finished ? ` · ${(j.finished - j.started).toFixed(1)}s` : "";
+  box.innerHTML = o
+    ? `<div class="thumb" data-job="${j.id}" data-file="${esc(o.file)}"><img src="${fileUrl(j, o)}" alt=""></div>
+       <div>preview · seed ${LABS.pseed} · fast${secs}${busy ? " · updating…" : ""}</div>`
+    : j && j.status === "failed" ? `<span style="color:var(--bad)">preview failed: ${esc((j.log.slice(-1)[0] || "").slice(0, 140))}</span>`
+    : LABS.file ? (busy ? "rendering preview…" : "change a setting to preview") : "pick an input image";
+}
+async function labConvert() {
+  if (!LABS.file) return showErr("Pick an input image first.");
+  const base = labParams();
+  if (!(await preflight(base))) return;
+  LABS.group = `lab-${Date.now()}`;
+  const seed0 = Math.floor(Math.random() * 2 ** 31);
+  for (let i = 0; i < LABS.n; i++) {
+    try { await api("/api/render", { ...base, seed: seed0 + i, group: LABS.group, label: `seed ${seed0 + i}` }); }
+    catch (e) { showErr(e); break; }
+  }
+  remember(subject); poll(); renderLab();
+}
+function initLab() {
+  const drop = $("labDrop");
+  drop.onclick = () => $("labFile").click();
+  $("labFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (f) await labUpload(f); };
+  async function labUpload(f) {
+    try {
+      const r = await fetch(`/api/lab/upload?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error); await labSet(j);
+    } catch (e) { showErr(e); }
+  }
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", async e => {
+    e.preventDefault(); drop.classList.remove("over");
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (raw) { try { await labSet(await api("/api/lab/import", JSON.parse(raw))); } catch (err) { showErr(err); } return; }
+    const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) labUpload(f);
+  });
+  $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
+    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; renderLab(); labSchedule(); };
+  $("labSubject").oninput = e => { LABS.subject = e.target.value; store.set("lab", LABS); labSchedule(); };
+  $("labMode").onchange = e => { LABS.mode = e.target.value; renderLab(); labSchedule(); };
+  $("labStrength").oninput = e => { LABS.strength = +e.target.value; renderLab(); labSchedule(); };
+  $("labInit").onchange = e => { LABS.init = e.target.checked; renderLab(); labSchedule(); };
+  $("labDenoise").oninput = e => { LABS.denoise = +e.target.value; renderLab(); labSchedule(); };
+  $("labW").oninput = e => { LABS.w = +e.target.value || 320; renderLab(); labSchedule(); };
+  $("labLive").onchange = e => { LABS.live = e.target.checked; renderLab(); if (LABS.live) labSchedule(); };
+  $("adjBox").addEventListener("input", e => {
+    const k = e.target.dataset.adj; if (!k) return;
+    LABS.adj[k] = e.target.type === "checkbox" ? e.target.checked : +e.target.value;
+    renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule();
+  });
+  $("adjEdges").onchange = e => { LABS.edges = e.target.checked; renderAdj(); adjUpdate(); store.set("lab", LABS); };
+  $("adjReset").onclick = () => { LABS.adj = { ...ADJ0 }; renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule(); };
+  $("labPSeed").onclick = () => { LABS.pseed = Math.floor(Math.random() * 2 ** 31); labSchedule(); };
+  $("labN").oninput = e => { LABS.n = Math.max(1, Math.min(8, +e.target.value || 1)); store.set("lab", LABS); };
+  $("labGo").onclick = labConvert;
+  $("labSave").onclick = () => {
+    const jobs = Object.values(JOBS).filter(j => j.group === LABS.group && j.outputs.length).sort((a, b) => b.created - a.created);
+    const pj = LABS.prevJob && JOBS[LABS.prevJob];
+    const img = jobs.length ? { dir: jobs[0].dir, file: jobs[0].outputs[0].file }
+              : pj && pj.outputs.length ? { dir: pj.dir, file: pj.outputs[0].file } : null;
+    savePreset(snapshot(true), `lab-${(LABS.subject || "preset").slice(0, 24)}`, img);
+  };
+}
+
 // ---------------- API ----------------
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -1787,7 +2196,7 @@ function jobCard(jobs) {
     <span>${running ? `rendering ${Math.min(done + 1, want)}/${want}` : "queued"} · ${done} done · ${want - done} remaining</span></div>` : "";
   const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
   return `<div class="job"><div class="job-head">
-      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : "sweep · ") : ""}${status}${progress}</span>
+      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : j.group.startsWith("lab-") ? "lab · " : "sweep · ") : ""}${status}${progress}</span>
       <span class="job-title" title="${title}">${title}</span>
       ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
       ${j.outputs.length ? `<button class="btn small" data-save-job="${j.id}" title="save this card's setup as a preset (first image = its picture)">💾</button>` : ""}
@@ -1802,6 +2211,7 @@ function renderQueue(jobs) {
   JOBS = Object.fromEntries(jobs.map(j => [j.id, j]));
   statusUpdate(jobs);
   if (BATCH.group) renderBatch();
+  if (LABS.group && !$("labPane").classList.contains("hidden")) renderLab();
   const active = jobs.filter(j => j.status === "queued" || j.status === "running").length;
   $("qcount").textContent = active ? `(${active})` : "";
   if (!jobs.length) return;
@@ -1911,6 +2321,8 @@ function switchTab(t) {
   $("steerPane").classList.toggle("hidden", t !== "steer");
   $("presetsPane").classList.toggle("hidden", t !== "presets");
   $("batchPane").classList.toggle("hidden", t !== "batch");
+  $("labPane").classList.toggle("hidden", t !== "lab");
+  if (t === "lab") loadLab();
   if (t === "presets") loadPresets();
   if (t === "steer") loadRefs();
   if (t === "gallery") loadGallery();
@@ -1934,6 +2346,7 @@ async function init() {
   initGridOverlay();
   initStatus();
   initPromptTools();
+  initLab();
   initSteer();
   initEvo();
   initPresets();
@@ -1943,7 +2356,7 @@ async function init() {
   const saved = store.get("form", null);
   const FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
     era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, transparent: false,
-    art: false, no_sprite_suffix: false, palette: "EGA", dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", seed: "",
+    art: false, no_sprite_suffix: false, palette: "EGA", dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
     seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
@@ -2027,7 +2440,7 @@ async function init() {
   $("lbCopy").onclick = e => copyText($("lbCmd").textContent, e.currentTarget);
 
   const hashTab = location.hash.slice(1);   // /#batch, /#presets, … open straight to a tab
-  switchTab(["queue", "gallery", "steer", "presets", "batch"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
+  switchTab(["queue", "gallery", "steer", "presets", "batch", "lab"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
   poll(); loadGallery();
 }
 init().catch(e => showErr("Couldn't load: " + e.message));

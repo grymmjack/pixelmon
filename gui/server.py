@@ -44,6 +44,7 @@ STEER_COMBINE = ["concat", "average", "norm average", "add", "subtract"]
 REFS = os.path.expanduser("~/pixelmon-refs")      # steering library: one folder per collection
 PRESETS = os.path.expanduser("~/pixelmon-gallery/gui-presets")   # saved lab snapshots (*.json)
 BOARDS = os.path.expanduser("~/pixelmon-gallery/corkboards")      # corkboards: one folder per board
+LAB = os.path.expanduser("~/pixelmon-gallery/lab-inputs")         # LAB: images to restyle
 PROMPT_LINE = re.compile(r"(📝 positive|🚫 negative|🧩 lora):\s*(.*)$")
 
 # ---------------------------------------------------------------------------
@@ -157,6 +158,8 @@ def full_prompt(p):
     return {"positive": pos, "negative": neg, "lora": lora, "warnings": warnings}
 
 
+# "no thick lines", "without a border", "not blurry" … up to the next comma/period
+NEGATION = re.compile(r"\b(?:no|not|without|never|avoid|don'?t)\b[^,.;]*", re.I)
 STOP = {"the", "and", "with", "for", "from", "into", "onto", "set", "its", "his", "her", "their", "that", "this",
         "very", "some", "over", "under", "near", "far", "top", "side", "while", "each", "one", "two", "has", "have"}
 PEOPLE = r"\(?(person|people|character|figure|human|creature)s?\b"
@@ -172,7 +175,8 @@ def prompt_warnings(p, pm):
     Returns [{"text": ..., "fixes": [{"label", "action", ...}]}]; the first fix is the recommended one."""
     form = p.get("form") or {}
     subject = str(form.get("subject") or p.get("prompt") or "")
-    subj = _words(subject)
+    negs = [m.group(0).strip() for m in NEGATION.finditer(subject)]
+    subj = _words(NEGATION.sub(" ", subject))       # words that are only there inside "no …" don't count
     kind, art = str(form.get("kind") or ""), bool(p.get("art"))
     styles = list(p.get("styles") or [])
     lp = load_presets().get(str(p.get("lora") or "")) or {}
@@ -183,6 +187,14 @@ def prompt_warnings(p, pm):
 
     def warn(text, *fixes):
         out.append({"text": text, "fixes": list(fixes)})
+    if negs:
+        warn("the model doesn't understand " + ", ".join("“" + n + "”" for n in negs[:3]) + " — it reads the words and tends "
+             "to ADD them. Say what you want in the prompt; put what you don't want in the negative",
+             {"label": "move to negative", "action": "neg_move", "value": negs})
+    if re.search(r"\b(1|one|single)[ -]?(px|pixel)\b.*\blines?\b|\bthin (out)?lines?\b|\bthick (out)?lines?\b", subject.lower() + " "
+                 + str(p.get("negative") or "").lower()) and not p.get("thin_lines") and not p.get("art"):
+        warn("prompts can't make lines exactly 1 px — the model draws 6–10 px outlines at full size. "
+             "“1-px outlines” thins them after rendering", {"label": "1-px outlines on", "action": "set", "field": "thin_lines", "value": 4})
     drop = lambda n: {"label": f"drop “{n}”", "action": "drop_style", "value": n}
     setf = lambda label, field, value: {"label": label, "action": "set", "field": field, "value": value}
     size = lambda wh: {"label": f"size → {wh.replace('x', '×')}", "action": "size", "value": wh}
@@ -346,7 +358,7 @@ def list_refs():
     return cols
 
 
-def build_argv(p, steer_dir=None, steer_count=0, init=None):
+def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
         v = p.get(key, default)
@@ -413,6 +425,9 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None):
             if not re.fullmatch(r"\d{1,2}x\d{1,2}", ps):
                 raise ValueError(f"bad pixel size {ps!r}; use WxH like 2x1")
             argv += ["--pixel-size", ps]
+        tl = num("thin_lines", int, 0, 12)
+        if tl:
+            argv += ["--thin-lines", str(tl)]
         pa = num("pixel_angles", float, 0.0, 3.0)
         if pa:
             argv += ["--pixel-angles", f"{pa:g}"]
@@ -448,6 +463,15 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None):
     if init:
         d = num("evolve_denoise", float, 0.01, 1.0, 0.45)
         argv += ["--init", init, "--denoise", f"{d:g}"]
+    if control:
+        c = p.get("control") or {}
+        mode = str(c.get("mode") or "canny")
+        if mode not in ("canny", "tile"):
+            raise ValueError(f"unknown control mode {mode!r}")
+        st, en = float(c.get("strength", 0.8)), float(c.get("end", 0.8))
+        if not (0 <= st <= 2 and 0 < en <= 1):
+            raise ValueError("control strength must be 0..2 and end in (0, 1]")
+        argv += ["--control", control, "--control-mode", mode, "--control-strength", f"{st:g}", "--control-end", f"{en:g}"]
     seed = num("seed", int, -1, 2**31 - 1, -1)
     if seed is not None and seed >= 0:
         argv += ["--seed", str(seed)]
@@ -485,7 +509,9 @@ class JobQueue:
         evo_init = bool(params.get("evolve_init")) and parent_src is not None
         if parent_src and not (evo_steer > 0 or evo_init):
             raise ValueError("evolving needs 'keep composition' and/or 'steer toward parent' switched on")
-        jdir = os.path.join(self.gallery, jid)
+        # LAB live previews live in gallery/_preview/ (not listed in the gallery; only the newest are kept)
+        dirname = f"_preview/{jid}" if params.get("preview") else jid
+        jdir = os.path.join(self.gallery, dirname)
         init = None
         if parent_src:
             os.makedirs(jdir, exist_ok=True)
@@ -498,23 +524,53 @@ class JobQueue:
                 params["steer_weight_type"] = params.get("evolve_weight_type") or "style and composition"
                 params["steer_start"] = params.get("evolve_steer_start", 0.0)
                 params["steer_end"] = params.get("evolve_steer_end", 1.0)
+        control = None
+        lab = (params.get("control") or {}).get("file") or params.get("lab_init")
+        if lab:                                      # LAB: the job keeps its own copy of the input image
+            src = lab_path(lab)
+            os.makedirs(jdir, exist_ok=True)
+            adj = params.get("lab_adjust") or {}
+            if adjust_is_default(adj):
+                kept = os.path.join(jdir, "input" + os.path.splitext(src)[1].lower())
+                shutil.copy2(src, kept)
+            else:                                    # tuned source: the job keeps both, uses the tuned one
+                shutil.copy2(src, os.path.join(jdir, "input-original" + os.path.splitext(src)[1].lower()))
+                kept = os.path.join(jdir, "input.png")
+                adjust_image(src, adj).save(kept)
+            if params.get("control"):
+                control = kept
+            if params.get("lab_init"):
+                init = kept
+                params["evolve_denoise"] = params.get("lab_denoise", 0.7)
         steer_dir = None
         if srcs:
             steer_dir = os.path.join(jdir, "steer")
             os.makedirs(steer_dir, exist_ok=True)
             for i, src in enumerate(srcs):           # numbered so same-named files can't collide
                 os.symlink(src, os.path.join(steer_dir, f"{i:02d}_{os.path.basename(src)}"))
-        argv = build_argv(params, steer_dir, len(srcs), init)   # validate before queueing
+        argv = build_argv(params, steer_dir, len(srcs), init, control)   # validate before queueing
         export = export_target(params)
         job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
                "total": int(params.get("n") or 1), "export": export, "exported": None,
-               "created": time.time(), "started": None, "finished": None, "dir": jid}
+               "created": time.time(), "started": None, "finished": None, "dir": dirname}
         with self.lock:
             self.jobs[jid] = job
             self.order.append(jid)
         self.q.put(jid)
+        if params.get("preview"):
+            self._prune_previews()
         return job
+
+    def _prune_previews(self, keep=40):
+        """Delete all but the newest `keep` preview folders (never one that's queued or running)."""
+        root = os.path.join(self.gallery, "_preview")
+        with self.lock:
+            busy = {j["dir"].split("/", 1)[-1] for j in self.jobs.values() if j["status"] in ("queued", "running")}
+        dirs = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))) if os.path.isdir(root) else []
+        for d in dirs[:-keep]:
+            if d not in busy:
+                shutil.rmtree(os.path.join(root, d), ignore_errors=True)
 
     def gallery_path(self, ref):
         """{'dir':..., 'file':...} of an earlier render -> its absolute path, or ValueError."""
@@ -582,7 +638,7 @@ class JobQueue:
             with self.lock:
                 # trust the folder over log parsing (covers moved/renamed files)
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
-                               if not os.path.basename(f).startswith("parent."))   # an evolve job's kept parent isn't output
+                               if not os.path.basename(f).startswith(("parent.", "input")))   # kept parent / LAB input aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
@@ -601,6 +657,84 @@ class JobQueue:
                 job["finished"] = time.time()
                 self.current, self.proc = None, None
             self._save(job)
+
+
+def lab_path(name):
+    full = os.path.realpath(os.path.join(LAB, os.path.basename(str(name or ""))))
+    if not full.startswith(os.path.realpath(LAB) + os.sep) or not os.path.isfile(full):
+        raise ValueError("LAB input image not found")
+    return full
+
+
+def image_size(path):
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            return im.size
+    except Exception:
+        return (0, 0)
+
+
+ADJ_DEFAULTS = {"brightness": 0, "contrast": 0, "gamma": 1.0, "saturation": 100, "hue": 0, "clean": 0,
+                "sharpen": 0, "posterize": 0, "gray": False, "invert": False}
+
+
+def adjust_is_default(adj):
+    return not adj or all(adj.get(k, v) == v or (isinstance(v, (int, float)) and float(adj.get(k, v)) == float(v))
+                          for k, v in ADJ_DEFAULTS.items())
+
+
+def adjust_image(path, adj, max_side=None):
+    """Source-image tuning for the LAB (PIL only): clean → brightness/contrast → gamma → saturation → hue →
+    sharpen → posterize → grayscale → invert. Returns an RGB PIL image."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+    im = Image.open(path).convert("RGB")
+    if max_side and max(im.size) > max_side:
+        im.thumbnail((max_side, max_side), Image.LANCZOS)
+    a = dict(ADJ_DEFAULTS, **(adj or {}))
+    c = int(a["clean"])
+    if c > 0:                                   # JPEG clean: median removes blocky noise, then a light blur
+        im = im.filter(ImageFilter.MedianFilter(3 if c < 3 else 5))
+        if c >= 2:
+            im = im.filter(ImageFilter.GaussianBlur(0.4 * (c - 1)))
+    if float(a["brightness"]):
+        im = ImageEnhance.Brightness(im).enhance(1 + float(a["brightness"]) / 100)
+    if float(a["contrast"]):
+        im = ImageEnhance.Contrast(im).enhance(1 + float(a["contrast"]) / 100)
+    g = float(a["gamma"])
+    if abs(g - 1) > 1e-3:
+        lut = [min(255, int(255 * (i / 255) ** (1 / g) + 0.5)) for i in range(256)]
+        im = im.point(lut * 3)
+    if float(a["saturation"]) != 100:
+        im = ImageEnhance.Color(im).enhance(float(a["saturation"]) / 100)
+    if int(a["hue"]):
+        h, s_, v = im.convert("HSV").split()
+        shift = int(round(int(a["hue"]) / 360 * 256)) % 256
+        h = h.point(lambda x: (x + shift) % 256)
+        im = Image.merge("HSV", (h, s_, v)).convert("RGB")
+    if float(a["sharpen"]):
+        im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=int(60 * float(a["sharpen"])), threshold=2))
+    if int(a["posterize"]):
+        im = ImageOps.posterize(im, max(1, min(8, int(a["posterize"]))))
+    if a["gray"]:
+        im = ImageOps.grayscale(im).convert("RGB")
+    if a["invert"]:
+        im = ImageOps.invert(im)
+    return im
+
+
+def edge_view(im):
+    """Approximation of the Canny edge map the ControlNet 'shape' mode follows (white edges on black)."""
+    from PIL import ImageFilter, ImageOps
+    e = ImageOps.grayscale(im).filter(ImageFilter.GaussianBlur(1)).filter(ImageFilter.FIND_EDGES)
+    return e.point(lambda x: 255 if x > 24 else 0).convert("RGB")
+
+
+def list_lab():
+    os.makedirs(LAB, exist_ok=True)
+    fs = sorted((f for f in os.listdir(LAB) if f.lower().endswith(IMG_EXT)),
+                key=lambda f: -os.path.getmtime(os.path.join(LAB, f)))
+    return [{"file": f, "size": image_size(os.path.join(LAB, f))} for f in fs[:60]]
 
 
 def board_dir(name):
@@ -674,7 +808,7 @@ def gallery_items(gallery, limit=300):
                 job = json.load(f)
         except Exception:
             continue
-        job["outputs"] = [o for o in job.get("outputs") or [] if not o["file"].startswith("parent.")]
+        job["outputs"] = [o for o in job.get("outputs") or [] if not o["file"].startswith(("parent.", "input"))]
         if job["outputs"]:
             items.append(job)
     return items
@@ -759,6 +893,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
         if u.path == "/api/presets":
             return self._json({"presets": list_presets()})
+        if u.path == "/api/lab/preview":
+            q = urllib.parse.parse_qs(u.query)
+            try:
+                src = lab_path(q.get("file", [""])[0])
+                adj = json.loads(q.get("adj", ["{}"])[0] or "{}")
+                im = adjust_image(src, adj, max_side=720)
+                if q.get("edges", ["0"])[0] == "1":
+                    im = edge_view(im)
+            except ImportError:
+                return self._json({"error": "needs Pillow — run pixelmon-gui with ComfyUI's venv"}, 501)
+            except (ValueError, OSError) as e:
+                return self._json({"error": str(e)}, 400)
+            buf = io.BytesIO()
+            im.save(buf, "PNG")
+            body = buf.getvalue()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if u.path == "/api/lab/inputs":
+            return self._json({"root": LAB, "inputs": list_lab()})
+        if u.path.startswith("/lab/"):
+            try:
+                full = lab_path(urllib.parse.unquote(u.path[len("/lab/"):]))
+            except ValueError:
+                return self._json({"error": "not found"}, 404)
+            return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path == "/api/boards":
             return self._json({"root": BOARDS, "boards": list_boards()})
         if u.path.startswith("/boards/"):
@@ -805,6 +969,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path == "/api/lab/upload":
+            return self._upload(urllib.parse.parse_qs(u.query), lab=True)
         if u.path == "/api/refs/upload":            # raw image bytes; ?collection=&filename=
             return self._upload(urllib.parse.parse_qs(u.query))
         try:
@@ -823,7 +989,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base, field, values = body.get("params") or {}, body.get("field"), body.get("values") or []
                 if field not in ("lora_strength", "dither", "dither_amount", "palette", "styles", "lora",
                                  "steps", "cfg", "despeckle", "out", "steer_strength",
-                                 "steer_start", "steer_end", "pixel_angles", "angle_grid", "pixel_size"):
+                                 "steer_start", "steer_end", "pixel_angles", "angle_grid", "pixel_size", "thin_lines"):
                     raise ValueError(f"can't sweep {field!r}")
                 if not values:
                     raise ValueError("no sweep values")
@@ -870,6 +1036,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
                 return self._json({"opened": target})
+            if u.path == "/api/lab/import":
+                # bring a render / steering ref / corkboard item into the LAB as an input
+                if body.get("ref"):
+                    src = ref_path(body["ref"])
+                elif body.get("board"):
+                    d = board_dir(body["board"])
+                    src = os.path.realpath(os.path.join(d, os.path.basename(str(body.get("file") or ""))))
+                    if not src.startswith(os.path.realpath(d) + os.sep) or not os.path.isfile(src):
+                        raise ValueError("not on that board")
+                elif body.get("src"):
+                    src = self.jobs.gallery_path(body["src"])
+                else:
+                    raise ValueError("nothing to import")
+                os.makedirs(LAB, exist_ok=True)
+                out = unique_path(LAB, safe_name(os.path.basename(src), 120))
+                shutil.copy2(src, out)
+                return self._json({"file": os.path.basename(out), "size": image_size(out)})
             if u.path == "/api/boards/new":
                 d = board_dir(body.get("name"))
                 os.makedirs(d, exist_ok=True)
@@ -966,7 +1149,7 @@ def unique_path(d, fname):
     return out
 
 
-def _upload(self, q):
+def _upload(self, q, lab=False):
     board = q.get("board")
     col = safe_name((q.get("collection") or ["gui-drops"])[0]) or "gui-drops"
     fname = safe_name((q.get("filename") or ["image.png"])[0], 96)
@@ -981,13 +1164,15 @@ def _upload(self, q):
     if not magic:
         return self._json({"error": f"{fname} doesn't look like an image"}, 400)
     try:
-        d = board_dir(board[0]) if board else os.path.join(REFS, col)   # desktop files dropped on a corkboard
+        d = LAB if lab else board_dir(board[0]) if board else os.path.join(REFS, col)   # LAB / corkboard / refs
     except ValueError as e:
         return self._json({"error": str(e)}, 400)
     os.makedirs(d, exist_ok=True)
     out = unique_path(d, fname)
     with open(out, "wb") as f:
         f.write(data)
+    if lab:
+        return self._json({"file": os.path.basename(out), "size": image_size(out)})
     if board:
         return self._json({"board": os.path.basename(d), "file": os.path.basename(out)})
     return self._json({"ref": f"{col}/{os.path.basename(out)}"})
@@ -997,12 +1182,13 @@ Handler._upload = _upload
 
 
 def main():
-    global REFS, PRESETS, BOARDS
+    global REFS, PRESETS, BOARDS, LAB
     ap = argparse.ArgumentParser(prog="pixelmon-gui", description="Web GUI for pixelmon (renders on the rtx box).")
     ap.add_argument("--port", type=int, default=8190)
     ap.add_argument("--lan", action="store_true", help="listen on all interfaces so other devices on the LAN can use it")
     ap.add_argument("--refs", default=REFS, help="steering image library, one folder per collection "
                                                   "(default ~/pixelmon-refs)")
+    ap.add_argument("--lab", default=LAB, help="LAB input images (default ~/pixelmon-gallery/lab-inputs)")
     ap.add_argument("--boards", default=BOARDS, help="corkboards, one folder per board (default ~/pixelmon-gallery/corkboards)")
     ap.add_argument("--presets", default=PRESETS, help="saved lab presets (default ~/pixelmon-gallery/gui-presets)")
     ap.add_argument("--gallery", default=os.path.expanduser("~/pixelmon-gallery/gui"),
@@ -1011,6 +1197,7 @@ def main():
     REFS = os.path.realpath(os.path.expanduser(args.refs))
     PRESETS = os.path.expanduser(args.presets)
     BOARDS = os.path.expanduser(args.boards)
+    LAB = os.path.expanduser(args.lab)
     os.makedirs(os.path.join(REFS, "gui-drops"), exist_ok=True)
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)

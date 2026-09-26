@@ -130,6 +130,7 @@ def print_help():
         opt("--pixel-angles F", "EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)", "0"),
         opt("--angle-grid G", "pixel / square / diagonal / isometric / hex / triangle", "pixel"),
         opt("--pixel-size WxH", "exact art pixel size: 1x1, 2x1, 2x2, 4x1 … (fixes huge snapped pixels)", "auto"),
+        opt("--thin-lines N", "1-px outlines: thin dark strokes up to N px (0 off, ~4)", "0"),
         opt("--fast", "LCM mode: ~5x faster, slightly softer"),
         opt("--seed N", "lock / repeat a result (re-run a favorite)", "random"),
         opt("--steps N", "refinement steps (more = slower)", "25"),
@@ -158,6 +159,7 @@ def print_help():
         opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
         opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
+        opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
         opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
@@ -332,7 +334,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
                               "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle,
                               "pixel_angles": a.pixel_angles, "angle_grid": a.angle_grid,
-                              "pixel_w": a.px_w, "pixel_h": a.px_h}}
+                              "pixel_w": a.px_w, "pixel_h": a.px_h, "thin_lines": a.thin_lines}}
         g["11"] = {"class_type": "SaveImage",
                    "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}}
         if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
@@ -391,7 +393,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
     if getattr(a, "init", None):
         srv = server or SERVER
         if srv not in _INIT_UPLOADS:
-            _INIT_UPLOADS[srv] = _upload_image(os.path.abspath(os.path.expanduser(a.init)), srv)
+            _INIT_UPLOADS[srv] = _upload_image(os.path.abspath(os.path.expanduser(a.init)), srv, "--init")
         g["40"] = {"class_type": "LoadImage", "inputs": {"image": _INIT_UPLOADS[srv]}}
         g["41"] = {"class_type": "ImageScale",
                    "inputs": {"image": ["40", 0], "upscale_method": "nearest-exact",
@@ -399,6 +401,31 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["42"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["41", 0], "vae": ["4", 2]}}
         g["3"]["inputs"]["latent_image"] = ["42", 0]
         g["3"]["inputs"]["denoise"] = a.denoise
+
+    # --- ControlNet (--control): keep the SHAPE of a reference image while the prompt / LoRA / palette
+    # restyle everything else. canny = follow its edges; tile = keep its layout + colors. Uses the SDXL
+    # "union" ControlNet (one model, many modes). Released at --control-end so the last steps are free.
+    if getattr(a, "control", None):
+        srv = server or SERVER
+        if srv not in _CONTROL_UPLOADS:
+            _CONTROL_UPLOADS[srv] = _upload_image(os.path.abspath(os.path.expanduser(a.control)), srv, "--control")
+        g["50"] = {"class_type": "LoadImage", "inputs": {"image": _CONTROL_UPLOADS[srv]}}
+        g["51"] = {"class_type": "ImageScale",
+                   "inputs": {"image": ["50", 0], "upscale_method": "lanczos",
+                              "width": a.gen_w, "height": a.gen_h, "crop": "center"}}
+        hint = ["51", 0]
+        if a.control_mode == "canny":
+            g["52"] = {"class_type": "Canny", "inputs": {"image": ["51", 0], "low_threshold": 0.3, "high_threshold": 0.7}}
+            hint = ["52", 0]
+        g["53"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": a.control_model}}
+        g["54"] = {"class_type": "SetUnionControlNetType",
+                   "inputs": {"control_net": ["53", 0],
+                              "type": "canny/lineart/anime_lineart/mlsd" if a.control_mode == "canny" else "tile"}}
+        g["55"] = {"class_type": "ControlNetApplyAdvanced",
+                   "inputs": {"positive": ["6", 0], "negative": ["7", 0], "control_net": ["54", 0], "image": hint,
+                              "strength": a.control_strength, "start_percent": 0.0, "end_percent": a.control_end}}
+        g["3"]["inputs"]["positive"] = ["55", 0]
+        g["3"]["inputs"]["negative"] = ["55", 1]
 
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
@@ -444,8 +471,10 @@ def _gather_steer_paths(spec, cap):
     return files
 
 
-def _upload_image(path, server):
-    """POST one image to ComfyUI's /upload/image (so LoadImage can reference it). Returns the server-side name."""
+def _upload_image(path, server, what="--steer"):
+    """POST one image to ComfyUI's /upload/image (so LoadImage can reference it). Returns the server-side name.
+    `what` names the flag in error messages. Retries for ~20s, so a server that's briefly restarting doesn't
+    fail the job."""
     import mimetypes, hashlib
     with open(path, "rb") as f:
         content = f.read()
@@ -464,16 +493,20 @@ def _upload_image(path, server):
     ])
     req = urllib.request.Request(f"{server}/upload/image", data=body,
                                  headers={"Content-Type": "multipart/form-data; boundary=" + b})
-    try:
-        resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
-        return resp.get("name", name)
-    except urllib.error.HTTPError as e:
-        sys.exit("--steer upload failed: " + e.read().decode()[:500])
-    except urllib.error.URLError:
-        sys.exit("--steer: couldn't reach " + server + " to upload references.")
+    for attempt in range(6):
+        try:
+            resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
+            return resp.get("name", name)
+        except urllib.error.HTTPError as e:
+            sys.exit(f"{what} upload failed: " + e.read().decode()[:500])
+        except (urllib.error.URLError, ConnectionError, TimeoutError):
+            if attempt < 5:
+                time.sleep(4)
+    sys.exit(f"{what}: couldn't reach {server} to upload the image (tried for ~20s).")
 
 
 _INIT_UPLOADS = {}      # server -> uploaded --init image name
+_CONTROL_UPLOADS = {}   # server -> uploaded --control image name
 
 
 def steer_files(a, server):
@@ -642,6 +675,9 @@ def main():
                    help="EXPERIMENTAL: redraw region outlines with clean pixel-art angles (integer ratios "
                         "1:1, 2:1, 3:1 … like DRAW's angle snap). F = how much wobble gets straightened, "
                         "0 = off, ~1.5 recommended, >2.5 starts bending shapes. needs opencv on the server")
+    p.add_argument("--thin-lines", dest="thin_lines", type=int, default=0, metavar="N",
+                   help="1-px outlines: thin strokes of the darkest color (up to N px thick) to single-pixel "
+                        "lines; thicker dark areas (shadows, doorways) are kept. 0 = off, ~4 recommended")
     p.add_argument("--pixel-size", dest="pixel_size", default=None, metavar="WxH",
                    help="size of one art pixel in output pixels: 1x1, 2x1 (wide, like EGA/CGA low-res), 2x2, 4x1 … "
                         "the art grid = --out / pixel size, and with --snap-pixels the snapper uses that grid "
@@ -696,6 +732,17 @@ def main():
     # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
     p.add_argument("--steer", default=None, metavar="DIR|IMG",
                    help="steer output toward reference image(s) via IPAdapter (a folder, or one image)")
+    p.add_argument("--control", default=None, metavar="IMG",
+                   help="ControlNet: keep the SHAPE of this image while the prompt/LoRA/palette restyle it "
+                        "(photo of a dog -> EGA dog). needs the SDXL union ControlNet on the server")
+    p.add_argument("--control-mode", dest="control_mode", default="canny", choices=["canny", "tile"],
+                   help="canny = follow its edges/outlines (most restyle freedom); tile = keep its layout + colors")
+    p.add_argument("--control-strength", dest="control_strength", type=float, default=0.8, metavar="F",
+                   help="how strictly to follow the control image, 0..2. default 0.8")
+    p.add_argument("--control-end", dest="control_end", type=float, default=0.8, metavar="F",
+                   help="fraction of the steps the control applies for; the rest are free for style. default 0.8")
+    p.add_argument("--control-model", dest="control_model", default="controlnet-union-sdxl-promax.safetensors",
+                   help="ControlNet file in the server's models/controlnet/")
     p.add_argument("--init", default=None, metavar="IMG",
                    help="img2img: start from this image instead of noise (keeps its composition)")
     p.add_argument("--denoise", type=float, default=0.6, metavar="F",
@@ -818,6 +865,10 @@ def main():
             p.error("--pixel-size parts must be 1..32")
     if not 0.0 <= a.steer_start < a.steer_end <= 1.0:
         p.error("--steer-start/--steer-end must satisfy 0 <= start < end <= 1")
+    if a.control and not os.path.isfile(os.path.expanduser(a.control)):
+        p.error(f"--control: no such image: {a.control}")
+    if not (0 < a.control_end <= 1.0 and 0 <= a.control_strength <= 2.0):
+        p.error("--control-end must be in (0, 1] and --control-strength in [0, 2]")
     if a.init:
         if not os.path.isfile(os.path.expanduser(a.init)):
             p.error(f"--init: no such image: {a.init}")
