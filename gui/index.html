@@ -40,6 +40,10 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
 input[type=range] { width: 100%; accent-color: var(--accent); }
 .final { font: 12px var(--mono); color: var(--dim); background: var(--bg); border: 1px dashed var(--line);
   border-radius: 4px; padding: 6px 8px; margin-top: 6px; word-break: break-word; }
+.full { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 6px 8px; margin-top: 6px; word-break: break-word; }
+.full div { margin: 2px 0; } .full b { color: var(--accent); font-weight: 500; }
+.full .neg b { color: var(--bad); } .full .lo b { color: var(--warn); }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .chip { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 2px 9px; cursor: pointer; font-size: 12px; }
 .chip.on { border-color: var(--accent); color: var(--accent); }
@@ -119,9 +123,13 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
       </div>
       <label>Style guides</label>
       <div class="chips" id="styles"></div>
-      <div class="final" id="finalPrompt" title="what gets sent as the prompt"></div>
+      <div class="final" id="finalPrompt" title="your prompt + LoRA tags"></div>
+      <label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="showFull"> Show full prompt</label>
+      <div class="full hidden" id="fullPrompt"></div>
       <details><summary>Negative prompt</summary>
-        <textarea id="negative" placeholder="(pixelmon default)"></textarea></details>
+        <label>Replaces pixelmon's default — keep the defaults and add to them.
+          <a href="#" id="negReset" style="color:var(--accent)">reset to default</a></label>
+        <textarea id="negative"></textarea></details>
     </fieldset>
 
     <fieldset>
@@ -135,6 +143,8 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
         <label><input type="checkbox" id="snap_pixels"> snap pixels</label>
         <label><input type="checkbox" id="transparent"> transparent bg</label>
         <label><input type="checkbox" id="art"> art mode (no pixelation)</label>
+        <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
+          <input type="checkbox" id="no_sprite_suffix"> no sprite suffix</label>
       </div>
     </fieldset>
 
@@ -235,8 +245,8 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "palette", "dither", "dither_amount", "despeckle", "seed", "seedLock",
-  "n", "name", "steps", "cfg", "fast"];
+  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "seed", "seedLock",
+  "n", "name", "steps", "cfg", "fast", "showFull"];
 let activeStyles = new Set();
 
 function readForm() {
@@ -263,6 +273,7 @@ function params(f = readForm()) {
   return {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
     styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
+    no_sprite_suffix: f.no_sprite_suffix,
     palette: f.palette, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
     steps: f.steps, cfg: f.cfg, fast: f.fast,
@@ -270,7 +281,7 @@ function params(f = readForm()) {
 }
 function cliFor(p) {
   const q = s => /^[\w.,:=+\/-]+$/.test(s) ? s : "'" + String(s).replace(/'/g, "'\\''") + "'";
-  const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "rtx", "--no-open"];
+  const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "rtx", "--no-open", "--show-prompt"];
   if (p.art) a.push("--art");
   if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
   if (p.negative) a.push("--negative", q(p.negative));
@@ -282,6 +293,7 @@ function cliFor(p) {
     if (p.despeckle !== "") a.push("--despeckle", p.despeckle);
     if (p.snap_pixels) a.push("--snap-pixels");
     if (p.transparent) a.push("--transparent");
+    if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
   }
   if (p.fast) a.push("--fast");
   if (p.steps) a.push("--steps", p.steps);
@@ -301,7 +313,22 @@ function refresh() {
   const sw = (META && META.palettes[f.palette]) || [];
   $("swatches").innerHTML = sw.slice(0, 64).map(h => `<span style="background:#${h}"></span>`).join("");
   $("seed").placeholder = f.seedLock ? "seed" : "random each run";
+  $("fullPrompt").classList.toggle("hidden", !f.showFull);
+  if (f.showFull) queueFullPrompt();
   store.set("form", f);
+}
+// exact prompts from pixelmon's own final_prompts(), fetched as you type
+const fullHtml = fp => fp && fp.positive ? `<div><b>positive:</b> ${esc(fp.positive)}</div>
+  <div class="neg"><b>negative:</b> ${esc(fp.negative)}</div><div class="lo"><b>lora:</b> ${esc(fp.lora || "")}</div>` : "";
+let fullTimer = null;
+function queueFullPrompt() {
+  clearTimeout(fullTimer);
+  fullTimer = setTimeout(async () => {
+    const p = params();
+    if (!p.prompt) { $("fullPrompt").innerHTML = `<div style="color:var(--dim)">write a prompt…</div>`; return; }
+    try { $("fullPrompt").innerHTML = fullHtml(await api("/api/prompt", p)); }
+    catch (e) { $("fullPrompt").innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; }
+  }, 250);
 }
 function renderStyles() {
   const box = $("styles"); box.innerHTML = "";
@@ -376,6 +403,7 @@ function jobCard(jobs) {
       ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
     </div>
     <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}</div>
+    ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
     ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
 }
 function renderQueue(jobs) {
@@ -426,7 +454,8 @@ function openLb(jobId, file) {
     ["prompt", p.prompt], ["LoRA", `${p.lora || "default"} @ ${p.lora_strength || "1"}`], ["styles", (p.styles || []).join(", ") || "—"],
     ["size", p.out || "default"], ["palette", p.palette], ["dither", p.dither === "none" ? "none" : `${p.dither} @ ${p.dither_amount}`],
     ["seed", o.seed], ["file", `${job.dir}/${o.file}`],
-  ].map(([k, v]) => `<div class="kv">${k}: <b>${esc(v ?? "")}</b></div>`).join("");
+  ].map(([k, v]) => `<div class="kv">${k}: <b>${esc(v ?? "")}</b></div>`).join("")
+    + (job.full_prompt && job.full_prompt.positive ? `<div class="full">${fullHtml(job.full_prompt)}</div>` : "");
   $("lbCmd").textContent = job.command.replace(/ --seed \d+/, "").replace(/ -n \d+/, "") + (o.seed != null ? ` --seed ${o.seed}` : "");
   $("lb").classList.remove("hidden"); setZoom(lbZoom);
 }
@@ -472,9 +501,12 @@ async function init() {
   writeForm(Object.assign({ lora: ordered[0], lora_strength: 0.8, palette: "EGA", dither: "none", dither_amount: 0.5,
     despeckle: 2, outW: 320, outH: 200, n: 1, kind: "scene background", era: "1980s DOS game" }, saved || {}));
   if (!saved) applyPreset();
+  if (!$("negative").value.trim()) { $("negative").value = META.default_negative; refresh(); }
+  $("negReset").onclick = e => { e.preventDefault(); $("negative").value = META.default_negative; refresh(); };
 
   $("form").addEventListener("input", e => { if (e.target.id === "outW" || e.target.id === "outH") syncOutPreset(); refresh(); });
   $("lora").addEventListener("change", () => { applyPreset(); refresh(); });
+  $("showFull").addEventListener("change", () => { lastJobsJSON = ""; poll(); });
   $("outPreset").addEventListener("change", e => {
     if (e.target.value !== "custom") { const [w, h] = e.target.value.split("x"); $("outW").value = w; $("outH").value = h; refresh(); }
   });

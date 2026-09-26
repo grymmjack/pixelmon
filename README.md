@@ -251,11 +251,16 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
-| `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (auto-sizes) | off |
+| `--out N\|WxH` | exact final canvas size (sampling still follows `--size`, which defaults to `--out`); also forces the size with `--snap-pixels` | `--size` |
+| `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (picks its own grid; add `--out` for an exact size) | off |
+| `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
-| `--dither` | Floyd-Steinberg dithering (faked shading) | off |
+| `--dither [NAME]` | dither between palette colors: `bayer2/4/8/16`, `clustered`, `floyd-steinberg`, `jarvis`, `stucki`, `burkes`, `sierra`, `sierra2`, `sierra-lite`, `atkinson` (bare = floyd-steinberg) | off |
+| `--dither-amount F` | dither strength 0..1 | `0.75` |
+| `--show-prompt` | print the exact positive + negative prompts sent to the model (after styles and pixelmon's additions) | off |
+| `--no-sprite-suffix` | don't append `game sprite, simple flat colors, solid background` (automatic when the prompt contains `scene background`) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
 | `--server NAME\|host` | render on a remote ComfyUI (alias from `servers.json`, or `host[:port]`/URL); results fetched back over HTTP — see [Render from another machine](#render-from-another-machine---server) | local |
 | `--seed N` | lock / repeat a result | random |
@@ -414,23 +419,29 @@ USAGE
   pixelmon "a prompt" [options]
 
 EXAMPLES
-  pixelmon "a fierce dragon"                        best quality (the default)
-  pixelmon "a spider" --style geometric             sharp, angular style guide
-  pixelmon "a goblin" -n 8 --palette random         8 variations, random palettes
-  pixelmon "a knight" --transparent --preview       transparent + zoomed preview
-  pixelmon --batch "bat,skeleton,spider" -n 128     128 of each → own folders
-  pixelmon "a bandit" --animate "smoke from cigar"  looping animated GIF
+  pixelmon "a fierce dragon"                   best quality (the default)
+  pixelmon "a fierce dragon" --art             full-res digital art, not pixels
+  pixelmon "a spider" --style geometric        sharp, angular style guide
+  pixelmon "a goblin" -n 8 --palette random    8 variations, random palettes
+  pixelmon "a knight" --transparent --preview  transparent + zoomed preview
+  pixelmon --batch "bat,skeleton,spider" -n 128128 of each → own folders
+  pixelmon "a bandit" --animate "smoke from cigar"looping animated GIF
 
 OPTIONS
   prompt              what to draw (in quotes)
   -n, --number N      how many to make, each a different seed  [1]
   --batch "a,b,c"     round-robin subjects → a folder each (N of each)
   --size N|WxH        square N, or non-square WxH e.g. 32x48  [128]
+  --out N|WxH         exact final canvas size (default: --size); also with --snap-pixels
+  --art               DIGITAL ART (not pixels): full-res illustration, no downscale  [1024]
   --palette NAME      none / random / a name (--list-palettes)  [none]
   --style NAMES       append proven style guide(s) — see --list-styles
   --transparent       cut out background -> transparent PNG
-  --dither            Floyd-Steinberg dithering (faked shading)
+  --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
+                        jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]
+  --dither-amount F   dither strength 0..1  [0.75]
   --snap-pixels       snap to a perfect grid (pixel-snapper) — extra crisp
+  --despeckle N       remove stray color islands of <= N px (0 = off)  [2]
   --fast              LCM mode: ~5x faster, slightly softer
   --seed N            lock / repeat a result (re-run a favorite)  [random]
   --steps N           refinement steps (more = slower)  [25]
@@ -459,6 +470,8 @@ ADVANCED
   --steer DIR         steer toward a folder of reference images (IPAdapter)
   --steer-strength N  how strongly the refs influence the result  [0.7]
   --no-open           don't auto-open the result
+  --show-prompt       print the exact positive/negative prompts sent to the model
+  --no-sprite-suffix  drop 'game sprite … solid background' (auto for 'scene background')
   --output-to DIR     move outputs into DIR (relative to cwd)
   --move-to-dirs      put a run in its own ./<prompt>/ folder
   --create-dirs       create output folders if missing
@@ -476,7 +489,7 @@ ANIMATION  (EXPERIMENTAL — looping portrait gestures → GIF; best for glow/li
   --anim-res N        base/inpaint gen resolution (detail)  [768]
 
 OUTPUT
-  ~/ComfyUI/output/pixelmon/
+  /home/grymmjack/ComfyUI/output/pixelmon/
   true-size _sprite_ PNG  (add --preview for an enlarged _preview_ PNG)
 
   TIP  explore with --fast, then re-run the --seed you liked (without --fast) for the full-quality keeper.

@@ -12,6 +12,7 @@ import argparse
 import ast
 import glob
 import http.server
+import importlib.util
 import json
 import os
 import queue
@@ -22,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import urllib.parse
 import urllib.request
 
@@ -31,6 +33,7 @@ PIXELMON = os.path.join(REPO, "bin", "pixelmon")
 RENDER_SERVER = "rtx"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DONE_LINE = re.compile(r"✅.*?seed=(\d+)\s+->\s+(\S.*)$")
+PROMPT_LINE = re.compile(r"(📝 positive|🚫 negative|🧩 lora):\s*(.*)$")
 
 # ---------------------------------------------------------------------------
 # Metadata: palettes, styles, dither methods, LoRAs, presets
@@ -52,17 +55,17 @@ def load_styles():
         return {}
 
 
-def load_dither_methods():
-    """Read DITHER_METHODS straight out of pixelmon.py so the two never drift."""
+def pixelmon_constant(name, default):
+    """Read a literal constant straight out of pixelmon.py so the two never drift."""
     try:
         tree = ast.parse(open(os.path.join(REPO, "pixelmon.py"), encoding="utf-8").read())
         for node in tree.body:
             if isinstance(node, ast.Assign) and any(
-                    isinstance(t, ast.Name) and t.id == "DITHER_METHODS" for t in node.targets):
+                    isinstance(t, ast.Name) and t.id == name for t in node.targets):
                 return ast.literal_eval(node.value)
     except Exception:
         pass
-    return ["none", "floyd-steinberg"]
+    return default
 
 
 def load_presets():
@@ -71,6 +74,30 @@ def load_presets():
             return {k: v for k, v in json.load(f).items() if not k.startswith("_")}
     except Exception:
         return {}
+
+
+def full_prompt(p):
+    """The exact prompts pixelmon will send for these form params, computed by
+    pixelmon.py's own final_prompts()/resolve_styles() (reloaded each call, so
+    edits to pixelmon.py or styles.json show up without restarting the GUI)."""
+    spec = importlib.util.spec_from_file_location("pixelmon_cli", os.path.join(REPO, "pixelmon.py"))
+    pm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pm)
+    art = bool(p.get("art"))
+    style_add, style_neg = pm.resolve_styles(",".join(p.get("styles") or []))
+    a = types.SimpleNamespace(art=art, no_sprite_suffix=bool(p.get("no_sprite_suffix")),
+                              style_add=style_add, style_neg=style_neg,
+                              negative=str(p.get("negative") or "").strip()
+                              or (pm.ART_NEGATIVE if art else pm.PIXEL_NEGATIVE))
+    pos, neg = pm.final_prompts(a, str(p.get("prompt") or "").strip())
+    lora = str(p.get("lora") or "")
+    if art or lora == "(none)":
+        lora = "none"
+    elif lora:
+        lora = f"{lora} @ {float(p.get('lora_strength') or 1):g}"
+    if p.get("fast"):
+        lora += " + lcm-lora-sdxl.safetensors"
+    return {"positive": pos, "negative": neg, "lora": lora}
 
 
 def server_url():
@@ -130,7 +157,7 @@ def build_argv(p):
     prompt = str(p.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is empty")
-    argv = [PIXELMON, prompt, "--server", RENDER_SERVER, "--no-open"]
+    argv = [PIXELMON, prompt, "--server", RENDER_SERVER, "--no-open", "--show-prompt"]
     art = bool(p.get("art"))
     if art:
         argv.append("--art")
@@ -168,6 +195,8 @@ def build_argv(p):
             argv.append("--snap-pixels")
         if p.get("transparent"):
             argv.append("--transparent")
+        if p.get("no_sprite_suffix"):
+            argv.append("--no-sprite-suffix")
     if p.get("fast"):
         argv.append("--fast")
     for key, flag, typ, lo, hi in (("steps", "--steps", int, 1, 150), ("cfg", "--cfg", float, 0.0, 30.0)):
@@ -201,7 +230,7 @@ class JobQueue:
         argv = build_argv(params)   # validate before queueing
         jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
         job = {"id": jid, "params": params, "argv": argv, "command": shlex.join(["pixelmon"] + argv[1:]),
-               "status": "queued", "log": [], "outputs": [], "group": group, "label": label,
+               "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
                "created": time.time(), "started": None, "finished": None, "dir": jid}
         with self.lock:
             self.jobs[jid] = job
@@ -253,6 +282,10 @@ class JobQueue:
                         continue
                     with self.lock:
                         job["log"].append(line)
+                        pm = PROMPT_LINE.search(line)
+                        if pm:
+                            key = pm.group(1).split()[-1]          # positive / negative / lora
+                            job["full_prompt"][key] = pm.group(2).strip()
                         m = DONE_LINE.search(line)
                         if m:
                             job["outputs"].append({"seed": int(m.group(1)), "file": os.path.basename(m.group(2).strip())})
@@ -327,7 +360,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path == "/api/meta":
             loras, live = load_loras()
             return self._json({"palettes": load_palettes(), "styles": load_styles(),
-                               "dithers": load_dither_methods(), "presets": load_presets(),
+                               "dithers": pixelmon_constant("DITHER_METHODS", ["none", "floyd-steinberg"]),
+                               "default_negative": pixelmon_constant("PIXEL_NEGATIVE", ""),
+                               "presets": load_presets(),
                                "loras": loras, "loras_live": live, "server": RENDER_SERVER,
                                "server_up": server_up()})
         if u.path == "/api/jobs":
@@ -351,6 +386,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             return self._json({"error": "bad json"}, 400)
         try:
+            if u.path == "/api/prompt":
+                return self._json(full_prompt(body))
             if u.path == "/api/render":
                 return self._json({"jobs": [self.jobs.add(body)["id"]]})
             if u.path == "/api/sweep":

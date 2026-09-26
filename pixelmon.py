@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -154,6 +155,8 @@ def print_help():
         opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
+        opt("--show-prompt", "print the exact positive/negative prompts sent to the model"),
+        opt("--no-sprite-suffix", "drop 'game sprite … solid background' (auto for 'scene background')"),
         opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
         opt("--create-dirs", "create output folders if missing"),
@@ -221,6 +224,11 @@ ART_NEGATIVE = ("lowres, blurry, jpeg artifacts, text, watermark, signature, "
                 "deformed, bad anatomy, extra limbs, disfigured, ugly, out of frame")
 
 
+def with_article(subject):
+    """'goblin' -> 'a goblin', but leave 'a goblin' / 'the castle' / 'an ogre' alone."""
+    return subject if re.match(r"(a|an|the)\s", subject.strip(), re.I) else f"a {subject}"
+
+
 def art_positive(subject, style_add):
     """Build the POSITIVE prompt for --art (full-res digital art) mode.
 
@@ -231,7 +239,7 @@ def art_positive(subject, style_add):
     This is the taste-driven knob of art mode — tune the quality boosters below to
     steer the house look (painterly vs. photoreal vs. concept-art, etc.).
     """
-    parts = [f"a {subject}"]
+    parts = [with_article(subject)]
     if style_add:
         parts.append(style_add)
     parts.append("highly detailed digital painting, intricate detail, "
@@ -239,21 +247,48 @@ def art_positive(subject, style_add):
     return ", ".join(parts)
 
 
-def build_graph(a, seed, palette=None, subject=None, server=None):
-    palette = palette or a.palette
-    subject = subject if subject is not None else a.prompt
+def resolve_styles(style):
+    """'dark,outline' -> (joined style prompts, joined style negatives)."""
+    names = [s.strip() for s in (style or "").replace(",", " ").split() if s.strip()]
+    adds, negs = [], []
+    for nm in names:
+        if nm not in STYLES:
+            raise ValueError(f"unknown style {nm!r}. See --list-styles.")
+        adds.append(STYLES[nm].get("prompt", ""))
+        if STYLES[nm].get("negative"):
+            negs.append(STYLES[nm]["negative"])
+    return ", ".join(x for x in adds if x), ", ".join(negs)
+
+
+def is_scene(a, subject):
+    """Scenes skip the sprite suffix: --no-sprite-suffix, or the 'scene background'
+    caption tag the dos-art LoRAs were trained with."""
+    return a.no_sprite_suffix or "scene background" in subject.lower()
+
+
+def final_prompts(a, subject):
+    """The exact (positive, negative) prompt pair sent to the sampler."""
     # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
-    # and --style snippets (a.style_add) do the steering. "game sprite" keeps it
-    # clean. Style negatives (a.style_neg) push away unwanted shapes/looks.
+    # and --style snippets (a.style_add) do the steering. "game sprite ... solid
+    # background" keeps sprites clean, but fights full scenes, so scenes drop it.
+    # Style negatives (a.style_neg) push away unwanted shapes/looks.
     if a.art:
         prompt = art_positive(subject, a.style_add)
     else:
-        parts = [f"pixel, a {subject}"]
+        parts = [f"pixel, {with_article(subject)}"]
         if a.style_add:
             parts.append(a.style_add)
-        parts.append("game sprite, simple flat colors, solid background")
+        parts.append("simple flat colors" if is_scene(a, subject)
+                     else "game sprite, simple flat colors, solid background")
         prompt = ", ".join(parts)
     negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
+    return prompt, negative
+
+
+def build_graph(a, seed, palette=None, subject=None, server=None):
+    palette = palette or a.palette
+    subject = subject if subject is not None else a.prompt
+    prompt, negative = final_prompts(a, subject)
 
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
@@ -675,6 +710,12 @@ def main():
     p.add_argument("--list-palettes", action="store_true", help="list palettes and exit")
     p.add_argument("--list-styles", action="store_true", help="list style guides and exit")
     p.add_argument("--no-open", action="store_true", help="don't auto-open the result image")
+    p.add_argument("--show-prompt", dest="show_prompt", action="store_true",
+                   help="print the exact positive + negative prompts sent to the model "
+                        "(after styles, LoRA tags and pixelmon's own additions)")
+    p.add_argument("--no-sprite-suffix", dest="no_sprite_suffix", action="store_true",
+                   help="don't append 'game sprite, ..., solid background' (automatic when the "
+                        "prompt contains 'scene background')")
     a = p.parse_args()
 
     # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > local default.
@@ -716,18 +757,10 @@ def main():
                   f"(there's no pixelation step to apply them to)")
 
     # Resolve --style guide(s) into prompt/negative additions (used by build_graph).
-    a.style_add, a.style_neg = "", ""
-    if a.style:
-        names = [s.strip() for s in a.style.replace(",", " ").split() if s.strip()]
-        adds, negs = [], []
-        for nm in names:
-            if nm not in STYLES:
-                p.error(f"unknown style {nm!r}. See --list-styles.")
-            adds.append(STYLES[nm].get("prompt", ""))
-            if STYLES[nm].get("negative"):
-                negs.append(STYLES[nm]["negative"])
-        a.style_add = ", ".join(x for x in adds if x)
-        a.style_neg = ", ".join(negs)
+    try:
+        a.style_add, a.style_neg = resolve_styles(a.style)
+    except ValueError as e:
+        p.error(str(e))
 
     # Resolve sampler settings by mode. --fast = LCM (8 steps, low cfg, lcm
     # sampler + sgm_uniform schedule); default = full-quality 25-step euler.
@@ -833,6 +866,12 @@ def main():
     print(f"🎨 {subj_label}  |  {size_label}  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
           f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {count_label}")
+    if a.show_prompt:
+        lora = ("none" if a.no_lora or a.art else f"{a.lora} @ {a.lora_strength:g}") + \
+               (f" + {a.lcm_lora}" if a.fast else "")
+        for subj in subjects:
+            pos, neg = final_prompts(a, subj)
+            print(f"   📝 positive: {pos}\n   🚫 negative: {neg}\n   🧩 lora:     {lora}")
     if total > 1:
         eta = total * per
         tip = "" if a.fast else "  (tip: add --fast for quick variations)"
