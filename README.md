@@ -371,8 +371,35 @@ of ComfyUI's output as each one finishes.
 `--snap-pixels` runs the render through [Hugo-Dz/spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper)
 (bundled, built by `install.sh` — needs the Rust toolchain). It auto-detects the
 true pixel grid and snaps every pixel to it, removing the faint speckle/drift AI
-output has. It auto-sizes (overrides `--size`); pair with `--palette` to then
-lock the snapped result to specific colors.
+output has. The snapper picks its own native resolution; add `--out WxH` to force
+the exact final canvas. Pair with `--palette` to then lock the snapped result to
+specific colors.
+
+---
+
+## GUI (`pixelmon-gui`)
+
+A local web front end for everything above. Renders always go to the `rtx`
+server from `servers.json`.
+
+```bash
+pixelmon-gui            # http://127.0.0.1:8190
+pixelmon-gui --lan      # also reachable from other devices on your LAN
+```
+
+- **Prompt:** LoRA picker (live list from the render server) with strength.
+  dos-art LoRA presets add their trigger + Kind/Genre/Era caption tags for you,
+  and the exact prompt that gets sent is shown under the style-guide chips.
+- **Canvas / palette / dither:** exact `--out` size presets (320×200, 320×168…),
+  palette with swatches, dither method + amount, despeckle, snap, transparent.
+- **Seed & batch:** lock / reroll seeds, `-n` counts, and **sweeps**: the same
+  seed rendered across several values of one setting (LoRA strength, dither,
+  palette, style…), shown side by side.
+- **Queue / gallery:** jobs run one at a time with a live log and the equivalent
+  CLI command; every render is kept in `~/pixelmon-gallery/gui/<job>/` with a
+  `job.json`, and the gallery can reload the settings, re-run the same seed, or reroll.
+
+LoRA presets (trigger tags, default strength and palette) live in `gui/presets.json`.
 
 ---
 
@@ -547,6 +574,8 @@ pixelmon/
 ├── styles.json                --style guide snippets (edit / add your own)
 ├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
+├── bin/pixelmon-gui           launches the web GUI (gui/server.py)
+├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets)
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/
 │   └── pixelart_palette/       the finishing node (smooth→downscale→palette→transparent)

@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pixelmon</title>
+<style>
+:root {
+  --bg: #121216; --panel: #1b1b22; --panel2: #23232c; --line: #33333f;
+  --text: #e6e6ee; --dim: #9a9aab; --accent: #55ffff; --accent2: #ff55ff;
+  --ok: #55ff55; --warn: #ffff55; --bad: #ff5555; --radius: 6px;
+  --mono: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: 420px 1fr; height: 100vh; }
+@media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } }
+
+/* ---- form panel ---- */
+.form { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 90px; }
+.brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.brand h1 { font: 700 20px var(--mono); margin: 0; letter-spacing: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.srv { font-size: 12px; color: var(--dim); }
+.srv b { color: var(--ok); } .srv b.down { color: var(--bad); }
+fieldset { border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; padding: 8px 10px 10px; }
+legend { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
+label { display: block; font-size: 12px; color: var(--dim); margin: 6px 0 3px; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+textarea { resize: vertical; min-height: 64px; }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+.inline { display: flex; align-items: center; gap: 8px; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+.checks label { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: var(--text); font-size: 13px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.final { font: 12px var(--mono); color: var(--dim); background: var(--bg); border: 1px dashed var(--line);
+  border-radius: 4px; padding: 6px 8px; margin-top: 6px; word-break: break-word; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 2px 9px; cursor: pointer; font-size: 12px; }
+.chip.on { border-color: var(--accent); color: var(--accent); }
+.swatches { display: flex; flex-wrap: wrap; gap: 0; margin-top: 5px; min-height: 12px; }
+.swatches span { width: 14px; height: 12px; }
+details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 4px 0; }
+.actions { position: sticky; bottom: -90px; background: var(--panel); padding: 10px 0 0; display: flex; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; flex: 1; }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.err { color: var(--bad); font-size: 12px; min-height: 16px; margin-top: 4px; }
+
+/* ---- results panel ---- */
+.main { display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); }
+.tab { padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
+.tab.on { background: var(--panel); border-color: var(--line); color: var(--text); }
+.pane { flex: 1; overflow-y: auto; padding: 14px; }
+.hidden { display: none !important; }
+.job { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
+.job-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge { font: 11px var(--mono); padding: 1px 7px; border-radius: 10px; border: 1px solid; text-transform: uppercase; }
+.badge.queued { color: var(--dim); } .badge.running { color: var(--warn); } .badge.done { color: var(--ok); }
+.badge.failed, .badge.cancelled { color: var(--bad); }
+.job-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd { font: 12px var(--mono); color: var(--dim); background: var(--bg); border-radius: 4px; padding: 6px 8px; margin-top: 8px; word-break: break-all; }
+.log { font: 11px var(--mono); color: var(--dim); white-space: pre-wrap; max-height: 120px; overflow-y: auto; margin-top: 6px; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.thumb { cursor: pointer; text-align: center; font: 11px var(--mono); color: var(--dim); }
+.thumb img { display: block; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px;
+  border: 1px solid var(--line); max-width: 100%; }
+.thumb:hover img { border-color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.grid .thumb img { width: 100%; height: auto; }
+.cap { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { color: var(--dim); text-align: center; padding: 60px 0; }
+
+/* ---- lightbox ---- */
+.lb { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: grid; grid-template-columns: 1fr 360px; z-index: 10; }
+@media (max-width: 900px) { .lb { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } }
+.lb-view { overflow: auto; display: grid; place-items: center; padding: 20px; }
+.lb-view img { image-rendering: pixelated; }
+.lb-side { background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; }
+.lb-side h3 { margin: 0 0 8px; font-size: 15px; }
+.kv { font-size: 12px; color: var(--dim); margin: 4px 0; word-break: break-word; }
+.kv b { color: var(--text); font-weight: 500; }
+.zooms { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.zooms .btn.on { border-color: var(--accent); color: var(--accent); }
+.lb-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= FORM ================= -->
+  <form class="form" id="form" autocomplete="off" onsubmit="return false">
+    <div class="brand"><h1>PIXELMON</h1><span class="srv" id="srv">render server …</span></div>
+
+    <fieldset>
+      <legend>Prompt</legend>
+      <textarea id="subject" placeholder="a dark castle with bright windows and a drawbridge set on a cliff side at dusk"></textarea>
+      <label>LoRA</label>
+      <div class="row" style="grid-template-columns: 1fr 90px">
+        <select id="lora"></select>
+        <input type="number" id="lora_strength" step="0.05" min="0" max="2" title="LoRA strength">
+      </div>
+      <div id="kindsBox">
+        <div class="row3">
+          <div><label>Kind</label><select id="kind">
+            <option value="">(none)</option><option>scene background</option><option>character portrait</option><option>game sprite</option></select></div>
+          <div><label>Genre</label><select id="genre">
+            <option value="">(none)</option><option>adventure game</option><option>role-playing game</option><option>action game</option>
+            <option>strategy game</option><option>puzzle game</option><option>simulation game</option><option>sports game</option><option>education game</option></select></div>
+          <div><label>Era</label><select id="era">
+            <option value="">(none)</option><option>1980s DOS game</option><option>1990s DOS game</option></select></div>
+        </div>
+      </div>
+      <label>Style guides</label>
+      <div class="chips" id="styles"></div>
+      <div class="final" id="finalPrompt" title="what gets sent as the prompt"></div>
+      <details><summary>Negative prompt</summary>
+        <textarea id="negative" placeholder="(pixelmon default)"></textarea></details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Canvas</legend>
+      <div class="row">
+        <div><label>Output size (exact)</label><select id="outPreset"></select></div>
+        <div><label>Custom W × H</label>
+          <div class="inline"><input type="number" id="outW" min="1" max="1024"><span>×</span><input type="number" id="outH" min="1" max="1024"></div></div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="snap_pixels"> snap pixels</label>
+        <label><input type="checkbox" id="transparent"> transparent bg</label>
+        <label><input type="checkbox" id="art"> art mode (no pixelation)</label>
+      </div>
+    </fieldset>
+
+    <fieldset id="colorBox">
+      <legend>Palette &amp; dither</legend>
+      <select id="palette"></select>
+      <div class="swatches" id="swatches"></div>
+      <div class="row">
+        <div><label>Dither</label><select id="dither"></select></div>
+        <div><label>Amount <span id="amtVal"></span></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="row">
+        <div><label>Despeckle (px, 0 = off)</label><input type="number" id="despeckle" min="0" max="64"></div>
+        <div></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Seed &amp; batch</legend>
+      <div class="row" style="grid-template-columns: 1fr auto auto">
+        <input type="number" id="seed" min="0" placeholder="random each run">
+        <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="seedLock"> lock</label>
+        <button type="button" class="btn small" id="dice" title="new random seed">🎲</button>
+      </div>
+      <div class="row">
+        <div><label>Count (-n)</label><input type="number" id="n" min="1" max="32"></div>
+        <div><label>Name (optional)</label><input type="text" id="name" placeholder="from prompt"></div>
+      </div>
+      <details><summary>Sampler</summary>
+        <div class="row3">
+          <div><label>Steps</label><input type="number" id="steps" min="1" max="150" placeholder="25"></div>
+          <div><label>CFG</label><input type="number" id="cfg" step="0.5" min="0" max="30" placeholder="7"></div>
+          <div><label>&nbsp;</label><label class="inline" style="margin:6px 0;color:var(--text)"><input type="checkbox" id="fast"> fast (LCM)</label></div>
+        </div>
+      </details>
+      <details id="sweepBox"><summary>Sweep (same seed, vary one setting)</summary>
+        <div class="row">
+          <div><label>Setting</label><select id="sweepField">
+            <option value="lora_strength">LoRA strength</option><option value="dither">dither method</option>
+            <option value="dither_amount">dither amount</option><option value="palette">palette</option>
+            <option value="lora">LoRA</option><option value="styles">style guides</option>
+            <option value="steps">steps</option><option value="cfg">CFG</option>
+            <option value="despeckle">despeckle</option><option value="out">output size</option></select></div>
+          <div><label>Values (comma-separated)</label><input type="text" id="sweepValues" placeholder="0.5, 0.7, 0.9"></div>
+        </div>
+        <div class="err" style="color:var(--dim)" id="sweepHint">styles: join several with + e.g. darkest+outline</div>
+        <button type="button" class="btn" id="sweepBtn" style="width:100%;margin-top:4px">Run sweep</button>
+      </details>
+    </fieldset>
+
+    <div class="actions">
+      <button type="button" class="btn primary" id="renderBtn">Render</button>
+      <button type="button" class="btn" id="copyCmd" title="copy the equivalent pixelmon command">Copy CLI</button>
+    </div>
+    <div class="err" id="err"></div>
+  </form>
+
+  <!-- ================= RESULTS ================= -->
+  <div class="main">
+    <div class="tabs">
+      <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
+      <div class="tab" data-tab="gallery">Gallery</div>
+    </div>
+    <div class="pane" id="queuePane"><div class="empty">Nothing rendered yet this session.</div></div>
+    <div class="pane hidden" id="galleryPane"></div>
+  </div>
+</div>
+
+<div class="lb hidden" id="lb">
+  <div class="lb-view" id="lbView"><img id="lbImg" alt=""></div>
+  <div class="lb-side">
+    <h3 id="lbTitle"></h3>
+    <div class="zooms" id="zooms"></div>
+    <div id="lbInfo"></div>
+    <div class="cmd" id="lbCmd"></div>
+    <div class="lb-actions">
+      <button class="btn" id="lbLoad">Load these settings</button>
+      <button class="btn" id="lbSame">Re-run (same seed)</button>
+      <button class="btn" id="lbReroll">Reroll (new seed)</button>
+      <button class="btn" id="lbCopy">Copy CLI command</button>
+      <button class="btn" id="lbClose">Close (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const SIZES = [
+  ["320x200", "320×200 — EGA/VGA screen"], ["320x168", "320×168 — Sierra AGI/SCI play area"],
+  ["320x240", "320×240"], ["640x350", "640×350 — EGA hi-res"], ["640x480", "640×480 — VGA hi-res"],
+  ["256x256", "256×256"], ["128x128", "128×128 — sprite"], ["64x64", "64×64"], ["48x48", "48×48"],
+  ["32x32", "32×32"], ["16x16", "16×16"], ["custom", "custom…"]];
+let META = null, lbItem = null, lbZoom = "fit", lastJobsJSON = "";
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("pmgui." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("pmgui." + k, JSON.stringify(v)); } catch {} },
+};
+
+// ---------------- form state ----------------
+const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
+  "snap_pixels", "transparent", "art", "palette", "dither", "dither_amount", "despeckle", "seed", "seedLock",
+  "n", "name", "steps", "cfg", "fast"];
+let activeStyles = new Set();
+
+function readForm() {
+  const f = {};
+  for (const id of FIELDS) { const el = $(id); f[id] = el.type === "checkbox" ? el.checked : el.value; }
+  f.styles = [...activeStyles];
+  return f;
+}
+function writeForm(f) {
+  for (const id of FIELDS) if (id in f) { const el = $(id); if (el.type === "checkbox") el.checked = !!f[id]; else el.value = f[id]; }
+  activeStyles = new Set(f.styles || []);
+  renderStyles(); syncOutPreset(); refresh();
+}
+function preset() { return (META && META.presets[$("lora").value]) || null; }
+
+function composedPrompt(f) {
+  const p = preset(), parts = [f.subject.trim()];
+  if (p && p.trigger) parts.push(p.trigger);
+  if (p && p.kinds) for (const k of ["kind", "genre", "era"]) if (f[k]) parts.push(f[k]);
+  return parts.filter(Boolean).join(", ");
+}
+function params(f = readForm()) {
+  const out = f.outW && f.outH ? `${f.outW}x${f.outH}` : "";
+  return {
+    prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
+    styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
+    palette: f.palette, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
+    seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
+    steps: f.steps, cfg: f.cfg, fast: f.fast,
+  };
+}
+function cliFor(p) {
+  const q = s => /^[\w.,:=+\/-]+$/.test(s) ? s : "'" + String(s).replace(/'/g, "'\\''") + "'";
+  const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "rtx", "--no-open"];
+  if (p.art) a.push("--art");
+  if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
+  if (p.negative) a.push("--negative", q(p.negative));
+  if (p.styles.length) a.push("--style", p.styles.join(","));
+  if (p.out) a.push("--out", p.out);
+  if (!p.art) {
+    a.push("--palette", q(p.palette));
+    if (p.dither !== "none") a.push("--dither", p.dither, "--dither-amount", p.dither_amount);
+    if (p.despeckle !== "") a.push("--despeckle", p.despeckle);
+    if (p.snap_pixels) a.push("--snap-pixels");
+    if (p.transparent) a.push("--transparent");
+  }
+  if (p.fast) a.push("--fast");
+  if (p.steps) a.push("--steps", p.steps);
+  if (p.cfg) a.push("--cfg", p.cfg);
+  if (+p.seed >= 0) a.push("--seed", p.seed);
+  if (+p.n > 1) a.push("-n", p.n);
+  if (p.name) a.push("--name", q(p.name));
+  return a.join(" ");
+}
+function refresh() {
+  const f = readForm(), p = preset();
+  $("kindsBox").classList.toggle("hidden", !(p && p.kinds));
+  $("colorBox").style.opacity = f.art ? .4 : 1;
+  $("finalPrompt").textContent = composedPrompt(f) || "…";
+  $("amtVal").textContent = (+f.dither_amount).toFixed(2);
+  $("dither_amount").disabled = f.dither === "none";
+  const sw = (META && META.palettes[f.palette]) || [];
+  $("swatches").innerHTML = sw.slice(0, 64).map(h => `<span style="background:#${h}"></span>`).join("");
+  $("seed").placeholder = f.seedLock ? "seed" : "random each run";
+  store.set("form", f);
+}
+function renderStyles() {
+  const box = $("styles"); box.innerHTML = "";
+  for (const [name, s] of Object.entries(META.styles)) {
+    const c = document.createElement("span");
+    c.className = "chip" + (activeStyles.has(name) ? " on" : ""); c.textContent = name; c.title = s.prompt || "";
+    c.onclick = () => { activeStyles.has(name) ? activeStyles.delete(name) : activeStyles.add(name); renderStyles(); refresh(); };
+    box.appendChild(c);
+  }
+}
+function syncOutPreset() {
+  const v = `${$("outW").value}x${$("outH").value}`;
+  $("outPreset").value = SIZES.some(s => s[0] === v) ? v : "custom";
+}
+function applyPreset() {
+  const p = preset(); if (!p) return;
+  if (p.strength != null) $("lora_strength").value = p.strength;
+  if (p.palette && META.palettes[p.palette] || p.palette === "none") $("palette").value = p.palette;
+  if (p.era) $("era").value = p.era;
+}
+
+// ---------------- API ----------------
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function showErr(e) { $("err").textContent = e ? (e.message || e) : ""; }
+
+async function render(p) {
+  showErr();
+  if (!p.prompt.trim()) return showErr("Write a prompt first.");
+  try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
+}
+async function sweep() {
+  showErr();
+  const vals = $("sweepValues").value.split(",").map(s => s.trim()).filter(Boolean);
+  try {
+    const r = await api("/api/sweep", { params: { ...params(), form: readForm() }, field: $("sweepField").value, values: vals });
+    $("seed").value = r.seed; $("seedLock").checked = true; refresh(); switchTab("queue"); poll();
+  } catch (e) { showErr(e); }
+}
+
+// ---------------- queue & gallery ----------------
+const fileUrl = (job, o) => `/files/${encodeURIComponent(job.dir)}/${encodeURIComponent(o.file)}`;
+function thumbHtml(job, o, scale, caption) {
+  return `<div class="thumb" data-job="${job.id}" data-file="${o.file}">
+    <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
+    <div class="cap">${caption}</div></div>`;
+}
+// queue thumbnails: whole-number upscale to ~180px tall so small sprites stay crisp and readable
+function fitThumb(img) {
+  if (img.closest(".grid")) return;
+  img.style.width = img.naturalWidth * Math.max(1, Math.floor(180 / img.naturalHeight)) + "px";
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let JOBS = {}, GALLERY = [];
+
+function jobCard(jobs) {
+  const j = jobs[0], group = jobs.length > 1;
+  const status = group ? (jobs.some(x => x.status === "running") ? "running" : jobs.some(x => x.status === "queued") ? "queued" :
+    jobs.every(x => x.status === "done") ? "done" : "failed") : j.status;
+  const title = esc(j.params.prompt);
+  const canCancel = jobs.some(x => x.status === "queued" || x.status === "running");
+  const thumbs = jobs.flatMap(x => x.outputs.map(o => thumbHtml(x, o, 0, group ? esc(x.label) : `seed ${o.seed ?? "?"}`))).join("");
+  const pending = jobs.filter(x => x.status === "queued" || x.status === "running").map(x => group ? `<div class="thumb"><div class="cap">${esc(x.label)} — ${x.status}…</div></div>` : "").join("");
+  const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
+  return `<div class="job"><div class="job-head">
+      <span class="badge ${status}">${group ? "sweep · " : ""}${status}</span>
+      <span class="job-title" title="${title}">${title}</span>
+      ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
+    </div>
+    <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}</div>
+    ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
+}
+function renderQueue(jobs) {
+  JOBS = Object.fromEntries(jobs.map(j => [j.id, j]));
+  const active = jobs.filter(j => j.status === "queued" || j.status === "running").length;
+  $("qcount").textContent = active ? `(${active})` : "";
+  if (!jobs.length) return;
+  const groups = [], seen = {};
+  for (const j of [...jobs].reverse()) {
+    if (j.group) { if (!seen[j.group]) { seen[j.group] = []; groups.push(seen[j.group]); } seen[j.group].push(j); }
+    else groups.push([j]);
+  }
+  for (const g of groups) g.sort((a, b) => a.created - b.created);
+  $("queuePane").innerHTML = groups.map(jobCard).join("");
+}
+async function loadGallery() {
+  try { GALLERY = (await api("/api/gallery")).items; } catch { return; }
+  for (const j of GALLERY) JOBS[j.id] = JOBS[j.id] || j;
+  const cells = GALLERY.flatMap(j => j.outputs.map(o => thumbHtml(j, o, 0,
+    `${esc((j.params.lora || "").replace(".safetensors", ""))} · s${o.seed ?? "?"}`)));
+  $("galleryPane").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
+}
+let pollTimer = null;
+async function poll() {
+  clearTimeout(pollTimer);
+  let busy = false;
+  try {
+    const { jobs } = await api("/api/jobs");
+    const s = JSON.stringify(jobs);
+    if (s !== lastJobsJSON) {
+      const wasBusy = lastJobsJSON.includes('"running"') || lastJobsJSON.includes('"queued"');
+      lastJobsJSON = s; renderQueue(jobs);
+      busy = jobs.some(j => j.status === "queued" || j.status === "running");
+      if (wasBusy && !busy) loadGallery();
+    } else busy = jobs.some(j => j.status === "queued" || j.status === "running");
+  } catch {}
+  pollTimer = setTimeout(poll, busy ? 1200 : 5000);
+}
+
+// ---------------- lightbox ----------------
+function openLb(jobId, file) {
+  const job = JOBS[jobId] || GALLERY.find(j => j.id === jobId); if (!job) return;
+  const o = job.outputs.find(x => x.file === file); lbItem = { job, o };
+  $("lbImg").src = fileUrl(job, o);
+  $("lbTitle").textContent = job.label || `seed ${o.seed ?? "?"}`;
+  const p = job.params;
+  $("lbInfo").innerHTML = [
+    ["prompt", p.prompt], ["LoRA", `${p.lora || "default"} @ ${p.lora_strength || "1"}`], ["styles", (p.styles || []).join(", ") || "—"],
+    ["size", p.out || "default"], ["palette", p.palette], ["dither", p.dither === "none" ? "none" : `${p.dither} @ ${p.dither_amount}`],
+    ["seed", o.seed], ["file", `${job.dir}/${o.file}`],
+  ].map(([k, v]) => `<div class="kv">${k}: <b>${esc(v ?? "")}</b></div>`).join("");
+  $("lbCmd").textContent = job.command.replace(/ --seed \d+/, "").replace(/ -n \d+/, "") + (o.seed != null ? ` --seed ${o.seed}` : "");
+  $("lb").classList.remove("hidden"); setZoom(lbZoom);
+}
+function setZoom(z) {
+  lbZoom = z; const img = $("lbImg");
+  const apply = () => {
+    // "fit" = the largest whole-number zoom that fits, so pixels stay square and even
+    const k = z === "fit" ? Math.max(1, Math.floor(Math.min(($("lbView").clientWidth - 40) / img.naturalWidth,
+                                                          ($("lbView").clientHeight - 40) / img.naturalHeight))) : z;
+    img.style.width = img.naturalWidth * k + "px";
+  };
+  img.complete ? apply() : (img.onload = apply);
+  $("zooms").innerHTML = ["fit", 1, 2, 3, 4, 6].map(v => `<button class="btn small ${v == z ? "on" : ""}" data-zoom="${v}">${v === "fit" ? "fit (int)" : v + "×"}</button>`).join("");
+}
+function closeLb() { $("lb").classList.add("hidden"); lbItem = null; }
+function loadJobSettings(job, seed) {
+  const f = job.params.form || {};
+  if (job.params.form) writeForm({ ...f, seed: seed ?? f.seed, seedLock: seed != null });
+  else showErr("This render has no saved form state (made outside the GUI).");
+}
+
+// ---------------- tabs & wiring ----------------
+function switchTab(t) {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
+  $("queuePane").classList.toggle("hidden", t !== "queue"); $("galleryPane").classList.toggle("hidden", t !== "gallery");
+  if (t === "gallery") loadGallery();
+  store.set("tab", t);
+}
+async function init() {
+  META = await api("/api/meta");
+  $("srv").innerHTML = `renders on <b class="${META.server_up ? "" : "down"}">${META.server}</b>${META.server_up ? "" : " (unreachable)"}`;
+  const loras = [...new Set([...META.loras, ...Object.keys(META.presets).filter(k => !META.loras_live)])];
+  const ordered = [...Object.keys(META.presets).filter(k => loras.includes(k)), ...loras.filter(k => !META.presets[k])];
+  $("lora").innerHTML = ordered.map(k => `<option value="${esc(k)}">${esc(META.presets[k] ? META.presets[k].label : k.replace(".safetensors", ""))}</option>`).join("")
+    + `<option value="(none)">(no LoRA — base SDXL)</option>`;
+  $("palette").innerHTML = `<option value="none">none — keep model colors</option><option value="random">random</option>`
+    + Object.entries(META.palettes).map(([k, v]) => `<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join("");
+  $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
+  $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  renderStyles();
+
+  const saved = store.get("form", null);
+  writeForm(Object.assign({ lora: ordered[0], lora_strength: 0.8, palette: "EGA", dither: "none", dither_amount: 0.5,
+    despeckle: 2, outW: 320, outH: 200, n: 1, kind: "scene background", era: "1980s DOS game" }, saved || {}));
+  if (!saved) applyPreset();
+
+  $("form").addEventListener("input", e => { if (e.target.id === "outW" || e.target.id === "outH") syncOutPreset(); refresh(); });
+  $("lora").addEventListener("change", () => { applyPreset(); refresh(); });
+  $("outPreset").addEventListener("change", e => {
+    if (e.target.value !== "custom") { const [w, h] = e.target.value.split("x"); $("outW").value = w; $("outH").value = h; refresh(); }
+  });
+  $("dice").onclick = () => { $("seed").value = Math.floor(Math.random() * 2 ** 31); $("seedLock").checked = true; refresh(); };
+  $("renderBtn").onclick = () => render({ ...params(), form: readForm() });
+  $("sweepBtn").onclick = sweep;
+  $("copyCmd").onclick = () => navigator.clipboard && navigator.clipboard.writeText(cliFor(params()));
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+  document.addEventListener("click", e => {
+    const th = e.target.closest(".thumb[data-file]"); if (th) return openLb(th.dataset.job, th.dataset.file);
+    const c = e.target.closest("[data-cancel]"); if (c) { c.dataset.cancel.split(",").forEach(id => api("/api/cancel/" + id, {})); poll(); }
+    const z = e.target.closest("[data-zoom]"); if (z) setZoom(z.dataset.zoom === "fit" ? "fit" : +z.dataset.zoom);
+  });
+  $("lbClose").onclick = closeLb;
+  $("lb").addEventListener("click", e => { if (e.target.id === "lbView") closeLb(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeLb(); });
+  $("lbLoad").onclick = () => { loadJobSettings(lbItem.job, lbItem.o.seed); closeLb(); };
+  $("lbSame").onclick = () => { render({ ...lbItem.job.params, seed: lbItem.o.seed ?? -1, n: 1 }); closeLb(); };
+  $("lbReroll").onclick = () => { render({ ...lbItem.job.params, seed: -1 }); closeLb(); };
+  $("lbCopy").onclick = () => navigator.clipboard && navigator.clipboard.writeText($("lbCmd").textContent);
+
+  switchTab(store.get("tab", "queue"));
+  poll(); loadGallery();
+}
+init().catch(e => showErr("Couldn't load: " + e.message));
+</script>
+</body>
+</html>

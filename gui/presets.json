@@ -1,0 +1,33 @@
+{
+  "_comment": "LoRA presets for pixelmon-gui. Keyed by LoRA filename. 'trigger' is inserted after your subject; 'kinds' enables the Kind/Genre/Era caption tags the dos-art LoRAs were trained on. LoRAs on the server that aren't listed here still show up, with no trigger.",
+  "ega-art-v2.safetensors": {
+    "label": "EGA art v2 (dos-art, 16 colors)",
+    "trigger": "ega_art, EGA 16-color pixel art",
+    "kinds": true,
+    "strength": 0.8,
+    "palette": "EGA",
+    "era": "1980s DOS game"
+  },
+  "ega-art.safetensors": {
+    "label": "EGA art v1 (tags-only captions — keep strength low)",
+    "trigger": "ega_art, EGA 16-color pixel art",
+    "kinds": true,
+    "strength": 0.5,
+    "palette": "EGA",
+    "era": "1980s DOS game"
+  },
+  "dosart-vga.safetensors": {
+    "label": "DOS VGA art (dos-art, 256 colors)",
+    "trigger": "dosart_vga, 256-color VGA pixel art",
+    "kinds": true,
+    "strength": 0.8,
+    "palette": "none",
+    "era": "1990s DOS game"
+  },
+  "pixel-art-xl.safetensors": {
+    "label": "Pixel Art XL (pixelmon default)",
+    "trigger": "",
+    "kinds": false,
+    "strength": 1.0
+  }
+}

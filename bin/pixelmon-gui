@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# pixelmon-gui — web front end for pixelmon. Renders always go to the 'rtx' server.
+#   pixelmon-gui            -> http://127.0.0.1:8190
+#   pixelmon-gui --lan      -> reachable from other devices on the LAN
+set -euo pipefail
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec python3 "$REPO/gui/server.py" "$@"

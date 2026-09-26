@@ -92,6 +92,7 @@ link "$REPO/custom_nodes/pixelart_palette" "$COMFY/custom_nodes/pixelart_palette
 IPADIR="$COMFY/custom_nodes/ComfyUI_IPAdapter_plus"
 [ -d "$IPADIR/.git" ] || git clone --depth 1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git "$IPADIR" || true
 link "$REPO/bin/pixelmon"                  "$HOME/.local/bin/pixelmon"
+link "$REPO/bin/pixelmon-gui"              "$HOME/.local/bin/pixelmon-gui"
 link "$REPO/launch-comfyui.sh"             "$HOME/launch-comfyui.sh"
 # (animate.py lives next to pixelmon.py in this repo and is imported by path —
 #  no symlink needed; the realpath of the linked pixelmon.py points back here.)
