@@ -357,12 +357,10 @@ class PixelArtPalette:
         else:
             small = flatten_shrink(pil, min(downscale_to, pixel_grid), _RESAMPLE[downscale_filter])
 
-        # Force exact W x H (e.g. 32x48) — the grid reduce above preserves aspect
-        # and lands within a pixel, and the snapper picks its own res; this
-        # nails the precise canvas size either way.
-        if out_width > 0 and out_height > 0 and small.size != (out_width, out_height):
-            small = small.resize((out_width, out_height), Image.NEAREST)
-
+        # Palette, dither, despeckle and cutout all run at the art's NATIVE pixel
+        # grid (the snapper's res, or the grid-reduced size), so dither patterns
+        # and speckle islands are measured in real art pixels. The exact output
+        # canvas is applied last.
         if palette == "none":
             pixels = small.convert("RGB")          # keep the model's own colors
         elif dithering != "none":
@@ -375,6 +373,12 @@ class PixelArtPalette:
 
         if transparent_bg:
             pixels = _make_transparent(pixels, bg_tolerance)
+
+        # Force exact W x H (e.g. 320x200) — the grid reduce preserves aspect and
+        # lands within a pixel, and the snapper picks its own res; nearest keeps
+        # every art pixel (and its dither) a solid block.
+        if out_width > 0 and out_height > 0 and pixels.size != (out_width, out_height):
+            pixels = pixels.resize((out_width, out_height), Image.NEAREST)
 
         pw, ph = pixels.size
         preview = pixels.resize((pw * view_scale, ph * view_scale), Image.NEAREST)

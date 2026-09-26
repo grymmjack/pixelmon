@@ -231,6 +231,7 @@ class JobQueue:
         jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
         job = {"id": jid, "params": params, "argv": argv, "command": shlex.join(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
+               "total": int(params.get("n") or 1),
                "created": time.time(), "started": None, "finished": None, "dir": jid}
         with self.lock:
             self.jobs[jid] = job
@@ -275,7 +276,8 @@ class JobQueue:
             argv = job["argv"] + ["--output-to", d]
             try:
                 self.proc = subprocess.Popen(argv, cwd=d, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                             text=True, bufsize=1, env=dict(os.environ, NO_COLOR="1"))
+                                             text=True, bufsize=1,
+                                             env=dict(os.environ, NO_COLOR="1", PYTHONUNBUFFERED="1"))
                 for line in self.proc.stdout:
                     line = ANSI.sub("", line.rstrip())
                     if not line.strip():

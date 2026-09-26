@@ -570,6 +570,9 @@ def run_farm(a, work):
 
 
 def main():
+    # Flush each line even when piped (GUI, tee, logs), so progress and every
+    # finished image show up as they happen instead of all at exit.
+    sys.stdout.reconfigure(line_buffering=True)
     # add_help=False so we can render our own friendly, colorized help instead
     # of argparse's plain default (shown via print_help on -h or no args).
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)

@@ -79,6 +79,12 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .thumb:hover img { border-color: var(--accent); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .grid .thumb img { width: 100%; height: auto; }
+.pbar { display: flex; align-items: center; gap: 10px; margin-top: 8px; font: 12px var(--mono); color: var(--dim); }
+.pbar .track { flex: 1; height: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.pbar .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+.pending-tile { display: grid; place-items: center; border: 1px dashed var(--line); color: var(--dim);
+  font: 11px var(--mono); background: var(--panel2); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
 .cap { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { color: var(--dim); text-align: center; padding: 60px 0; }
 
@@ -380,6 +386,12 @@ function thumbHtml(job, o, scale, caption) {
     <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
     <div class="cap">${caption}</div></div>`;
 }
+// placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
+function tileSize(job) {
+  const m = /^(\d+)x(\d+)$/.exec(job.params.out || "") || [0, 128, 128];
+  const w = +m[1], h = +m[2], k = Math.max(1, Math.floor(180 / h));
+  return [w * k, h * k];
+}
 // queue thumbnails: whole-number upscale to ~180px tall so small sprites stay crisp and readable
 function fitThumb(img) {
   if (img.closest(".grid")) return;
@@ -395,13 +407,25 @@ function jobCard(jobs) {
   const title = esc(j.params.prompt);
   const canCancel = jobs.some(x => x.status === "queued" || x.status === "running");
   const thumbs = jobs.flatMap(x => x.outputs.map(o => thumbHtml(x, o, 0, group ? esc(x.label) : `seed ${o.seed ?? "?"}`))).join("");
-  const pending = jobs.filter(x => x.status === "queued" || x.status === "running").map(x => group ? `<div class="thumb"><div class="cap">${esc(x.label)} — ${x.status}…</div></div>` : "").join("");
+  // placeholder tiles for images still to come, sized like the finished ones
+  const [tw, th] = tileSize(j);
+  const tile = cap => `<div class="thumb"><div class="pending-tile" style="width:${tw}px;height:${th}px">${cap}</div><div class="cap">&nbsp;</div></div>`;
+  const pending = group
+    ? jobs.filter(x => x.status === "queued" || x.status === "running").map(x => tile(`${esc(x.label)}<br>${x.status}…`)).join("")
+    : (j.status === "queued" || j.status === "running")
+      ? Array.from({ length: Math.max(0, (j.total || 1) - j.outputs.length) }, (_, k) =>
+          tile(k === 0 && j.status === "running" ? "rendering…" : "queued")).join("") : "";
+  const done = jobs.reduce((n, x) => n + x.outputs.length, 0), want = group ? jobs.length : (j.total || 1);
+  const active = status === "running" || status === "queued";
+  const progress = active ? ` · ${done}/${want}` : "";
+  const bar = active && want > 1 ? `<div class="pbar"><div class="track"><div class="fill" style="width:${100 * done / want}%"></div></div>
+    <span>${done} done · ${want - done} remaining</span></div>` : "";
   const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
   return `<div class="job"><div class="job-head">
-      <span class="badge ${status}">${group ? "sweep · " : ""}${status}</span>
+      <span class="badge ${status}">${group ? "sweep · " : ""}${status}${progress}</span>
       <span class="job-title" title="${title}">${title}</span>
       ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
-    </div>
+    </div>${bar}
     <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}</div>
     ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
     ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
