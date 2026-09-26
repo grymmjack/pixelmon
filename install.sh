@@ -80,6 +80,7 @@ case "$GPU" in
         pip install torch torchvision torchaudio ;;
 esac
 pip install -r "$COMFY/requirements.txt"
+pip install opencv-python-headless        # --pixel-angles (pixel-art angle snapping) in the palette node
 
 # 3. link our files into place (this repo stays the source of truth)
 link() { ln -sfn "$1" "$2"; echo "   linked $2 -> $1"; }

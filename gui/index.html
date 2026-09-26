@@ -15,8 +15,35 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.4 system-ui, sans-serif; }
 button, input, select, textarea { font: inherit; color: inherit; }
-.app { display: grid; grid-template-columns: 420px 1fr; height: 100vh; }
-@media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } }
+button { text-transform: uppercase; letter-spacing: .04em; }
+.app { display: grid; grid-template-columns: 420px 1fr; height: calc(100vh - 30px); }
+.app.cork-open { grid-template-columns: 420px 1fr 300px; }
+@media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: 1fr; height: auto; } }
+
+/* ---- corkboard ---- */
+.cork { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.cork-head { display: flex; gap: 6px; align-items: center; padding: 10px 10px 6px; }
+.cork-head b { white-space: nowrap; } .cork-head select { flex: 1; min-width: 0; }
+.cork-actions { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
+.cork-body { flex: 1; overflow-y: auto; padding: 10px; }
+.cork-body.over { outline: 2px dashed var(--accent); outline-offset: -6px; background: rgba(85,255,255,.04); }
+.cork-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.cork-item { position: relative; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #000; cursor: pointer; }
+.cork-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
+.cork-item .x { position: absolute; top: 3px; right: 3px; border: 1px solid var(--line); background: rgba(0,0,0,.7);
+  color: var(--text); border-radius: 4px; font-size: 11px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0; }
+.cork-item:hover .x { opacity: 1; } .cork-item:hover { border-color: var(--accent); }
+.cork-hint { color: var(--dim); font-size: 12px; text-align: center; padding: 24px 8px; border: 2px dashed var(--line); border-radius: var(--radius); }
+
+/* ---- status bar ---- */
+.statusbar { position: fixed; left: 0; right: 0; bottom: 0; height: 30px; display: flex; align-items: center; gap: 14px;
+  padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; color: var(--dim); z-index: 5;
+  white-space: nowrap; overflow: hidden; }
+.statusbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--text); margin: 0; font-size: 12px; }
+.statusbar .sep { color: var(--line); }
+.statusbar b { color: var(--text); font-weight: 500; }
+.statusbar #sbStatus { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.statusbar .busy { color: var(--warn); } .statusbar .err { color: var(--bad); }
 
 /* ---- form panel ---- */
 .form { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 90px; }
@@ -25,7 +52,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .srv { font-size: 12px; color: var(--dim); }
 .srv b { color: var(--ok); } .srv b.down { color: var(--bad); }
-fieldset { border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; padding: 8px 10px 10px; }
+fieldset { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; padding: 8px 10px 10px; }
 legend { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
 label { display: block; font-size: 12px; color: var(--dim); margin: 6px 0 3px; }
 input[type=text], input[type=number], select, textarea {
@@ -40,6 +67,13 @@ input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
 input[type=range] { width: 100%; accent-color: var(--accent); }
 .final { font: 12px var(--mono); color: var(--dim); background: var(--bg); border: 1px dashed var(--line);
   border-radius: 4px; padding: 6px 8px; margin-top: 6px; word-break: break-word; }
+.warns { margin-top: 6px; border: 1px solid var(--warn); border-radius: 4px; padding: 5px 8px; font-size: 12px;
+  color: var(--warn); background: rgba(255,255,85,.05); }
+.warns > div { margin: 4px 0; }
+.warns .fx { display: inline-block; margin: 2px 4px 0 0; padding: 1px 7px; font-size: 11px; border-radius: 10px;
+  border: 1px solid var(--warn); background: transparent; color: var(--warn); cursor: pointer; }
+.warns .fx:hover { background: var(--warn); color: #000; }
+.warns .fx.all { border-color: var(--ok); color: var(--ok); } .warns .fx.all:hover { background: var(--ok); color: #000; }
 .full { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
   padding: 6px 8px; margin-top: 6px; word-break: break-word; }
 .full div { margin: 2px 0; } .full b { color: var(--accent); font-weight: 500; }
@@ -50,7 +84,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .swatches { display: flex; flex-wrap: wrap; gap: 0; margin-top: 5px; min-height: 12px; }
 .swatches span { width: 14px; height: 12px; }
 details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 4px 0; }
-.actions { position: sticky; bottom: -90px; background: var(--panel); padding: 10px 0 0; display: flex; gap: 8px; }
+.actions { position: sticky; bottom: -90px; z-index: 2; background: var(--panel); padding: 10px 0 0; display: flex; gap: 8px; }
 .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; flex: 1; }
@@ -71,6 +105,8 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .badge.failed, .badge.cancelled { color: var(--bad); }
 .job-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmd { font: 12px var(--mono); color: var(--dim); background: var(--bg); border-radius: 4px; padding: 6px 8px; margin-top: 8px; word-break: break-all; }
+.cmd { position: relative; padding-right: 64px; }
+.cmd .copy { position: absolute; top: 4px; right: 4px; font: 11px system-ui, sans-serif; }
 .log { font: 11px var(--mono); color: var(--dim); white-space: pre-wrap; max-height: 120px; overflow-y: auto; margin-top: 6px; }
 .thumbs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .thumb { cursor: pointer; text-align: center; font: 11px var(--mono); color: var(--dim); }
@@ -80,19 +116,148 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .grid .thumb img { width: 100%; height: auto; }
 .pbar { display: flex; align-items: center; gap: 10px; margin-top: 8px; font: 12px var(--mono); color: var(--dim); }
-.pbar .track { flex: 1; height: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-.pbar .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+.pbar .track { position: relative; flex: 1; height: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.pbar .fill { position: absolute; left: 0; top: 0; bottom: 0; min-width: 6px;   /* the "tick": visible from 0 done */
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+.pbar .cur { position: absolute; top: 0; bottom: 0; transition: left .4s, width .4s;    /* the image rendering right now */
+  background: repeating-linear-gradient(45deg, rgba(255,85,255,.55) 0 6px, rgba(85,255,255,.35) 6px 12px);
+  background-size: 17px 100%; animation: pbar-crawl .8s linear infinite, pulse 1.6s ease-in-out infinite; }
+@keyframes pbar-crawl { to { background-position: 17px 0; } }
 .pending-tile { display: grid; place-items: center; border: 1px dashed var(--line); color: var(--dim);
   font: 11px var(--mono); background: var(--panel2); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
 .cap { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { color: var(--dim); text-align: center; padding: 60px 0; }
 
+/* ---- style samples ---- */
+.chip img.si { width: 18px; height: 18px; object-fit: cover; image-rendering: pixelated; vertical-align: middle;
+  margin: -3px 5px -2px -5px; border-radius: 3px; }
+#styleTip { position: fixed; z-index: 20; width: 280px; background: var(--panel); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 8px; pointer-events: none; box-shadow: 0 6px 24px rgba(0,0,0,.6); }
+#styleTip img { width: 100%; image-rendering: pixelated; display: block; margin-bottom: 6px; }
+#styleTip .p { font: 11px var(--mono); color: var(--dim); }
+
+/* ---- batch ---- */
+.btable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.btable th { text-align: left; color: var(--dim); font-weight: 500; border-bottom: 1px solid var(--line); padding: 5px 6px; position: sticky; top: -14px; background: var(--bg); }
+.btable td { border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: middle; }
+.btable td.pth { font-family: var(--mono); white-space: nowrap; }
+.btable td.pr { color: var(--dim); }
+.btable td img { height: 40px; image-rendering: pixelated; cursor: pointer; }
+.btable tr.bad td { color: var(--bad); } .btable tr.skip td { opacity: .45; }
+.grow { flex: 1; min-width: 200px; }
+
+/* ---- palette readout ---- */
+.pal { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 10.5px var(--mono); color: var(--dim);
+  min-height: 16px; justify-content: center; flex-wrap: wrap; }
+.pal .sw { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--line); line-height: 0; }
+.pal .sw i { width: 7px; height: 9px; display: inline-block; }
+.pal.big .sw i { width: 12px; height: 12px; }
+.pal .gpl { font: 600 9.5px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px;
+  color: var(--accent); text-decoration: none; text-transform: uppercase; }
+.pal .gpl:hover { border-color: var(--accent); }
+
+/* ---- grid overlay (viewing aid) ---- */
+.gstage { position: relative; display: inline-block; line-height: 0; }
+.gstage canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+.gridrow { display: flex; gap: 6px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--dim); }
+.gridrow select { width: auto; padding: 3px 6px; } .gridrow input { width: 60px; padding: 3px 6px; }
+
+/* ---- hover peek ---- */
+#peek { position: fixed; z-index: 25; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.7); }
+#peek img { display: block; image-rendering: pixelated;
+  background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px; }
+#peek .pk-bar { display: flex; align-items: center; gap: 4px; margin-top: 6px; font: 11px var(--mono); color: var(--dim); }
+#peek .pk-bar .btn.on { border-color: var(--accent); color: var(--accent); }
+#peek .pk-cap { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#peek { max-width: calc(100vw - 16px); }
+#peek details { margin-top: 6px; width: 0; min-width: 100%; }   /* wraps to the image's width instead of widening the peek */
+#peek summary { cursor: pointer; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+#peek .pk-form { font: 11.5px var(--mono); color: var(--dim); margin-top: 5px; max-height: 190px; overflow-y: auto; word-break: break-word; }
+#peek .pk-form b { color: var(--text); font-weight: 500; }
+#peek .pk-cmd { position: relative; background: var(--bg); border-radius: 4px; padding: 6px 60px 6px 8px; margin-top: 5px; color: var(--text); }
+#peek .pk-cmd .copy { position: absolute; top: 4px; right: 4px; }
+.peeking img, img.peeking { outline: 2px solid var(--accent2); outline-offset: 1px; }
+
+/* ---- evolve "ez mode" pill ---- */
+.pill { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: 4px 0 2px; }
+.pill button { flex: 1 1 0; min-width: 0; border: 0; border-right: 1px solid var(--line); background: var(--panel2);
+  padding: 5px 4px; font-size: 11px; line-height: 1.2; cursor: pointer; white-space: normal; }
+.pill button:last-child { border-right: 0; }
+.pill button:hover { background: var(--line); }
+.pill .dif { color: var(--accent2); } .pill .sim { color: var(--accent); }
+.pill .big { font-weight: 600; }
+.brandbar { display: flex; gap: 6px; margin: -4px 0 10px; }
+#history { flex: 1; min-width: 0; font-size: 12px; padding: 4px 6px; }
+
+/* ---- help: live hints + ⓘ tooltips ---- */
+.hint { font-size: 11.5px; color: var(--dim); margin: 1px 0 8px; min-height: 15px; }
+.hint b { color: var(--accent2); font-weight: 500; }
+.help { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--dim);
+  color: var(--dim); font: 600 10px/1 system-ui, sans-serif; cursor: help; margin-left: 4px; vertical-align: middle; font-style: normal; }
+.help:hover { border-color: var(--accent); color: var(--accent); }
+#helpTip { position: fixed; z-index: 30; max-width: 340px; background: var(--panel); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 9px 11px; font-size: 12.5px; line-height: 1.45; pointer-events: none;
+  box-shadow: 0 6px 24px rgba(0,0,0,.6); }
+#helpTip ul { margin: 4px 0 0; padding-left: 16px; } #helpTip li { margin: 2px 0; }
+#helpTip .tipk { color: var(--accent); font-weight: 600; }
+.steer-hints { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 2px 18px;
+  margin: -4px 0 12px; padding: 0 4px; }
+
+/* ---- presets tab ---- */
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pcard img { width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #000; image-rendering: pixelated; display: block; }
+.pcard .noimg { aspect-ratio: 16/10; display: grid; place-items: center; color: var(--dim); background: var(--panel2); }
+.pcard .body { padding: 8px 10px; } .pcard h4 { margin: 0 0 3px; font-size: 14px; }
+.pcard .note { font-size: 12px; color: var(--dim); min-height: 16px; }
+.pcard .acts { display: flex; gap: 6px; margin-top: 8px; }
+
+/* ---- presets + evolve ---- */
+.presetbar { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; margin-bottom: 12px; }
+.evo-parent { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.evo-parent img { width: 96px; image-rendering: pixelated; border: 1px solid var(--accent2); }
+.evo-parent .meta { font-size: 12px; color: var(--dim); }
+.evo-parent a, .linklike { color: var(--accent); cursor: pointer; }
+.thumb { position: relative; }
+.evo-btn { position: absolute; top: 4px; right: 4px; border: 1px solid var(--line); background: rgba(0,0,0,.7);
+  border-radius: 4px; padding: 1px 5px; cursor: pointer; font-size: 14px; opacity: .8; }
+.evo-btn:hover { opacity: 1; border-color: var(--accent2); }
+.lineage img { width: 80px; image-rendering: pixelated; border: 1px solid var(--line); cursor: pointer; vertical-align: middle; }
+#evoBox.on { border-color: var(--accent2); }
+
+/* ---- steering ---- */
+.steer-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; }
+.steer-top .use { font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.steer-top select { width: auto; }
+.steer-top .rng { display: inline-flex; align-items: center; gap: 8px; } .steer-top .rng input { width: 140px; }
+.cols { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+.drop { border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px; text-align: center; color: var(--dim);
+  cursor: pointer; margin-bottom: 12px; }
+.drop.over { border-color: var(--accent); color: var(--accent); background: rgba(85,255,255,.05); }
+.refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.ref { position: relative; cursor: pointer; border: 2px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel2); }
+.ref img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; image-rendering: pixelated; }
+.ref .cb { position: absolute; top: 5px; left: 5px; width: 18px; height: 18px; pointer-events: none; accent-color: var(--accent); }
+.ref .nm { font: 10px var(--mono); color: var(--dim); padding: 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ref.on { border-color: var(--accent); }
+.ref.on img { opacity: 1; } .refs.dim .ref:not(.on) img { opacity: .55; }
+.steer-sum { margin-top: 8px; font: 12px var(--mono); color: var(--accent2); cursor: pointer; }
+
 /* ---- lightbox ---- */
 .lb { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: grid; grid-template-columns: 1fr 360px; z-index: 10; }
 @media (max-width: 900px) { .lb { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } }
 .lb-view { overflow: auto; display: grid; place-items: center; padding: 20px; }
 .lb-view img { image-rendering: pixelated; }
+.lb-view { position: relative; }
+.lb-nav { position: fixed; top: 50%; transform: translateY(-50%); z-index: 11; font-size: 28px; line-height: 1;
+  width: 44px; height: 64px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(0,0,0,.6);
+  color: var(--text); cursor: pointer; }
+.lb-nav:hover { border-color: var(--accent); color: var(--accent); }
+#lbPrev { left: 12px; } #lbNext { right: 372px; }
+@media (max-width: 900px) { #lbNext { right: 12px; } }
 .lb-side { background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; }
 .lb-side h3 { margin: 0 0 8px; font-size: 15px; }
 .kv { font-size: 12px; color: var(--dim); margin: 4px 0; word-break: break-word; }
@@ -103,14 +268,62 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
   <!-- ================= FORM ================= -->
   <form class="form" id="form" autocomplete="off" onsubmit="return false">
-    <div class="brand"><h1>PIXELMON</h1><span class="srv" id="srv">render server …</span></div>
+    <div class="brand"><h1>PIXELMON</h1><span class="srv" id="srv">render server …</span>
+      <button type="button" class="btn small" id="resetAll" style="margin-left:auto;align-self:center"
+        title="reset the whole setup to defaults (prompt, LoRA, styles, canvas, palette, dither, seed, steering, evolve) — files are never touched">↺ reset</button></div>
+    <div class="presetbar">
+      <select id="presetSel" title="saved lab presets"><option value="">— presets —</option></select>
+      <button type="button" class="btn small" id="presetLoad">Load</button>
+      <button type="button" class="btn small" id="presetSave" title="save the whole setup (prompt, LoRA, styles, canvas, palette, dither, seed, steering, evolve)">Save…</button>
+      <button type="button" class="btn small" id="presetDel">Delete</button>
+    </div>
+
+    <fieldset id="evoBox">
+      <legend>🧬 Evolve</legend>
+      <div id="evoNone" class="err" style="color:var(--dim)">Click 🧬 on any result to breed from it.</div>
+      <div id="evoOn" class="hidden">
+        <div class="evo-parent"><img id="evoImg" alt="">
+          <div class="meta">parent · generation <b id="evoGen"></b><br><span id="evoName"></span><br>
+            <a id="evoClear">stop evolving</a></div></div>
+        <div class="inline" style="gap:10px;margin:2px 0 8px">
+          <button type="button" class="btn small" id="evoDice" title="randomize the sliders below (doesn't render)">🎲 randomize</button>
+          <button type="button" class="btn small" id="evoReset" title="evolve settings back to their starting values (keeps the parent)">↺ reset</button>
+          <label class="inline" style="color:var(--text);margin:0"><input type="checkbox" id="evoPerChild"> per child<i class="help" data-help="perchild">i</i></label>
+        </div>
+        <label class="inline" style="color:var(--text)"><input type="checkbox" id="evoInit"> keep composition (img2img) — change <b id="evoDenVal"></b><i class="help" data-help="denoise">i</i></label>
+        <input type="range" id="evoDenoise" min="0.1" max="0.95" step="0.05">
+        <div class="hint" id="hEvoDenoise"></div>
+        <label class="inline" style="color:var(--text)"><input type="checkbox" id="evoSteerOn"> steer toward parent — strength <b id="evoStVal"></b><i class="help" data-help="strength">i</i></label>
+        <input type="range" id="evoSteer" min="0.1" max="1.5" step="0.05">
+        <div class="hint" id="hEvoSteer"></div>
+        <label class="inline" style="color:var(--text)" title="when during sampling the parent steers">
+          steer active from <b id="evoStartVal"></b> to <b id="evoEndVal"></b> of the steps<i class="help" data-help="window">i</i></label>
+        <div class="row"><input type="range" id="evoStart" min="0" max="0.95" step="0.05"><input type="range" id="evoEnd" min="0.05" max="1" step="0.05"></div>
+        <div class="hint" id="hEvoWindow"></div>
+        <div class="row"><div><label>Steer weight<i class="help" data-help="weight">i</i></label><select id="evoWeight"></select></div>
+          <div><label>Children per round<i class="help" data-help="children">i</i></label><input type="number" id="evoN" min="1" max="16"></div></div>
+        <div class="hint" id="hEvoWeight"></div>
+        <label>Quick adjust — children vs the parent<i class="help" data-help="pill">i</i></label>
+        <div class="pill" id="evoPill">
+          <button type="button" class="dif big" data-ez="-2" title="big step away from the parent">« more different</button>
+          <button type="button" class="dif" data-ez="-1" title="small step away from the parent">‹ less similar</button>
+          <button type="button" class="sim" data-ez="1" title="small step toward the parent">less different ›</button>
+          <button type="button" class="sim big" data-ez="2" title="big step toward the parent">more similar »</button>
+        </div>
+        <div class="hint" id="hEvoEz"></div>
+      </div>
+    </fieldset>
 
     <fieldset>
       <legend>Prompt</legend>
       <textarea id="subject" placeholder="a dark castle with bright windows and a drawbridge set on a cliff side at dusk"></textarea>
+      <div class="inline" style="margin-top:6px">
+        <button type="button" class="btn small" id="diceSubject" title="random prompt for the current Kind / Genre / styles — shift-click to roll AND render">🎲 random</button>
+        <select id="history" title="recent prompts"><option value="">🕘 recent prompts…</option></select>
+      </div>
       <label>LoRA</label>
       <div class="row" style="grid-template-columns: 1fr 90px">
         <select id="lora"></select>
@@ -132,6 +345,8 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
       <div class="final" id="finalPrompt" title="your prompt + LoRA tags"></div>
       <label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="showFull"> Show full prompt</label>
       <div class="full hidden" id="fullPrompt"></div>
+      <div class="warns hidden" id="promptWarns"></div>
+      <div class="steer-sum hidden" id="steerSum" title="open the Steering tab"></div>
       <details><summary>Negative prompt</summary>
         <label>Replaces pixelmon's default — keep the defaults and add to them.
           <a href="#" id="negReset" style="color:var(--accent)">reset to default</a></label>
@@ -152,6 +367,14 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
         <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
           <input type="checkbox" id="no_sprite_suffix"> no sprite suffix</label>
       </div>
+      <div class="row">
+        <div><label>Pixel size<i class="help" data-help="pxsize">i</i></label><select id="pixel_size">
+          <option value="">auto</option><option value="1x1">1×1 — full detail</option><option value="2x1">2×1 — wide (EGA/CGA low-res)</option>
+          <option value="1x2">1×2 — tall</option><option value="2x2">2×2</option><option value="3x3">3×3</option>
+          <option value="4x1">4×1 — very wide</option><option value="4x2">4×2</option><option value="4x4">4×4 — chunky</option></select></div>
+        <div></div>
+      </div>
+      <div class="hint" id="hPxSize"></div>
     </fieldset>
 
     <fieldset id="colorBox">
@@ -164,8 +387,16 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
       </div>
       <div class="row">
         <div><label>Despeckle (px, 0 = off)</label><input type="number" id="despeckle" min="0" max="64"></div>
+        <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
+          <input type="range" id="pixel_angles" min="0" max="3" step="0.25"></div>
+      </div>
+      <div class="row">
+        <div><label>Grid<i class="help" data-help="grid">i</i></label><select id="angle_grid">
+          <option value="pixel">pixel-art (free)</option><option value="square">square</option><option value="diagonal">diagonal</option>
+          <option value="isometric">isometric</option><option value="hex">hex</option><option value="triangle">triangle</option></select></div>
         <div></div>
       </div>
+      <div class="hint" id="hAngles"></div>
     </fieldset>
 
     <fieldset>
@@ -193,7 +424,9 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
             <option value="dither_amount">dither amount</option><option value="palette">palette</option>
             <option value="lora">LoRA</option><option value="styles">style guides</option>
             <option value="steps">steps</option><option value="cfg">CFG</option>
-            <option value="despeckle">despeckle</option><option value="out">output size</option></select></div>
+            <option value="despeckle">despeckle</option><option value="out">output size</option>
+            <option value="steer_strength">steering strength</option><option value="steer_end">steering end (fraction of steps)</option>
+            <option value="steer_start">steering start</option><option value="pixel_angles">pixel-art angles</option><option value="angle_grid">grid (angle set)</option><option value="pixel_size">pixel size</option></select></div>
           <div><label>Values (comma-separated)</label><input type="text" id="sweepValues" placeholder="0.5, 0.7, 0.9"></div>
         </div>
         <div class="err" style="color:var(--dim)" id="sweepHint">styles: join several with + e.g. darkest+outline</div>
@@ -213,24 +446,118 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
     <div class="tabs">
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
       <div class="tab" data-tab="gallery">Gallery</div>
+      <div class="tab" data-tab="steer">Steering <span id="steerTabN"></span></div>
+      <div class="tab" data-tab="presets">Presets</div>
+      <div class="tab" data-tab="batch">Batch</div>
+      <span style="flex:1"></span>
+      <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
+      <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
     </div>
     <div class="pane" id="queuePane"><div class="empty">Nothing rendered yet this session.</div></div>
     <div class="pane hidden" id="galleryPane"></div>
+    <div class="pane hidden" id="presetsPane"></div>
+    <div class="pane hidden" id="batchPane">
+      <div class="steer-top">
+        <input type="text" id="batchPath" class="grow" placeholder="~/git/qb64-dungeon/assets/data/default/art-prompts.txt">
+        <button class="btn small" id="batchLoad">Load path</button>
+        <button class="btn small" id="batchPick">Open file…</button><input type="file" id="batchFile" accept=".txt,.tsv,.csv,.md,text/*" hidden>
+      </div>
+      <details style="margin-bottom:10px"><summary>…or paste rows</summary>
+        <textarea id="batchText" rows="6" placeholder="path | style | size | prompt   (also: folder | name | style | size | prompt,  name | prompt,  or one prompt per line)"></textarea>
+        <button class="btn small" id="batchParse" style="margin-top:6px">Parse</button></details>
+      <div class="steer-top">
+        <span>style <select id="batchStyleMode"><option value="row">row style</option><option value="both">row + form styles</option><option value="form">form styles only</option></select></span>
+        <span>size <select id="batchSizeMode"><option value="row">row size</option><option value="form">form output size</option></select></span>
+        <input type="text" id="batchExport" class="grow" placeholder="export to (optional) e.g. ~/git/qb64-dungeon/assets/pixel-art/default">
+        <label class="inline"><input type="checkbox" id="batchSkip" checked> skip existing</label>
+        <button class="btn small" id="batchOpenExport" title="open the export folder">📂</button>
+      </div>
+      <div class="steer-top">
+        <input type="text" id="batchFilter" class="grow" placeholder="filter rows (path, style or prompt)…">
+        <button class="btn small" id="batchAll">select shown</button><button class="btn small" id="batchNone">select none</button>
+        <span id="batchCount" style="color:var(--dim)"></span>
+        <button class="btn primary" id="batchGo" style="flex:0 0 auto">Queue rows</button>
+      </div>
+      <div id="batchInfo" class="err" style="color:var(--dim)"></div>
+      <table class="btable"><thead><tr><th></th><th>path</th><th>style</th><th>size</th><th>prompt</th><th>result</th></tr></thead>
+        <tbody id="batchBody"><tr><td colspan="6" class="empty">Load a manifest file or paste rows above.</td></tr></tbody></table>
+    </div>
+    <div class="pane hidden" id="steerPane">
+      <div class="steer-top">
+        <label class="use"><input type="checkbox" id="useSteer"> Use steering</label>
+        <span class="rng">strength<i class="help" data-help="strength">i</i> <input type="range" id="steerStrength" min="0" max="1.5" step="0.05"><b id="steerStrVal"></b></span>
+        <span>weight<i class="help" data-help="weight">i</i> <select id="steerWeight"></select></span>
+        <span>combine<i class="help" data-help="combine">i</i> <select id="steerCombine"></select></span>
+        <span class="rng"><i class="help" data-help="window" style="margin:0 4px 0 0">i</i>
+          active from <input type="range" id="steerStart" min="0" max="0.95" step="0.05" style="width:90px"><b id="steerStartVal"></b>
+          to <input type="range" id="steerEnd" min="0.05" max="1" step="0.05" style="width:90px"><b id="steerEndVal"></b></span>
+        <span id="steerCount" style="color:var(--dim)"></span>
+        <button class="btn small" id="steerClear">clear selection</button>
+      </div>
+      <div class="steer-hints"><div class="hint" id="hSteerStrength"></div><div class="hint" id="hSteerWindow"></div>
+        <div class="hint" id="hSteerWeight"></div><div class="hint" id="hSteerCombine"></div></div>
+      <div class="cols" id="cols"></div>
+      <div class="drop" id="drop">Drop images here (or click) to add them to <b id="dropCol"></b> — dropped images are selected automatically
+        <input type="file" id="dropFile" accept="image/*" multiple hidden></div>
+      <div class="refs" id="refGrid"></div>
+    </div>
   </div>
+
+  <aside class="cork hidden" id="cork">
+    <div class="cork-head"><b>📌</b><select id="boardSel" title="board"></select>
+      <button class="btn small" id="boardNew" title="new board">+</button></div>
+    <div class="cork-actions">
+      <button class="btn small" id="boardReveal" title="open this board's folder">📂 browse</button>
+      <button class="btn small" id="boardZip" title="download the board as a .zip">⬇ zip</button>
+      <button class="btn small" id="boardSteer" title="use everything on this board as steering references">🧭 to steering</button>
+      <button class="btn small" id="boardClear" title="remove everything from this board (deletes only the board's copies)">✕ clear</button>
+    </div>
+    <div class="cork-body" id="corkBody"></div>
+  </aside>
 </div>
 
+<div class="statusbar">
+  <label title="desktop notifications"><input type="checkbox" id="nfOn"> Notifications:</label>
+  <label><input type="checkbox" id="nfDone"> when done</label>
+  <label><input type="checkbox" id="nfErr"> on error</label>
+  <label><input type="checkbox" id="nfSound"> sound</label>
+  <span class="sep">|</span>
+  <label title="before rendering, warn if the setup fights itself"><input type="checkbox" id="preflightOn"> setup check</label>
+  <span class="sep">|</span><span id="sbCount"></span>
+  <span class="sep">|</span><span id="sbStatus"></span>
+</div>
+
+<div id="styleTip" class="hidden"></div>
+<div id="helpTip" class="hidden"></div>
+<div id="peek" class="hidden"><div class="gstage"><img id="peekImg" alt=""><canvas id="peekGrid"></canvas></div>
+  <div class="pk-bar"><span class="pk-cap" id="peekCap"></span><span id="peekZooms"></span></div>
+  <div class="pk-bar" style="margin-top:3px">1–4 zoom · 0 fit · ←/→ flip · G grid · click to open · Esc</div>
+  <div class="pal big" id="peekPal"></div>
+  <details id="peekFormula"><summary>Formula</summary><div class="pk-form" id="peekForm"></div></details></div>
 <div class="lb hidden" id="lb">
-  <div class="lb-view" id="lbView"><img id="lbImg" alt=""></div>
+  <div class="lb-view" id="lbView"><div class="gstage"><img id="lbImg" alt=""><canvas id="lbGrid"></canvas></div></div>
+  <button class="lb-nav" id="lbPrev" title="previous (←)">‹</button>
+  <button class="lb-nav" id="lbNext" title="next (→)">›</button>
   <div class="lb-side">
     <h3 id="lbTitle"></h3>
     <div class="zooms" id="zooms"></div>
+    <div class="gridrow">grid overlay
+      <select id="ovType"><option value="off">off</option><option value="pixel">pixels</option><option value="square">square</option>
+        <option value="diagonal">diagonal</option><option value="isometric">isometric</option><option value="hex">hex</option>
+        <option value="triangle">triangle</option></select>
+      cell <input type="number" id="ovSize" min="2" max="128" title="cell size in art pixels"></div>
+    <div class="pal big" id="lbPal" style="justify-content:flex-start"></div>
     <div id="lbInfo"></div>
     <div class="cmd" id="lbCmd"></div>
     <div class="lb-actions">
+      <button class="btn" id="lbEvolve">🧬 Evolve from this</button>
+      <button class="btn" id="lbParent">Use as parent (tune sliders first)</button>
+      <button class="btn" id="lbPreset">Save as preset</button>
       <button class="btn" id="lbLoad">Load these settings</button>
       <button class="btn" id="lbSame">Re-run (same seed)</button>
       <button class="btn" id="lbReroll">Reroll (new seed)</button>
       <button class="btn" id="lbCopy">Copy CLI command</button>
+      <button class="btn" id="lbReveal">📂 Open its folder</button>
       <button class="btn" id="lbClose">Close (Esc)</button>
     </div>
   </div>
@@ -251,7 +578,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "seed", "seedLock",
+  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull"];
 let activeStyles = new Set();
 
@@ -281,12 +608,20 @@ function params(f = readForm()) {
     styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
     no_sprite_suffix: f.no_sprite_suffix,
     palette: f.palette, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
+    pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size,
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
     steps: f.steps, cfg: f.cfg, fast: f.fast,
+    ...steerParams(),
+    ...evoParams(),
   };
 }
 function cliFor(p) {
-  const q = s => /^[\w.,:=+\/-]+$/.test(s) ? s : "'" + String(s).replace(/'/g, "'\\''") + "'";
+  // bare when safe; "double" quotes for apostrophes (a wizard's study); '\'' escaping only as a last resort
+  const q = s => { s = String(s);
+    if (/^[\w@%+=:,.\/-]+$/.test(s)) return s;
+    if (!s.includes("'")) return `'${s}'`;
+    if (!/[$`"\\!]/.test(s)) return `"${s}"`;
+    return "'" + s.replace(/'/g, "'\\''") + "'"; };
   const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "rtx", "--no-open", "--show-prompt"];
   if (p.art) a.push("--art");
   if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
@@ -297,6 +632,9 @@ function cliFor(p) {
     a.push("--palette", q(p.palette));
     if (p.dither !== "none") a.push("--dither", p.dither, "--dither-amount", p.dither_amount);
     if (p.despeckle !== "") a.push("--despeckle", p.despeckle);
+    if (+p.pixel_angles > 0) a.push("--pixel-angles", p.pixel_angles);
+    if (+p.pixel_angles > 0 && p.angle_grid && p.angle_grid !== "pixel") a.push("--angle-grid", p.angle_grid);
+    if (p.pixel_size) a.push("--pixel-size", p.pixel_size);
     if (p.snap_pixels) a.push("--snap-pixels");
     if (p.transparent) a.push("--transparent");
     if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
@@ -304,6 +642,13 @@ function cliFor(p) {
   if (p.fast) a.push("--fast");
   if (p.steps) a.push("--steps", p.steps);
   if (p.cfg) a.push("--cfg", p.cfg);
+  if (p.steer && p.steer.length) {
+    const cols = [...new Set(p.steer.map(r => r.split("/")[0]))];
+    const whole = cols.length === 1 && REFS[cols[0]] && REFS[cols[0]].length === p.steer.length;
+    a.push("--steer", whole ? q(`${REFS_ROOT}/${cols[0]}`) : "<folder-of-selected-refs>", "--steer-strength", p.steer_strength,
+           "--steer-weight-type", q(p.steer_weight_type), "--steer-combine", q(p.steer_combine));
+    if (+p.steer_start > 0 || +p.steer_end < 1) a.push("--steer-start", p.steer_start, "--steer-end", p.steer_end);
+  }
   if (+p.seed >= 0) a.push("--seed", p.seed);
   if (+p.n > 1) a.push("-n", p.n);
   if (p.name) a.push("--name", q(p.name));
@@ -315,12 +660,23 @@ function refresh() {
   $("colorBox").style.opacity = f.art ? .4 : 1;
   $("finalPrompt").textContent = composedPrompt(f) || "…";
   $("amtVal").textContent = (+f.dither_amount).toFixed(2);
+  { const m = /^(\d+)x(\d+)$/.exec(f.pixel_size || ""), W = +f.outW, H = +f.outH;
+    $("hPxSize").textContent = !m ? (f.snap_pixels ? "auto + snap pixels: the snapper guesses its own grid — pixels can come out HUGE; pick a size"
+                                                   : "auto — one art pixel per output pixel")
+      : `${W}×${H} → art grid ${Math.round(W / m[1])}×${Math.round(H / m[2])}, each pixel ${m[1]}×${m[2]} screen pixels`
+        + (W % m[1] || H % m[2] ? " (size isn't an exact multiple — edges get uneven)" : ""); }
+  const pa = +f.pixel_angles || 0;
+  $("paVal").textContent = pa ? pa.toFixed(2) : "off";
+  $("hAngles").textContent = !pa ? "off — edges exactly as rendered"
+    : pa < 1.25 ? "light — tidies small wobbles into even steps"
+    : pa <= 2 ? "straightens edges into clean 1:1 / 2:1 / 3:1 runs, keeps shapes (recommended)"
+    : "strong — long straight runs; may start bending shapes";
   $("dither_amount").disabled = f.dither === "none";
   const sw = (META && META.palettes[f.palette]) || [];
   $("swatches").innerHTML = sw.slice(0, 64).map(h => `<span style="background:#${h}"></span>`).join("");
   $("seed").placeholder = f.seedLock ? "seed" : "random each run";
   $("fullPrompt").classList.toggle("hidden", !f.showFull);
-  if (f.showFull) queueFullPrompt();
+  queueFullPrompt();   // always: it also brings back conflict warnings
   store.set("form", f);
 }
 // exact prompts from pixelmon's own final_prompts(), fetched as you type
@@ -330,21 +686,45 @@ let fullTimer = null;
 function queueFullPrompt() {
   clearTimeout(fullTimer);
   fullTimer = setTimeout(async () => {
-    const p = params();
-    if (!p.prompt) { $("fullPrompt").innerHTML = `<div style="color:var(--dim)">write a prompt…</div>`; return; }
-    try { $("fullPrompt").innerHTML = fullHtml(await api("/api/prompt", p)); }
-    catch (e) { $("fullPrompt").innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; }
+    const p = { ...params(), form: readForm() };
+    const warns = $("promptWarns");
+    if (!p.prompt) { $("fullPrompt").innerHTML = `<div style="color:var(--dim)">write a prompt…</div>`; warns.classList.add("hidden"); return; }
+    try {
+      const r = await api("/api/prompt", p);
+      $("fullPrompt").innerHTML = fullHtml(r);
+      LAST_WARN = r.warnings || [];
+      warns.innerHTML = LAST_WARN.map((w, i) => `<div>⚠ ${esc(w.text)}<br>${w.fixes.map((f, j) =>
+          `<button type="button" class="fx" data-fix="${i}:${j}">${esc(f.label)}</button>`).join("")}</div>`).join("")
+        + (LAST_WARN.length > 1 ? `<div><button type="button" class="fx all" data-fixall="1">✨ fix all (use each first suggestion)</button></div>` : "");
+      warns.classList.toggle("hidden", !LAST_WARN.length);
+    } catch (e) { $("fullPrompt").innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; }
   }, 250);
 }
 function renderStyles() {
   const box = $("styles"); box.innerHTML = "";
   for (const [name, s] of Object.entries(META.styles)) {
     const c = document.createElement("span");
-    c.className = "chip" + (activeStyles.has(name) ? " on" : ""); c.textContent = name; c.title = s.prompt || "";
+    c.className = "chip" + (activeStyles.has(name) ? " on" : "");
+    const smp = (META.style_samples || {})[name];
+    c.innerHTML = (smp && smp.sample ? `<img class="si" src="/examples/${smp.sample}" loading="lazy" alt="">` : "") + esc(name);
+    c.onmouseenter = e => showStyleTip(name, c); c.onmouseleave = hideStyleTip;
+    if (smp && smp.montage) c.oncontextmenu = e => { e.preventDefault(); window.open(`/examples/${smp.montage}`, "_blank"); };
     c.onclick = () => { activeStyles.has(name) ? activeStyles.delete(name) : activeStyles.add(name); renderStyles(); refresh(); };
     box.appendChild(c);
   }
 }
+function showStyleTip(name, el) {
+  const s = META.styles[name] || {}, smp = (META.style_samples || {})[name] || {};
+  const tip = $("styleTip");
+  tip.innerHTML = (smp.sample ? `<img src="/examples/${smp.sample}" alt="">` : `<div class="p">no example yet</div>`)
+    + `<b>${esc(name)}</b><div class="p">${esc(s.prompt || "")}</div>`
+    + (smp.montage ? `<div class="p" style="color:var(--accent)">right-click the chip → open the 12-subject sheet</div>` : "");
+  const r = el.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - 300, r.right + 10) + "px";
+  tip.style.top = Math.max(10, Math.min(window.innerHeight - 380, r.top - 40)) + "px";
+  tip.classList.remove("hidden");
+}
+function hideStyleTip() { $("styleTip").classList.add("hidden"); }
 function syncOutPreset() {
   const v = `${$("outW").value}x${$("outH").value}`;
   $("outPreset").value = SIZES.some(s => s[0] === v) ? v : "custom";
@@ -354,6 +734,987 @@ function applyPreset() {
   if (p.strength != null) $("lora_strength").value = p.strength;
   if (p.palette && META.palettes[p.palette] || p.palette === "none") $("palette").value = p.palette;
   if (p.era) $("era").value = p.era;
+}
+
+// ---------------- steering ----------------
+let REFS = {}, REFS_ROOT = "~/pixelmon-refs";
+const STEER = Object.assign({ use: false, strength: 0.7, weight: "style transfer", combine: "concat", sel: [], col: "gui-drops",
+                              start: 0, end: 1 },
+                            store.get("steer", {}));
+function steerParams() {
+  if (!STEER.use || !STEER.sel.length) return {};
+  return { steer: [...STEER.sel], steer_strength: STEER.strength, steer_weight_type: STEER.weight, steer_combine: STEER.combine,
+           steer_start: STEER.start, steer_end: STEER.end };
+}
+function saveSteer() {
+  store.set("steer", STEER);
+  const n = STEER.sel.length, on = STEER.use && n;
+  $("steerTabN").textContent = n ? `(${n})` : "";
+  $("steerCount").textContent = `${n} selected${n > 16 ? " — many refs dilute the effect" : ""}`;
+  $("steerSum").classList.toggle("hidden", !on);
+  const win = +STEER.start > 0 || +STEER.end < 1 ? ` · steps ${(+STEER.start).toFixed(2)}→${(+STEER.end).toFixed(2)}` : "";
+  $("steerSum").textContent = on ? `🧭 steering: ${n} ref${n > 1 ? "s" : ""} @ ${(+STEER.strength).toFixed(2)} · ${STEER.weight} · ${STEER.combine}${win}` : "";
+  $("steerStrVal").textContent = (+STEER.strength).toFixed(2);
+  $("steerStartVal").textContent = (+STEER.start).toFixed(2); $("steerEndVal").textContent = (+STEER.end).toFixed(2);
+  updateHints();
+  if (typeof refresh === "function" && META) refresh();
+}
+async function loadRefs() {
+  try { const r = await api("/api/refs"); REFS = r.collections; REFS_ROOT = r.root; } catch { return; }
+  STEER.sel = STEER.sel.filter(ref => { const [c, f] = ref.split("/"); return REFS[c] && REFS[c].includes(f); });
+  if (!REFS[STEER.col]) STEER.col = Object.keys(REFS)[0] || "gui-drops";
+  renderRefs(); saveSteer();
+}
+function renderRefs() {
+  $("cols").innerHTML = Object.entries(REFS).map(([c, fs]) => {
+    const k = STEER.sel.filter(r => r.startsWith(c + "/")).length;
+    return `<span class="chip ${c === STEER.col ? "on" : ""}" data-col="${esc(c)}">${esc(c)} <span style="color:var(--dim)">${k ? k + "/" : ""}${fs.length}</span></span>`;
+  }).join("") + `<span class="chip" id="newCol">+ new collection</span>
+    <button class="btn small" id="selAll">select all here</button><button class="btn small" id="selNone">select none here</button>
+    <button class="btn small" id="revealCol" title="open this collection's folder">📂</button>`;
+  $("dropCol").textContent = STEER.col;
+  const files = REFS[STEER.col] || [];
+  $("refGrid").classList.toggle("dim", STEER.sel.length > 0);
+  $("refGrid").innerHTML = files.length ? files.map(f => {
+    const ref = `${STEER.col}/${f}`, on = STEER.sel.includes(ref);
+    return `<div class="ref ${on ? "on" : ""}" data-ref="${esc(ref)}" title="${esc(f)}">
+      <img src="/refs/${encodeURIComponent(STEER.col)}/${encodeURIComponent(f)}" loading="lazy" alt="">
+      <input type="checkbox" class="cb" ${on ? "checked" : ""} tabindex="-1"><div class="nm">${esc(f)}</div></div>`;
+  }).join("") : `<div class="empty" style="grid-column:1/-1">No images in “${esc(STEER.col)}” yet — drop some above.</div>`;
+}
+async function uploadFiles(files) {
+  const imgs = [...files].filter(f => f.type.startsWith("image/"));
+  for (const f of imgs) {
+    try {
+      const r = await fetch(`/api/refs/upload?collection=${encodeURIComponent(STEER.col)}&filename=${encodeURIComponent(f.name)}`,
+                            { method: "POST", body: f });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      STEER.sel.push(j.ref);
+    } catch (e) { showErr(e); }
+  }
+  if (imgs.length) { STEER.use = true; $("useSteer").checked = true; }
+  await loadRefs();
+}
+function initSteer() {
+  $("steerWeight").innerHTML = META.steer_weight_types.map(w => `<option>${w}</option>`).join("");
+  $("steerCombine").innerHTML = META.steer_combine.map(w => `<option>${w}</option>`).join("");
+  $("useSteer").checked = STEER.use; $("steerStrength").value = STEER.strength;
+  $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
+  $("useSteer").onchange = e => { STEER.use = e.target.checked; saveSteer(); };
+  $("steerStrength").oninput = e => { STEER.strength = +e.target.value; saveSteer(); };
+  $("steerWeight").onchange = e => { STEER.weight = e.target.value; saveSteer(); };
+  $("steerCombine").onchange = e => { STEER.combine = e.target.value; saveSteer(); };
+  $("steerStart").value = STEER.start; $("steerEnd").value = STEER.end;
+  // keep start < end: dragging one past the other pushes it along
+  $("steerStart").oninput = e => { STEER.start = +e.target.value; if (STEER.end <= STEER.start) $("steerEnd").value = STEER.end = +(STEER.start + 0.05).toFixed(2); saveSteer(); };
+  $("steerEnd").oninput = e => { STEER.end = +e.target.value; if (STEER.start >= STEER.end) $("steerStart").value = STEER.start = +(STEER.end - 0.05).toFixed(2); saveSteer(); };
+  $("steerClear").onclick = () => { STEER.sel = []; renderRefs(); saveSteer(); };
+  $("steerSum").onclick = () => switchTab("steer");
+  $("steerPane").addEventListener("click", async e => {
+    const r = e.target.closest(".ref");
+    if (r) {
+      const i = STEER.sel.indexOf(r.dataset.ref);
+      i >= 0 ? STEER.sel.splice(i, 1) : STEER.sel.push(r.dataset.ref);
+      if (STEER.sel.length && !STEER.use) { STEER.use = true; $("useSteer").checked = true; }
+      renderRefs(); return saveSteer();
+    }
+    const c = e.target.closest("[data-col]");
+    if (c) { STEER.col = c.dataset.col; renderRefs(); return saveSteer(); }
+    const files = REFS[STEER.col] || [], pre = STEER.col + "/";
+    if (e.target.id === "selAll") { STEER.sel = [...new Set([...STEER.sel, ...files.map(f => pre + f)])]; STEER.use = true; $("useSteer").checked = true; renderRefs(); return saveSteer(); }
+    if (e.target.id === "revealCol") return reveal("refs", STEER.col);
+    if (e.target.id === "selNone") { STEER.sel = STEER.sel.filter(r => !r.startsWith(pre)); renderRefs(); return saveSteer(); }
+    if (e.target.id === "newCol") {
+      const name = prompt("New collection name:");   // tiny local tool; a native prompt is fine here
+      if (name) { try { STEER.col = (await api("/api/refs/collection", { name })).name; } catch (err) { showErr(err); } await loadRefs(); }
+    }
+  });
+  const drop = $("drop");
+  drop.onclick = () => $("dropFile").click();
+  $("dropFile").onchange = e => { uploadFiles(e.target.files); e.target.value = ""; };
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => uploadFiles(e.dataTransfer.files));
+  // dropping anywhere on the Steering tab works too
+  $("steerPane").addEventListener("dragover", e => e.preventDefault());
+  $("steerPane").addEventListener("drop", e => { if (!drop.contains(e.target)) { e.preventDefault(); uploadFiles(e.dataTransfer.files); } });
+  loadRefs();
+}
+
+// ---------------- help: live hints under sliders + ⓘ tooltips ----------------
+const band = (v, rows) => rows.find(([max]) => v <= max)[1];
+const HINT = {
+  denoise: v => band(v, [[0.25, "tiny tweaks — near-identical children, colors and specks shift"],
+                         [0.45, "mutations — same layout, details and small shapes change"],
+                         [0.65, "bigger mutations — layout mostly kept, objects can change"],
+                         [1.0, "loose — only the rough layout and colors survive"]]),
+  strength: v => band(v, [[0.35, "a light nudge — your prompt and LoRA lead"],
+                          [0.75, "guides — your prompt still has a clear say"],
+                          [1.0, "strongly leads — close siblings of the reference"],
+                          [1.3, "over 1.0: dominates — prompt barely registers, near-copies"],
+                          [9, "over-baked — harsh contrast, burnt colors, repeated motifs"]]),
+  window: (a, b) => a >= 0.3 ? "starts late — your prompt sets the layout, the reference only restyles it"
+                  : b <= 0.4 ? "early only — reference blocks in composition + palette, prompt + LoRA do the rest"
+                  : b <= 0.75 ? "reference sets layout + palette, then prompt + LoRA finish the details (good vs LoRA fights)"
+                  : "on for the whole render — maximum influence",
+  weight: w => ({
+    "style transfer": "takes the look (colors, rendering, texture) — not the layout",
+    "strong style transfer": "the look, pushed harder",
+    "style transfer precise": "the look, with less content bleeding in",
+    "composition": "takes the layout / arrangement — not the look",
+    "composition precise": "the layout, more exactly",
+    "style and composition": "both the look and the layout (best for evolving)",
+    "linear": "everything, evenly — copies content too; overcooks fast above 1.0",
+    "ease in": "mostly structure (early layers) — prompt owns the surface",
+    "ease out": "mostly texture/detail (late layers) — prompt owns the layout",
+  })[w] || "",
+  combine: c => ({
+    "concat": "keeps each reference distinct — best for a varied mood board",
+    "average": "blends all references into one average look",
+    "norm average": "average, weighted so no single reference dominates",
+    "add": "sums them — stronger, can get chaotic",
+    "subtract": "first reference minus the rest — experimental",
+  })[c] || "",
+};
+const HELP = {
+  denoise: `<span class="tipk">Change</span> (img2img denoise). The child starts from the parent image with this much of it
+    replaced by noise, then re-rendered. <ul><li>0.2–0.3: polish</li><li>0.4–0.5: mutate (good default)</li>
+    <li>0.6–0.7: bigger jumps</li><li>0.8+: nearly a fresh render in the parent's rough layout</li></ul>
+    Tip: if children are too similar, raise this before lowering steer.`,
+  strength: `<span class="tipk">Strength</span> (IPAdapter weight): how much of the reference's image signal is mixed into
+    the model next to your text prompt. <b>1.0 is the trained "normal"</b>; above it you amplify past what the model expects.
+    <ul><li>0.4–0.7: guides</li><li>0.8–1.0: strongly leads</li><li>1.0–1.3: dominates, near-copies</li>
+    <li>1.3+: over-baked</li></ul>Above 1 is for locking a look the prompt keeps pulling away from —
+    pair it with an end of ~0.6 so late steps clean up.`,
+  window: `<span class="tipk">Active window</span>: <i>when</i> during sampling the reference applies (fraction of the steps).
+    Early steps decide composition and color blocking; late steps decide detail.
+    <ul><li>end 0.5: reference sets layout + palette, prompt + LoRA finish — best cure for refs fighting the LoRA</li>
+    <li>start 0.3: prompt sets the layout, reference only restyles</li><li>0 → 1: on the whole time</li></ul>`,
+  weight: `<span class="tipk">Weight type</span>: <i>which layers</i> of the model receive the reference. SDXL keeps
+    <b>style</b> and <b>composition</b> in specific layers, so "style transfer" / "composition" hit just those — clean.
+    "ease in/out" are curves across the model's depth (not time!): in = structure, out = texture.
+    Combine with the active window for when + where.`,
+  combine: `<span class="tipk">Combine</span>: how several references merge. concat keeps each one's identity (varied mood
+    boards); average blends them into one look; add/subtract are for experiments.`,
+  pill: `<span class="tipk">Quick adjust</span> — "ez mode" for the two similarity sliders. Each click moves
+    <b>change</b> (img2img) and <b>strength</b> (steer toward parent) in opposite directions:
+    <ul><li>« more different / more similar »: big step (change ±0.10, strength ±0.20)</li>
+    <li>‹ less similar / less different ›: small step (change ±0.05, strength ±0.10)</li></ul>
+    Only the levers that are switched on move. The line underneath shows exactly what changed.`,
+  pxsize: `<span class="tipk">Pixel size</span>: how many output pixels one <i>art</i> pixel covers. The art is drawn on a
+    grid of (output size ÷ pixel size) and every art pixel is scaled up by exactly that much at the end.
+    <ul><li><b>1×1</b>: full detail at your output size</li><li><b>2×1</b>: wide pixels — the EGA/CGA 160-wide look</li>
+    <li><b>2×2 / 4×4</b>: chunky, low-res</li></ul>
+    With <b>snap pixels</b> this tells the snapper which grid to use — on "auto" it guesses and often picks one that's
+    far too coarse (huge pixels). Pick a size whose numbers divide your output size evenly.`,
+  grid: `<span class="tipk">Grid</span>: which edge angles the pixel-art angle snap may use (needs angles &gt; 0) —
+    the same grid types as DRAW, plus triangle. <ul><li><b>pixel-art</b>: all clean ratios 1:1…5:1 (hand-drawn look)</li>
+    <li><b>square</b>: 0°/90° only — blocky</li><li><b>diagonal</b>: + 45° — classic 8-direction</li>
+    <li><b>isometric</b>: 2:1 slopes + verticals — iso pixel art</li><li><b>hex</b>: flats + 45° (DRAW's flat-top hex)</li>
+    <li><b>triangle</b>: flats + 1:2 (the pixel ≈60°)</li></ul>Restrictive grids reshape the image on purpose;
+    try angles 2+ with them. Sweep "grid" on one seed to compare.`,
+  angles: `<span class="tipk">Pixel-art angles</span> (beta): redraws each color region's outline so its edges follow
+    the clean angles pixel artists use — whole-number ratios <b>1:1, 2:1, 3:1, 4:1, 5:1</b> (and steep versions), the same
+    set as DRAW's pixel-art angle snap. Those step in even runs (2:1 = two across, one down) instead of the AI's wobbly,
+    uneven stair-steps. Small details (windows, 1px lines, dither) are kept exactly; changes that would alter a shape
+    are undone. <ul><li>0 = off</li><li>1.25–2: straighten edges, keep shapes (start at 1.5)</li><li>2.5+: long runs, may bend shapes</li></ul>
+    Needs a palette lock (flat colors).`,
+  perchild: `<span class="tipk">Per child</span>: every child in a round rolls its own settings (change, strength,
+    active window, weight type) — one round explores many directions at once. Each child is labelled with what it got;
+    🧬 a child you like and the sliders take on <i>its</i> settings, so a lucky combination sticks.
+    🎲 randomize does the same roll once, for the sliders, without rendering.`,
+  children: `<span class="tipk">Children per round</span>: how many variations each 🧬 click breeds (new seed each).
+    4 is a good pick-the-best batch; 8+ when exploring. They render one after another and appear as they finish.`,
+};
+function updateHints() {
+  const put = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
+  if (EVO.perChild) {
+    put("hEvoDenoise", "🎲 per child: each child rolls change 0.30–0.70"); put("hEvoSteer", EVO.steerOn ? "🎲 per child: strength 0.40–1.10" : "off");
+    put("hEvoWindow", EVO.steerOn ? "🎲 per child: usually from 0, ending 0.50–1.00" : ""); put("hEvoWeight", EVO.steerOn ? "🎲 per child: a random weight type" : "");
+  } else {
+  put("hEvoDenoise", EVO.init ? `<b>${(+EVO.denoise).toFixed(2)}</b> — ${HINT.denoise(+EVO.denoise)}` : "off — children are fresh renders, only steered");
+  put("hEvoSteer", EVO.steerOn ? `<b>${(+EVO.steer).toFixed(2)}</b> — ${HINT.strength(+EVO.steer)}` : "off — the parent's look isn't pushed");
+  put("hEvoWindow", EVO.steerOn ? HINT.window(+EVO.start, +EVO.end) : "");
+  put("hEvoWeight", EVO.steerOn ? `<b>${esc(EVO.weight)}</b> — ${HINT.weight(EVO.weight)}` : "");
+  }
+  put("hSteerStrength", `<b>strength ${(+STEER.strength).toFixed(2)}</b> — ${HINT.strength(+STEER.strength)}`);
+  put("hSteerWindow", `<b>steps ${(+STEER.start).toFixed(2)}→${(+STEER.end).toFixed(2)}</b> — ${HINT.window(+STEER.start, +STEER.end)}`);
+  put("hSteerWeight", `<b>${esc(STEER.weight)}</b> — ${HINT.weight(STEER.weight)}`);
+  put("hSteerCombine", `<b>${esc(STEER.combine)}</b> — ${HINT.combine(STEER.combine)}`);
+}
+function initHelp() {
+  const tip = $("helpTip");
+  document.addEventListener("mouseover", e => {
+    const h = e.target.closest("[data-help]"); if (!h || !HELP[h.dataset.help]) return;
+    tip.innerHTML = HELP[h.dataset.help];
+    const r = h.getBoundingClientRect();
+    tip.classList.remove("hidden");
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, r.left - 20)) + "px";
+    tip.style.top = (r.bottom + 8 + tip.offsetHeight > window.innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
+  });
+  document.addEventListener("mouseout", e => { if (e.target.closest("[data-help]")) tip.classList.add("hidden"); });
+}
+
+// ---------------- evolve ----------------
+const EVO = Object.assign({ parent: null, init: true, denoise: 0.45, steerOn: true, steer: 0.6,
+                            weight: "style and composition", n: 4, start: 0, end: 1, perChild: false }, store.get("evo", {}));
+const EVO_DEFAULTS = { init: true, denoise: 0.45, steerOn: true, steer: 0.6, weight: "style and composition",
+                       n: 4, start: 0, end: 1, perChild: false };
+// "ez mode": one click nudges both similarity levers — change (img2img) and strength (steer) move opposite ways.
+// d > 0 = toward the parent (more similar), d < 0 = away (more different); |d| = 1 small step, 2 big step.
+function evoNudge(d, label) {
+  const clamp = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, v)) * 100) / 100;
+  const was = { denoise: EVO.denoise, steer: EVO.steer }, bits = [];
+  if (!EVO.init && !EVO.steerOn) { $("hEvoEz").textContent = "switch on 'keep composition' or 'steer toward parent' first"; return; }
+  if (EVO.init) {
+    EVO.denoise = clamp(+EVO.denoise - d * 0.05, 0.1, 0.95);
+    bits.push(`change ${(+was.denoise).toFixed(2)} → ${(+EVO.denoise).toFixed(2)}`);
+  }
+  if (EVO.steerOn) {
+    EVO.steer = clamp(+EVO.steer + d * 0.1, 0.1, 1.5);
+    bits.push(`strength ${(+was.steer).toFixed(2)} → ${(+EVO.steer).toFixed(2)}`);
+  }
+  renderEvo();
+  const hit = (EVO.init && (EVO.denoise === 0.1 || EVO.denoise === 0.95)) || (EVO.steerOn && (EVO.steer === 0.1 || EVO.steer === 1.5));
+  $("hEvoEz").innerHTML = `<b>${esc(label || (d > 0 ? "more similar" : "more different"))}</b> — ${bits.join(" · ")}${hit ? " (a slider hit its limit)" : ""}`
+    + (EVO.perChild ? " · note: per child is on, so each child still rolls its own" : "");
+}
+// 🎲 ranges: wide enough to explore, narrow enough to stay useful
+const EVO_WEIGHTS = ["style and composition", "style transfer", "strong style transfer", "composition", "style transfer precise"];
+const r05 = (lo, hi) => Math.round((lo + Math.random() * (hi - lo)) * 20) / 20;
+function randomEvo() {
+  const start = Math.random() < 0.7 ? 0 : r05(0.05, 0.3);
+  return { denoise: r05(0.3, 0.7), steer: r05(0.4, 1.1), start, end: Math.max(start + 0.2, r05(0.5, 1.0)),
+           weight: EVO_WEIGHTS[Math.floor(Math.random() * EVO_WEIGHTS.length)] };
+}
+const evoLabel = e => [EVO.init && `Δ${(+e.denoise).toFixed(2)}`, EVO.steerOn && `steer ${(+e.steer).toFixed(2)}`,
+  EVO.steerOn && (e.start > 0 || e.end < 1) && `${e.start}→${e.end}`, EVO.steerOn && e.weight].filter(Boolean).join(" · ");
+function evoParams() {
+  if (!EVO.parent) return {};
+  return { parent: { dir: EVO.parent.dir, file: EVO.parent.file }, gen: (EVO.parent.gen || 0) + 1,
+           evolve_init: EVO.init, evolve_denoise: EVO.denoise, evolve_steer: EVO.steerOn ? EVO.steer : 0,
+           evolve_weight_type: EVO.weight, evolve_steer_start: EVO.start, evolve_steer_end: EVO.end, n: EVO.n };
+}
+// one round of breeding: n children with the current sliders, or — per child — n single renders
+// that each roll their own settings (grouped as one card, labelled with what each child got)
+async function evolveRound(checked) {
+  const base = { ...params(), form: readForm() };
+  if (!checked && !(await preflight(base))) return;
+  if (!EVO.perChild) return render(base);
+  const group = `evo-${Date.now()}`;
+  showErr();
+  for (let i = 0; i < EVO.n; i++) {
+    const e = randomEvo();
+    const p = { ...base, n: 1, evolve_denoise: e.denoise, evolve_steer: EVO.steerOn ? e.steer : 0,
+                evolve_steer_start: e.start, evolve_steer_end: e.end, evolve_weight_type: e.weight,
+                group, label: evoLabel(e) };
+    try { await api("/api/render", p); } catch (err) { showErr(err); break; }
+  }
+  switchTab("queue"); poll();
+}
+function renderEvo() {
+  const on = !!EVO.parent;
+  $("evoBox").classList.toggle("on", on); $("evoNone").classList.toggle("hidden", on); $("evoOn").classList.toggle("hidden", !on);
+  if (on) {
+    $("evoImg").src = `/files/${encodeURIComponent(EVO.parent.dir)}/${encodeURIComponent(EVO.parent.file)}`;
+    $("evoGen").textContent = EVO.parent.gen || 0; $("evoName").textContent = `seed ${EVO.parent.seed ?? "?"}`;
+  }
+  $("evoInit").checked = EVO.init; $("evoDenoise").value = EVO.denoise; $("evoDenVal").textContent = (+EVO.denoise).toFixed(2);
+  $("evoSteerOn").checked = EVO.steerOn; $("evoSteer").value = EVO.steer; $("evoStVal").textContent = (+EVO.steer).toFixed(2);
+  $("evoWeight").value = EVO.weight; $("evoN").value = EVO.n; $("evoPerChild").checked = !!EVO.perChild;
+  $("evoStart").value = EVO.start; $("evoEnd").value = EVO.end;
+  $("evoStartVal").textContent = (+EVO.start).toFixed(2); $("evoEndVal").textContent = (+EVO.end).toFixed(2);
+  $("evoDenoise").disabled = !EVO.init; $("evoSteer").disabled = $("evoStart").disabled = $("evoEnd").disabled = !EVO.steerOn;
+  $("renderBtn").textContent = on ? `🧬 Evolve ×${EVO.n}${EVO.perChild ? " 🎲" : ""}` : "Render";
+  updateHints();
+  store.set("evo", EVO);
+}
+function setParent(job, o) {
+  EVO.parent = { dir: job.dir, file: o.file, seed: o.seed, gen: job.params.gen || 0 };
+  renderEvo();
+}
+function evolveFrom(job, o) {
+  if (job.params.form) loadJobSettings(job, null);   // breed with the settings that made it
+  const p = job.params;                              // …including the evolve sliders of a lucky child
+  if (p.parent) Object.assign(EVO, { denoise: p.evolve_denoise ?? EVO.denoise, steer: +p.evolve_steer || EVO.steer,
+    start: p.evolve_steer_start ?? EVO.start, end: p.evolve_steer_end ?? EVO.end, weight: p.evolve_weight_type || EVO.weight });
+  $("seedLock").checked = false; refresh();
+  setParent(job, o);
+  evolveRound();
+}
+function initEvo() {
+  $("evoWeight").innerHTML = META.steer_weight_types.map(w => `<option>${w}</option>`).join("");
+  $("evoClear").onclick = () => { EVO.parent = null; renderEvo(); };
+  $("evoDice").onclick = () => { Object.assign(EVO, randomEvo()); renderEvo(); $("hEvoEz").textContent = ""; };
+  $("evoReset").onclick = () => { Object.assign(EVO, EVO_DEFAULTS); renderEvo(); $("hEvoEz").textContent = "evolve settings reset"; };
+  $("evoPill").onclick = e => { const b = e.target.closest("[data-ez]"); if (b) evoNudge(+b.dataset.ez, b.textContent.replace(/[«»‹›]/g, "").trim()); };
+  $("evoPerChild").onchange = e => { EVO.perChild = e.target.checked; renderEvo(); };
+  $("evoInit").onchange = e => { EVO.init = e.target.checked; renderEvo(); };
+  $("evoDenoise").oninput = e => { EVO.denoise = +e.target.value; renderEvo(); };
+  $("evoSteerOn").onchange = e => { EVO.steerOn = e.target.checked; renderEvo(); };
+  $("evoSteer").oninput = e => { EVO.steer = +e.target.value; renderEvo(); };
+  $("evoWeight").onchange = e => { EVO.weight = e.target.value; renderEvo(); };
+  $("evoStart").oninput = e => { EVO.start = +e.target.value; if (EVO.end <= EVO.start) EVO.end = +(EVO.start + 0.05).toFixed(2); renderEvo(); };
+  $("evoEnd").oninput = e => { EVO.end = +e.target.value; if (EVO.start >= EVO.end) EVO.start = +(EVO.end - 0.05).toFixed(2); renderEvo(); };
+  $("evoN").oninput = e => { EVO.n = Math.max(1, Math.min(16, +e.target.value || 1)); renderEvo(); };
+  renderEvo();
+}
+
+// ---------------- presets (lab snapshots) ----------------
+let PRESETS = [];
+function snapshot() {
+  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO } };
+}
+function snapshotOfJob(job, o) {
+  const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
+  return { form: f,
+    steer: { ...STEER, use: !!(p.steer && p.steer.length), sel: [...(p.steer || [])], strength: p.steer_strength ?? STEER.strength,
+             weight: p.steer_weight_type || STEER.weight, combine: p.steer_combine || STEER.combine },
+    evo: { ...EVO, parent: p.parent ? { ...p.parent, gen: (p.gen || 1) - 1 } : null },
+    from: { dir: job.dir, file: o.file, command: job.command } };
+}
+function applySnapshot(snap) {
+  writeForm(snap.form || {});
+  Object.assign(STEER, snap.steer || {});
+  $("useSteer").checked = STEER.use; $("steerStrength").value = STEER.strength;
+  $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
+  $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
+  renderRefs(); saveSteer();
+  Object.assign(EVO, snap.evo || {}); renderEvo(); refresh();
+}
+async function loadPresets(select) {
+  try { PRESETS = (await api("/api/presets")).presets; } catch { return; }
+  $("presetSel").innerHTML = `<option value="">— presets (${PRESETS.length}) —</option>` +
+    PRESETS.map(p => `<option value="${esc(p.name)}" title="${esc(p.note || "")}">${esc(p.name)}</option>`).join("");
+  if (select) $("presetSel").value = select;
+  $("presetsPane").innerHTML = PRESETS.length ? `<div class="pcards">${PRESETS.map(p => {
+    const f = (p.snapshot && p.snapshot.form) || {};
+    const bits = [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
+                  f.dither && f.dither !== "none" && f.dither, f.seedLock && f.seed && `seed ${f.seed}`,
+                  p.snapshot && p.snapshot.steer && p.snapshot.steer.use && `🧭 ${p.snapshot.steer.sel.length}`,
+                  p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬"].filter(Boolean).join(" · ");
+    return `<div class="pcard">${p.image ? `<img src="/preset-img/${encodeURIComponent(p.image)}" alt="">` : `<div class="noimg">no picture</div>`}
+      <div class="body"><h4>${esc(p.name)}</h4><div class="note">${esc(p.note || "")}</div>
+        <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
+        <div class="acts"><button class="btn small" data-pload="${esc(p.name)}">Load</button>
+          <button class="btn small" data-prender="${esc(p.name)}">Load + render</button>
+          <button class="btn small" data-pdel="${esc(p.name)}">Delete</button></div></div></div>`;
+  }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`;
+}
+function latestOutput() {
+  if (EVO.parent) return { dir: EVO.parent.dir, file: EVO.parent.file };
+  const jobs = Object.values(JOBS).filter(j => j.outputs && j.outputs.length).sort((a, b) => b.created - a.created);
+  return jobs.length ? { dir: jobs[0].dir, file: jobs[0].outputs[0].file } : null;
+}
+async function savePreset(snap, suggested, image) {
+  const name = prompt("Preset name:", suggested || $("presetSel").value || "");
+  if (!name) return;
+  if (PRESETS.some(p => p.name === name) && !confirm(`Overwrite preset “${name}”?`)) return;
+  const note = prompt("Note (optional):", "") || "";
+  try { const r = await api("/api/presets", { name, note, snapshot: snap, image: image || latestOutput() }); await loadPresets(r.name); }
+  catch (e) { showErr(e); }
+}
+function initPresets() {
+  $("presetLoad").onclick = () => { const p = PRESETS.find(x => x.name === $("presetSel").value); if (p) applySnapshot(p.snapshot); };
+  $("presetSave").onclick = () => savePreset(snapshot());
+  $("presetsPane").addEventListener("click", async e => {
+    if (e.target.id === "revealPresets") return reveal("presets");
+    const b = e.target.closest("[data-pload],[data-prender],[data-pdel]"); if (!b) return;
+    const name = b.dataset.pload || b.dataset.prender || b.dataset.pdel, p = PRESETS.find(x => x.name === name);
+    if (b.dataset.pdel) { if (confirm(`Delete preset “${name}”? This can't be undone.`)) { await api("/api/presets/delete", { name }); loadPresets(); } return; }
+    if (!p) return;
+    applySnapshot(p.snapshot); $("presetSel").value = name;
+    if (b.dataset.prender) render({ ...params(), form: readForm() });
+  });
+  $("presetDel").onclick = async () => {
+    const name = $("presetSel").value;
+    if (!name || !confirm(`Delete preset “${name}”? This can't be undone.`)) return;
+    await api("/api/presets/delete", { name }); loadPresets();
+  };
+  loadPresets();
+}
+
+// ---------------- batch (manifest files, like qb64-dungeon's art-prompts.txt) ----------------
+const BATCH = Object.assign({ rows: [], sel: [], group: null, exists: [], source: "" }, {});
+const slugify = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "item";
+function parseBatch(text) {
+  const rows = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const c = line.split("|").map(x => x.trim());
+    let path, style = "", size = "", prompt;
+    if (c.length >= 5) [path, style, size, prompt] = [`${c[0]}/${c[1]}`, c[2], c[3], c.slice(4).join(" | ")];
+    else if (c.length === 4) [path, style, size, prompt] = c;
+    else if (c.length === 3) { path = c[0]; prompt = c[2]; if (/^\d+(x\d+)?$/i.test(c[1])) size = c[1]; else style = c[1]; }
+    else if (c.length === 2) [path, prompt] = c;
+    else { prompt = c[0]; path = slugify(prompt); }
+    // canonical manifests carry every media type ("ansi-art/…", "pixel-art/…") — keep pixel art only
+    const m = /^([\w-]+-art)\/(.*)$/.exec(path);
+    if (m && m[1] !== "pixel-art") continue;
+    path = (m ? m[2] : path).replace(/\.(png|gif|ans)$/i, "");
+    const bad = style.split(/[ ,]+/).filter(x => x && !META.styles[x]);
+    rows.push({ path, style: style.replace(/\s+/g, ""), size, prompt, err: bad.length ? `unknown style: ${bad.join(", ")}` : "" });
+  }
+  return rows;
+}
+async function setBatch(text, source) {
+  BATCH.rows = parseBatch(text); BATCH.source = source || "pasted text"; BATCH.group = null;
+  BATCH.sel = BATCH.rows.map((r, i) => i).filter(i => !BATCH.rows[i].err);
+  store.set("batchPath", $("batchPath").value);
+  await checkExisting(); renderBatch();
+}
+async function checkExisting() {
+  BATCH.exists = [];
+  const dir = $("batchExport").value.trim();
+  if (!dir || !BATCH.rows.length) return;
+  try { BATCH.exists = (await api("/api/batch/exists", { dir, paths: BATCH.rows.map(r => r.path) })).exists; } catch (e) { showErr(e); }
+}
+function batchVisible() {
+  const q = $("batchFilter").value.trim().toLowerCase();
+  return BATCH.rows.map((r, i) => i).filter(i => !q || `${BATCH.rows[i].path} ${BATCH.rows[i].style} ${BATCH.rows[i].prompt}`.toLowerCase().includes(q));
+}
+function renderBatch() {
+  const skip = $("batchSkip").checked, byLabel = {};
+  if (BATCH.group) for (const j of Object.values(JOBS)) if (j.group === BATCH.group) byLabel[j.label] = j;
+  const vis = batchVisible();
+  $("batchBody").innerHTML = vis.length ? vis.map(i => {
+    const r = BATCH.rows[i], ex = BATCH.exists.includes(r.path), j = byLabel[r.path];
+    const o = j && j.outputs[0];
+    const res = o ? `<img src="${fileUrl(j, o)}" data-job="${j.id}" data-file="${esc(o.file)}" class="bthumb" alt="">`
+              : j ? `<span class="badge ${j.status}">${j.status}</span>` : r.err ? esc(r.err) : ex && skip ? "exists — skipped" : "";
+    return `<tr class="${r.err ? "bad" : ""} ${ex && skip ? "skip" : ""}"><td><input type="checkbox" data-bi="${i}" ${BATCH.sel.includes(i) ? "checked" : ""} ${r.err ? "disabled" : ""}></td>
+      <td class="pth">${esc(r.path)}</td><td>${esc(r.style || "—")}</td><td>${esc(r.size || "—")}</td><td class="pr">${esc(r.prompt)}</td><td>${res}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">${BATCH.rows.length ? "No rows match the filter." : "Load a manifest file or paste rows above."}</td></tr>`;
+  const todo = BATCH.sel.filter(i => !(skip && BATCH.exists.includes(BATCH.rows[i].path)));
+  $("batchCount").textContent = `${BATCH.sel.length} of ${BATCH.rows.length} selected · ${todo.length} to render`;
+  $("batchGo").textContent = `Queue ${todo.length} row${todo.length === 1 ? "" : "s"}`;
+  $("batchInfo").textContent = BATCH.rows.length ? `${BATCH.rows.length} rows from ${BATCH.source}` : "";
+}
+async function queueBatch() {
+  const skip = $("batchSkip").checked, dir = $("batchExport").value.trim();
+  const todo = BATCH.sel.filter(i => !(skip && BATCH.exists.includes(BATCH.rows[i].path)));
+  if (!todo.length) return showErr("Nothing selected to render.");
+  const f = readForm(), base = { ...params(f), form: f };
+  delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen;   // batches don't breed
+  BATCH.group = `batch-${Date.now()}`;
+  const mode = $("batchStyleMode").value, sizeMode = $("batchSizeMode").value;
+  for (const i of todo) {
+    const r = BATCH.rows[i], rowStyles = r.style ? r.style.split(",") : [];
+    const styles = mode === "row" ? rowStyles : mode === "form" ? f.styles : [...new Set([...rowStyles, ...f.styles])];
+    const out = sizeMode === "row" && r.size ? (/x/i.test(r.size) ? r.size.toLowerCase() : `${r.size}x${r.size}`) : base.out;
+    const p = { ...base, prompt: composedPrompt({ ...f, subject: r.prompt }), styles, out, n: 1,
+                name: r.path.split("/").pop(), group: BATCH.group, label: r.path,
+                form: { ...f, subject: r.prompt, styles } };
+    if (dir) p.export = { dir, path: r.path };
+    try { await api("/api/render", p); } catch (e) { showErr(`${r.path}: ${e.message}`); break; }
+  }
+  poll(); renderBatch();
+}
+function initBatch() {
+  $("batchPath").value = store.get("batchPath", "");
+  $("batchExport").value = store.get("batchExport", "");
+  $("batchLoad").onclick = async () => {
+    try { const r = await api("/api/batch/read", { path: $("batchPath").value.trim() }); await setBatch(r.text, r.path); } catch (e) { showErr(e); }
+  };
+  $("batchPick").onclick = () => $("batchFile").click();
+  $("batchFile").onchange = async e => { const f = e.target.files[0]; if (f) await setBatch(await f.text(), f.name); e.target.value = ""; };
+  $("batchParse").onclick = () => setBatch($("batchText").value, "pasted text");
+  $("batchFilter").oninput = renderBatch;
+  $("batchSkip").onchange = renderBatch;
+  $("batchExport").onchange = async () => { store.set("batchExport", $("batchExport").value.trim()); await checkExisting(); renderBatch(); };
+  $("batchAll").onclick = () => { BATCH.sel = [...new Set([...BATCH.sel, ...batchVisible().filter(i => !BATCH.rows[i].err)])]; renderBatch(); };
+  $("batchNone").onclick = () => { BATCH.sel = []; renderBatch(); };
+  $("batchBody").addEventListener("change", e => {
+    const i = +e.target.dataset.bi; if (Number.isNaN(i)) return;
+    e.target.checked ? BATCH.sel.push(i) : (BATCH.sel = BATCH.sel.filter(x => x !== i)); renderBatch();
+  });
+  $("batchGo").onclick = queueBatch;
+  $("batchOpenExport").onclick = () => reveal("dir", $("batchExport").value.trim());
+}
+
+// clipboard with a visible "Copied" flash (navigator.clipboard needs localhost/https; fall back otherwise)
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+          document.execCommand("copy"); t.remove(); }
+  if (btn) { const was = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => (btn.textContent = was), 1200); }
+}
+
+// ---------------- palette readout: colors used, count, GPL export ----------------
+const PAL = {};   // "dir/file" -> {n, colors}
+function palHtml(dir, file, info, max) {
+  if (!info) return "…";
+  if (info.n === ">255") return `<span>&gt; 255 colors</span>`;
+  const q = `dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`;
+  const shown = info.colors.slice(0, max);
+  return `<span class="sw" title="${esc(info.colors.join(" "))}">${shown.map(c => `<i style="background:${c}" title="${c}"></i>`).join("")}</span>`
+    + (info.colors.length > max ? `<span>+${info.colors.length - max}</span>` : "")
+    + `<span>${info.n} color${info.n === 1 ? "" : "s"}</span>`
+    + `<a class="gpl" href="/api/colors.gpl?${q}" download title="download this palette as a GIMP .gpl file">GPL</a>`;
+}
+async function palFetch(dir, file) {
+  const k = dir + "/" + file;
+  if (!PAL[k]) PAL[k] = api(`/api/colors?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`).catch(() => null);
+  return PAL[k];
+}
+async function palFill(el, dir, file, max) {
+  el.innerHTML = palHtml(dir, file, null);
+  const info = await palFetch(dir, file);
+  el.innerHTML = info ? palHtml(dir, file, info, max) : "";
+}
+// only fetch palettes for thumbnails that are actually on screen
+const palObs = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  palObs.unobserve(e.target);
+  palFill(e.target, e.target.dataset.pdir, e.target.dataset.pfile, 16);
+}), { rootMargin: "200px" }) : null;
+function fillPalettes(root) {
+  (root || document).querySelectorAll(".pal[data-pdir]:not([data-done])").forEach(el => {
+    el.dataset.done = "1";
+    palObs ? palObs.observe(el) : palFill(el, el.dataset.pdir, el.dataset.pfile, 16);
+  });
+}
+
+// ---------------- grid overlay: DRAW-style grids over the lightbox / peek (viewing aid) ----------------
+const OV = Object.assign({ type: "off", size: 8 }, store.get("gridOverlay", {}));
+const OV_TYPES = ["off", "pixel", "square", "diagonal", "isometric", "hex", "triangle"];
+function drawGrid(cv, img, k) {
+  const W = img.naturalWidth * k, H = img.naturalHeight * k;
+  cv.width = W; cv.height = H; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const g = cv.getContext("2d"); g.clearRect(0, 0, W, H);
+  if (OV.type === "off") return;
+  const N = (OV.type === "pixel" ? 1 : Math.max(2, +OV.size || 8)) * k;   // cell size on screen
+  if (OV.type === "pixel" && k < 4) return;                             // a per-pixel grid needs room
+  g.strokeStyle = OV.type === "pixel" ? "rgba(0,0,0,.35)" : "rgba(85,255,255,.55)"; g.lineWidth = 1;
+  g.beginPath();
+  const ln = (x1, y1, x2, y2) => { g.moveTo(Math.round(x1) + .5, Math.round(y1) + .5); g.lineTo(Math.round(x2) + .5, Math.round(y2) + .5); };
+  if (OV.type === "pixel" || OV.type === "square") {
+    for (let x = 0; x <= W; x += N) ln(x, 0, x, H);
+    for (let y = 0; y <= H; y += N) ln(0, y, W, y);
+  } else if (OV.type === "diagonal") {                        // 45° diamond lattice
+    for (let c = -H; c <= W + H; c += N) { ln(c, 0, c + H, H); ln(c, 0, c - H, H); }
+  } else if (OV.type === "isometric") {                       // 2:1 diagonals + verticals
+    for (let c = -2 * H; c <= W + 2 * H; c += N) { ln(c, 0, c + 2 * H, H); ln(c, 0, c - 2 * H, H); }
+    for (let x = 0; x <= W; x += N) ln(x, 0, x, H);
+  } else if (OV.type === "hex") {                             // DRAW's flat-top hex: width N, height N/2, 45° sides
+    const cs = N * 0.75, rs = N / 2;
+    for (let i = -1, cx = 0; cx <= W + N; i++, cx = i * cs) {
+      const off = (i & 1) ? rs / 2 : 0;
+      for (let cy = -rs + off; cy <= H + rs; cy += rs) {
+        const v = [[cx - N / 2, cy], [cx - N / 4, cy - N / 4], [cx + N / 4, cy - N / 4], [cx + N / 2, cy], [cx + N / 4, cy + N / 4], [cx - N / 4, cy + N / 4]];
+        for (let j = 0; j < 6; j++) ln(...v[j], ...v[(j + 1) % 6]);
+      }
+    }
+  } else if (OV.type === "triangle") {                        // flats + 1:2 (≈60°) sides
+    for (let y = 0; y <= H; y += N) ln(0, y, W, y);
+    for (let c = -H; c <= W + H; c += N) { ln(c, 0, c + H / 2, H); ln(c, 0, c - H / 2, H); }
+  }
+  g.stroke();
+}
+function redrawGrids() {
+  const lb = $("lbImg"), pk = $("peekImg");
+  if (lb.naturalWidth && !$("lb").classList.contains("hidden")) drawGrid($("lbGrid"), lb, lb.clientWidth / lb.naturalWidth);
+  if (pk.naturalWidth && !$("peek").classList.contains("hidden")) drawGrid($("peekGrid"), pk, pk.clientWidth / pk.naturalWidth);
+}
+function initGridOverlay() {
+  const sync = () => { $("ovType").value = OV.type; $("ovSize").value = OV.size; store.set("gridOverlay", OV); redrawGrids(); };
+  $("ovType").onchange = e => { OV.type = e.target.value; sync(); };
+  $("ovSize").oninput = e => { OV.size = Math.max(2, Math.min(128, +e.target.value || 8)); sync(); };
+  sync();
+}
+
+// ---------------- hover peek: blown-up preview of a thumbnail ----------------
+let PEEK = { el: null, stack: [], idx: 0, zoom: 3, timer: null, hideTimer: null };
+function peekFind(item) {   // the on-screen thumbnail for a stack item
+  return [...document.querySelectorAll(".thumb[data-file], .bthumb")]
+    .find(x => x.dataset.job === item.job && x.dataset.file === item.file);
+}
+function showPeek(el) {
+  const it = PEEK.stack[PEEK.idx] || {};
+  const job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
+  const o = job && job.outputs.find(x => x.file === it.file); if (!o) return;
+  document.querySelectorAll(".peeking").forEach(x => x.classList.remove("peeking"));
+  if (el) (el.matches("img") ? el : el.querySelector("img") || el).classList.add("peeking");
+  const pk = $("peek"), img = $("peekImg");
+  img.onload = () => {
+    // requested zoom, or the largest whole-number zoom that fits the viewport
+    const room = Math.max(1, Math.floor(Math.min((innerWidth - 60) / img.naturalWidth, (innerHeight - 110) / img.naturalHeight)));
+    const k = PEEK.zoom === "fit" ? room : Math.min(PEEK.zoom, room);
+    img.style.width = img.naturalWidth * k + "px";
+    drawGrid($("peekGrid"), img, k);
+    $("peek").style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
+    $("peekCap").textContent = `${job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
+    $("peekZooms").innerHTML = ["fit", 2, 3, 4].map(z => `<button class="btn small ${z == PEEK.zoom ? "on" : ""}" data-peekzoom="${z}">${z === "fit" ? "fit" : z + "×"}</button>`).join("");
+    pk.classList.remove("hidden");
+    // beside the thumbnail, on whichever side has more room, clamped to the viewport
+    const r = (el || document.body).getBoundingClientRect(), w = pk.offsetWidth, h = pk.offsetHeight;
+    const left = Math.max(8, r.left + r.width / 2 < innerWidth / 2 ? Math.min(innerWidth - w - 8, r.right + 12) : r.left - w - 12);
+    pk.style.left = left + "px";
+    pk.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2)) + "px";
+  };
+  const p = job.params, bits = [
+    ["prompt", (p.form && p.form.subject) || p.prompt],
+    ["LoRA", p.lora === "(none)" ? "none" : `${(p.lora || "default").replace(".safetensors", "")} @ ${p.lora_strength || 1}`],
+    ["styles", (p.styles || []).join(", ") || "—"], ["size", p.out || "default"],
+    ["palette / dither", `${p.palette || "none"} / ${!p.dither || p.dither === "none" ? "none" : p.dither + " @ " + p.dither_amount}`],
+    ["seed", o.seed ?? "?"]];
+  if (p.parent) bits.push(["evolved", `generation ${p.gen || 1} · change ${p.evolve_denoise ?? "—"} · steer ${p.evolve_steer ?? "—"}`]);
+  if (p.steer && p.steer.length) bits.push(["steering", `${p.steer.length} refs @ ${p.steer_strength}`]);
+  const cmd = job.command.replace(/ --seed \d+/, "").replace(/ -n \d+/, "") + (o.seed != null ? ` --seed ${o.seed}` : "");
+  $("peekForm").innerHTML = bits.map(([k, v]) => `<div>${k}: <b>${esc(v)}</b></div>`).join("")
+    + `<div class="pk-cmd">${esc(cmd)}<button class="btn small copy" id="peekCopy" title="copy the command that reproduces this image">Copy</button></div>`;
+  $("peekCopy").onclick = e => { e.stopPropagation(); copyText(cmd, e.currentTarget); };
+  palFill($("peekPal"), job.dir, o.file, 64);
+  img.src = fileUrl(job, o);
+  if (img.complete && img.naturalWidth) img.onload();
+}
+function hidePeek() {
+  clearTimeout(PEEK.timer); $("peek").classList.add("hidden"); PEEK.el = null;
+  document.querySelectorAll(".peeking").forEach(x => x.classList.remove("peeking"));
+}
+function peekStep(d) {
+  if (PEEK.stack.length < 2) return;
+  PEEK.idx = (PEEK.idx + d + PEEK.stack.length) % PEEK.stack.length;
+  PEEK.el = peekFind(PEEK.stack[PEEK.idx]) || PEEK.el;
+  showPeek(PEEK.el);
+}
+function initPeek() {
+  PEEK.zoom = store.get("peekZoom", 3);
+  lbZoom = store.get("lbZoom", "fit");
+  document.addEventListener("mouseover", e => {
+    if (!$("lb").classList.contains("hidden")) return;
+    if (e.target.closest("#peek")) { clearTimeout(PEEK.hideTimer); return; }
+    const th = e.target.closest(".thumb[data-file], .bthumb");
+    if (!th || e.target.closest(".evo-btn")) return;
+    clearTimeout(PEEK.hideTimer); clearTimeout(PEEK.timer);
+    PEEK.timer = setTimeout(() => {
+      PEEK.el = th; PEEK.stack = stackOf(th);
+      PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.job === th.dataset.job && x.file === th.dataset.file));
+      showPeek(th);
+    }, 280);
+  });
+  document.addEventListener("mouseout", e => {
+    const from = e.target.closest(".thumb[data-file], .bthumb, #peek"); if (!from) return;
+    const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".thumb[data-file], .bthumb, #peek");
+    if (to) return;
+    clearTimeout(PEEK.timer); PEEK.hideTimer = setTimeout(hidePeek, 220);   // grace period to reach the peek
+  });
+  $("peekFormula").open = store.get("peekFormula", false);
+  $("peekFormula").addEventListener("toggle", e => { store.set("peekFormula", e.target.open); if (PEEK.el) showPeek(PEEK.el); });
+  $("peek").addEventListener("click", e => {
+    if (e.target.closest("#peekFormula, .gpl")) return;   // twirl / select / copy / GPL — not "open the lightbox"
+    const z = e.target.closest("[data-peekzoom]");
+    if (z) { PEEK.zoom = z.dataset.peekzoom === "fit" ? "fit" : +z.dataset.peekzoom; store.set("peekZoom", PEEK.zoom); return showPeek(PEEK.el); }
+    const it = PEEK.stack[PEEK.idx]; hidePeek(); if (it) openLb(it.job, it.file, PEEK.stack);
+  });
+  document.addEventListener("keydown", e => {
+    if ($("peek").classList.contains("hidden") || !$("lb").classList.contains("hidden")) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (e.key === "Escape") return hidePeek();
+    if (e.key === "g" || e.key === "G") { OV.type = OV_TYPES[(OV_TYPES.indexOf(OV.type) + 1) % OV_TYPES.length];
+      $("ovType").value = OV.type; store.set("gridOverlay", OV); return showPeek(PEEK.el); }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); return peekStep(e.key === "ArrowLeft" ? -1 : 1); }
+    if (/^[0-4]$/.test(e.key)) {
+      PEEK.zoom = e.key === "0" ? "fit" : +e.key;
+      store.set("peekZoom", PEEK.zoom); showPeek(PEEK.el);
+    }
+  });
+  // clicking a thumbnail opens the lightbox — drop the peek first
+  document.addEventListener("click", e => { if (e.target.closest(".thumb[data-file], .bthumb")) hidePeek(); }, true);
+}
+
+// ---------------- corkboard: collect images into board folders ----------------
+const CORK = { open: store.get("corkOpen", false), board: store.get("corkBoard", "favorites"), boards: [], root: "" };
+const DRAG_MIME = "application/x-pixelmon";
+function curBoard() { return CORK.boards.find(b => b.name === CORK.board) || { name: CORK.board, items: [] }; }
+async function loadBoards() {
+  try { const r = await api("/api/boards"); CORK.boards = r.boards; CORK.root = r.root; } catch { return; }
+  if (!CORK.boards.some(b => b.name === CORK.board)) CORK.board = (CORK.boards[0] || {}).name || "favorites";
+  renderCork();
+}
+function boardJobOf(file) {   // "<jobdir>__<file>" copies trace back to their gallery render
+  const i = file.indexOf("__"); if (i < 0) return null;
+  const dir = file.slice(0, i), f = file.slice(i + 2);
+  const job = [...Object.values(JOBS), ...GALLERY].find(j => j.dir === dir);
+  return job && job.outputs.some(o => o.file === f) ? { job: job.id, file: f } : null;
+}
+function renderCork() {
+  $("app").classList.toggle("cork-open", CORK.open); $("cork").classList.toggle("hidden", !CORK.open);
+  $("boardSel").innerHTML = CORK.boards.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${b.items.length})</option>`).join("");
+  $("boardSel").value = CORK.board;
+  const b = curBoard();
+  $("corkN").textContent = b.items.length ? `(${b.items.length})` : "";
+  $("corkBody").innerHTML = (b.items.length ? `<div class="cork-grid">${b.items.map(f =>
+      `<div class="cork-item" data-cork="${esc(f)}" title="${esc(f)}"><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
+        <button class="x" data-cork-x="${esc(f)}" title="remove from board (deletes only the board's copy)">×</button></div>`).join("")}</div>` : "")
+    + `<div class="cork-hint" style="margin-top:${b.items.length ? 10 : 0}px">Drag images here — renders, gallery, steering refs, the lightbox, or files from your desktop.</div>`;
+  store.set("corkOpen", CORK.open); store.set("corkBoard", CORK.board);
+}
+async function corkDrop(e) {
+  e.preventDefault(); $("corkBody").classList.remove("over");
+  const raw = e.dataTransfer.getData(DRAG_MIME);
+  try {
+    if (raw) await api("/api/boards/add", { board: CORK.board, ...JSON.parse(raw) });
+    else for (const f of [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"))) {
+      const r = await fetch(`/api/refs/upload?board=${encodeURIComponent(CORK.board)}&filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+      if (!r.ok) throw new Error((await r.json()).error);
+    }
+  } catch (err) { showErr(err); }
+  loadBoards();
+}
+function initCork() {
+  // what a drag carries: a gallery render {src:{dir,file}} or a steering ref {ref}
+  document.addEventListener("dragstart", e => {
+    let payload = null;
+    const th = e.target.closest && e.target.closest(".thumb[data-file], .bthumb");
+    const ref = e.target.closest && e.target.closest(".ref[data-ref]");
+    if (th) { const job = JOBS[th.dataset.job] || GALLERY.find(j => j.id === th.dataset.job); if (job) payload = { src: { dir: job.dir, file: th.dataset.file } }; }
+    else if (ref) payload = { ref: ref.dataset.ref };
+    else if (e.target.id === "lbImg" && lbItem) payload = { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
+    else if (e.target.id === "peekImg" && PEEK.stack[PEEK.idx]) {
+      const it = PEEK.stack[PEEK.idx], job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
+      if (job) payload = { src: { dir: job.dir, file: it.file } };
+    }
+    if (payload) { e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; hidePeek(); }
+  });
+  const body = $("corkBody");
+  body.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; body.classList.add("over"); });
+  body.addEventListener("dragleave", e => { if (!body.contains(e.relatedTarget)) body.classList.remove("over"); });
+  body.addEventListener("drop", corkDrop);
+  body.addEventListener("click", async e => {
+    const x = e.target.closest("[data-cork-x]");
+    if (x) { await api("/api/boards/remove", { board: CORK.board, file: x.dataset.corkX }); return loadBoards(); }
+    const it = e.target.closest("[data-cork]"); if (!it) return;
+    const hit = boardJobOf(it.dataset.cork);
+    if (hit) {   // open in the lightbox, ←/→ through the board's renders
+      const stack = curBoard().items.map(boardJobOf).filter(Boolean);
+      return openLb(hit.job, hit.file, stack);
+    }
+    window.open(`/boards/${encodeURIComponent(CORK.board)}/${encodeURIComponent(it.dataset.cork)}`, "_blank");
+  });
+  $("corkToggle").onclick = () => { CORK.open = !CORK.open; renderCork(); if (CORK.open) loadBoards(); };
+  $("boardSel").onchange = e => { CORK.board = e.target.value; renderCork(); };
+  $("boardNew").onclick = async () => {
+    const name = prompt("New board name:"); if (!name) return;
+    try { CORK.board = (await api("/api/boards/new", { name })).name; } catch (err) { showErr(err); } loadBoards();
+  };
+  $("boardReveal").onclick = () => reveal("board", CORK.board);
+  $("boardClear").onclick = async () => {
+    const n = curBoard().items.length;
+    if (!n) return;
+    if (!confirm(`Clear board “${CORK.board}”?\n\nThis deletes its ${n} image${n > 1 ? "s" : ""} from the board folder. `
+                 + "Your gallery renders and steering images are not affected.")) return;
+    try { await api("/api/boards/clear", { board: CORK.board }); } catch (e) { showErr(e); }
+    loadBoards();
+  };
+  $("boardZip").onclick = () => { location.href = `/api/boards/zip?board=${encodeURIComponent(CORK.board)}`; };
+  $("boardSteer").onclick = async () => {
+    try {
+      const r = await api("/api/boards/to-steering", { board: CORK.board });
+      if (!r.refs.length) return showErr("This board is empty.");
+      Object.assign(STEER, { use: true, sel: r.refs, col: r.collection });
+      $("useSteer").checked = true; await loadRefs(); switchTab("steer");
+    } catch (err) { showErr(err); }
+  };
+  renderCork(); loadBoards();
+}
+
+// ---------------- status bar + notifications ----------------
+const NF = Object.assign({ on: false, done: true, err: true, sound: false }, store.get("notify", {}));
+let prevStatus = null;
+function chime(bad) {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
+    o.type = "square"; o.frequency.value = bad ? 220 : 880; g.gain.value = 0.05;
+    o.connect(g); g.connect(ac.destination); o.start();
+    if (!bad) o.frequency.setValueAtTime(1175, ac.currentTime + 0.09);
+    o.stop(ac.currentTime + (bad ? 0.35 : 0.2));
+  } catch {}
+}
+function notify(title, body, bad) {
+  if (NF.sound) chime(bad);
+  if (!NF.on || !("Notification" in window) || Notification.permission !== "granted") return;
+  const n = new Notification(title, { body, tag: title + body });
+  n.onclick = () => { window.focus(); n.close(); };
+}
+function statusUpdate(jobs) {
+  // session count: finished images vs images asked for
+  const want = jobs.filter(j => j.status !== "cancelled").reduce((n, j) => n + (j.total || 1), 0);
+  const made = jobs.reduce((n, j) => n + j.outputs.length, 0);
+  $("sbCount").innerHTML = `<b>${made}</b> of <b>${want}</b> images created this session`;
+  const run = jobs.find(j => j.status === "running"), queued = jobs.filter(j => j.status === "queued").length;
+  const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
+  $("sbStatus").innerHTML = run
+    ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
+    : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? `<span class="err">● rtx unreachable</span>` : "● idle";
+  // notifications on transitions — one per finished card (a whole batch/evolve round, not every image)
+  const now = Object.fromEntries(jobs.map(j => [j.id, j.status]));
+  if (prevStatus) {
+    const doneGroups = new Set();
+    for (const j of jobs) {
+      const was = prevStatus[j.id];
+      if (!was || was === j.status || !["done", "failed"].includes(j.status)) continue;
+      if (j.status === "failed" && NF.err) notify("pixelmon: render failed", `${nm(j)} — ${(j.log.slice(-1)[0] || "").slice(0, 120)}`, true);
+      if (j.status === "done" && NF.done) {
+        if (j.group) {
+          const g = jobs.filter(x => x.group === j.group);
+          if (g.every(x => ["done", "failed", "cancelled"].includes(x.status)) && !doneGroups.has(j.group)) {
+            doneGroups.add(j.group);
+            notify(`pixelmon: ${j.group.startsWith("evo-") ? "evolve round" : j.group.startsWith("batch-") ? "batch" : "sweep"} done`,
+                   `${g.reduce((n, x) => n + x.outputs.length, 0)} images · ${nm(g[0])}`);
+          }
+        } else notify("pixelmon: done", `${j.outputs.length} image${j.outputs.length === 1 ? "" : "s"} · ${nm(j)}`);
+      }
+    }
+  }
+  prevStatus = now;
+}
+function initStatus() {
+  const sync = () => { $("nfOn").checked = NF.on; $("nfDone").checked = NF.done; $("nfErr").checked = NF.err; $("nfSound").checked = NF.sound;
+                       ["nfDone", "nfErr"].forEach(id => $(id).disabled = !NF.on); store.set("notify", NF); };
+  $("nfOn").onchange = async e => {
+    NF.on = e.target.checked;
+    if (NF.on && "Notification" in window && Notification.permission !== "granted") {
+      const p = await Notification.requestPermission();
+      if (p !== "granted") { NF.on = false; showErr("The browser blocked notifications for this page — allow them in the site settings."); }
+    }
+    sync();
+  };
+  $("nfDone").onchange = e => { NF.done = e.target.checked; sync(); };
+  $("nfErr").onchange = e => { NF.err = e.target.checked; sync(); };
+  $("nfSound").onchange = e => { NF.sound = e.target.checked; sync(); if (NF.sound) chime(); };
+  $("preflightOn").checked = store.get("preflight", true);
+  $("preflightOn").onchange = e => store.set("preflight", e.target.checked);
+  sync();
+}
+
+// ---------------- open folders in the OS file manager ----------------
+async function reveal(kind, arg) {
+  try { await api("/api/reveal", { kind, arg }); } catch (e) { showErr(e); }
+}
+
+// ---------------- setup wizard: one-click fixes + pre-flight check ----------------
+let LAST_WARN = [];
+function applyFix(f) {
+  if (f.action === "drop_style") { activeStyles.delete(f.value); renderStyles(); }
+  else if (f.action === "set") { const el = $(f.field); if (el.type === "checkbox") el.checked = !!f.value; else el.value = f.value; }
+  else if (f.action === "size") { const [w, h] = f.value.split("x"); $("outW").value = w; $("outH").value = h; syncOutPreset(); }
+  else if (f.action === "neg_remove") {
+    let n = $("negative").value;
+    for (const w of f.value) n = n.replace(new RegExp(`\\b${w}\\b`, "gi"), "");
+    $("negative").value = n.split(",").map(x => x.trim()).filter(Boolean).join(", ");
+  }
+  else if (f.action === "evo") { EVO[f.field] = f.value; renderEvo(); }
+  else if (f.action === "steer") { STEER[f.field] = f.value; $("steerStrength").value = STEER.strength; saveSteer(); }
+  refresh();
+}
+async function fixAll() {
+  // one recommended fix at a time, re-checking after each — a fix can clear or change other warnings
+  // (e.g. choosing Kind = game sprite changes which canvas size is right)
+  for (let i = 0; i < 12 && LAST_WARN.length; i++) {
+    applyFix(LAST_WARN[0].fixes[0]);
+    LAST_WARN = (await api("/api/prompt", { ...params(), form: readForm() })).warnings || [];
+  }
+  refresh();
+}
+async function preflight(p) {
+  // ask before spending GPU time on a setup that fights itself (toggle in the status bar)
+  if (!store.get("preflight", true)) return true;
+  let w = [];
+  try { w = (await api("/api/prompt", { ...p, form: p.form || readForm() })).warnings || []; } catch { return true; }
+  if (!w.length) return true;
+  return confirm(`This setup has ${w.length} problem${w.length > 1 ? "s" : ""}:\n\n` + w.map(x => "• " + x.text).join("\n")
+                 + "\n\nOK = render anyway.   Cancel = go back (the warning box has one-click fixes).");
+}
+
+// ---------------- 🎲 random prompts (a phrase grammar, tuned to Kind / Genre / styles) ----------------
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const VOCAB = {
+  time: ["at dawn", "at dusk", "at night under a full moon", "in a thunderstorm", "on a misty morning", "at sunset",
+         "in deep winter snow", "in autumn", "at midnight", "in bright daylight", "under a starry sky", "in the rain"],
+  darkTime: ["under a blood-red sky", "at midnight in thick fog", "during a lightning storm", "by the light of dying torches",
+             "under a black moon", "in a cold grey drizzle"],
+  scene: {
+    "adventure game": ["a cluttered alchemist's laboratory", "a pirate ship's deck", "a mansion hallway lined with portraits",
+      "a dusty antique shop", "a seaside village dock", "a jungle temple entrance", "a sheriff's office in a desert town",
+      "a castle kitchen", "a mad scientist's lab", "an inn's common room with a roaring fireplace",
+      "a secret cave behind a waterfall", "a royal throne room", "a fisherman's hut on stilts", "a wizard's tower library"],
+    "role-playing game": ["a torchlit dungeon corridor", "a ruined keep on a hill", "a dragon's lair piled with gold",
+      "a village market square", "a crypt with stone coffins", "a forest shrine", "a mountain pass with a rope bridge",
+      "a dwarven forge hall", "an underground lake", "a crowded tavern", "a walled city gate", "a haunted swamp"],
+    "action game": ["a neon city rooftop", "an alien jungle", "a flooded sewer tunnel", "a military base",
+      "a lava cavern", "a space station corridor", "a desert canyon", "an ice fortress", "a robot factory"],
+    "strategy game": ["a medieval town seen from above", "a battlefield with two armies", "a war room with a map table",
+      "a fortress on a river", "a busy harbor with ships", "a farming village"],
+    "puzzle game": ["a colorful toy workshop", "a hedge maze garden", "a clockwork tower", "a candy land", "a library of floating books"],
+    "simulation game": ["an airport terminal", "a busy city street", "a farm with red barns", "a racing pit lane", "a zoo"],
+    "sports game": ["a football stadium", "a boxing ring", "a golf course green", "a ski slope", "a race track"],
+    "education game": ["a classroom", "a science museum", "the solar system", "a dinosaur museum hall", "a world map"],
+  },
+  adj: ["grizzled", "young", "scarred", "wise old", "cunning", "noble", "cheerful", "battle-weary", "mysterious",
+        "haughty", "nervous", "proud"],
+  darkAdj: ["sinister", "cursed", "hollow-eyed", "plague-ridden", "undead", "corrupted", "grim"],
+  who: {
+    "role-playing game": ["dwarf warrior", "elven ranger", "human paladin", "halfling thief", "orc chieftain", "necromancer",
+      "cleric", "barbarian", "sorceress", "lizardman shaman", "bard", "knight"],
+    "adventure game": ["ship captain", "innkeeper", "detective", "witch", "king", "princess", "hermit", "shopkeeper",
+      "gravedigger", "scientist", "sailor", "fortune teller"],
+    "action game": ["space marine", "cyborg", "commando", "ninja", "alien soldier", "bounty hunter", "combat robot"],
+  },
+  feat: ["with a braided beard", "with an eyepatch", "with a glowing amulet", "wearing a horned helmet", "in a hooded cloak",
+         "with a jeweled crown", "with a scar across the face", "with glowing eyes", "holding a torch", "with a tricorn hat",
+         "with silver hair", "with a feathered cap"],
+  thing: {
+    "role-playing game": ["a skeleton warrior with a rusty sword", "a green goblin with a spear", "a giant spider", "a red dragon",
+      "a slime monster", "a treasure chest", "a healing potion", "a magic staff", "a knight in armor", "an ogre with a club",
+      "a ghost", "a mimic chest", "a giant rat", "a bat swarm"],
+    "action game": ["a jetpack hero", "a laser turret", "a robot drone", "a flying saucer", "a mutant rat",
+      "a power-up capsule", "a spiked mine", "a tank"],
+    "adventure game": ["a brass key", "a rolled treasure map", "an oil lantern", "a talking parrot", "a black cat",
+      "a rowboat", "a potion bottle", "a skull"],
+  },
+};
+function randomSubject() {
+  const f = readForm(), dark = f.styles.some(s => ["darkest", "horror", "dark", "blasphemous", "deadcells"].includes(s));
+  const kind = f.kind || pick(["scene background", "scene background", "character portrait", "game sprite"]);
+  const genre = f.genre || pick(Object.keys(VOCAB.scene));
+  const from = (tbl) => tbl[genre] || tbl[pick(Object.keys(tbl))];
+  if (kind === "character portrait")
+    return `a ${pick(dark ? VOCAB.darkAdj : VOCAB.adj)} ${pick(from(VOCAB.who))} ${pick(VOCAB.feat)}`;
+  if (kind === "game sprite")
+    return dark ? `a ${pick(VOCAB.darkAdj)} ${pick(from(VOCAB.thing)).replace(/^an? /, "")}` : pick(from(VOCAB.thing));
+  return `${pick(from(VOCAB.scene))} ${pick(dark ? VOCAB.darkTime : VOCAB.time)}`;
+}
+
+// ---------------- 🕘 prompt history ----------------
+function remember(subject) {
+  subject = (subject || "").trim(); if (!subject) return;
+  const h = [subject, ...store.get("history", []).filter(x => x !== subject)].slice(0, 60);
+  store.set("history", h); renderHistory();
+}
+function renderHistory() {
+  const h = store.get("history", []);
+  $("history").innerHTML = `<option value="">🕘 recent prompts (${h.length})…</option>`
+    + h.map((x, i) => `<option value="${i}" title="${esc(x)}">${esc(x.length > 70 ? x.slice(0, 70) + "…" : x)}</option>`).join("");
+}
+function initPromptTools() {
+  $("diceSubject").onclick = e => {
+    $("subject").value = randomSubject(); refresh();
+    if (e.shiftKey) render({ ...params(), form: readForm() });
+  };
+  $("history").onchange = e => {
+    const h = store.get("history", []), i = e.target.value;
+    if (i !== "") { $("subject").value = h[+i]; refresh(); }
+    e.target.value = "";
+  };
+  if (!store.get("history", []).length)          // first run: seed from the gallery's past renders
+    api("/api/gallery").then(r => {
+      const seen = [...new Set(r.items.map(j => j.params.form && j.params.form.subject).filter(Boolean))].slice(0, 60);
+      if (seen.length) { store.set("history", seen); renderHistory(); }
+    }).catch(() => {});
+  renderHistory();
 }
 
 // ---------------- API ----------------
@@ -368,6 +1729,7 @@ function showErr(e) { $("err").textContent = e ? (e.message || e) : ""; }
 async function render(p) {
   showErr();
   if (!p.prompt.trim()) return showErr("Write a prompt first.");
+  remember((p.form && p.form.subject) || $("subject").value);
   try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
 }
 async function sweep() {
@@ -384,7 +1746,8 @@ const fileUrl = (job, o) => `/files/${encodeURIComponent(job.dir)}/${encodeURICo
 function thumbHtml(job, o, scale, caption) {
   return `<div class="thumb" data-job="${job.id}" data-file="${o.file}">
     <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
-    <div class="cap">${caption}</div></div>`;
+    <button class="evo-btn" data-evo-job="${job.id}" data-evo-file="${esc(o.file)}" title="evolve: breed children from this">🧬</button>
+    <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div></div>`;
 }
 // placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
 function tileSize(job) {
@@ -418,20 +1781,27 @@ function jobCard(jobs) {
   const done = jobs.reduce((n, x) => n + x.outputs.length, 0), want = group ? jobs.length : (j.total || 1);
   const active = status === "running" || status === "queued";
   const progress = active ? ` · ${done}/${want}` : "";
-  const bar = active && want > 1 ? `<div class="pbar"><div class="track"><div class="fill" style="width:${100 * done / want}%"></div></div>
-    <span>${done} done · ${want - done} remaining</span></div>` : "";
+  const running = status === "running";
+  const bar = active ? `<div class="pbar"><div class="track"><div class="fill" style="width:${100 * done / want}%"></div>
+      ${running && done < want ? `<div class="cur" style="left:${100 * done / want}%;width:${100 / want}%"></div>` : ""}</div>
+    <span>${running ? `rendering ${Math.min(done + 1, want)}/${want}` : "queued"} · ${done} done · ${want - done} remaining</span></div>` : "";
   const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
   return `<div class="job"><div class="job-head">
-      <span class="badge ${status}">${group ? "sweep · " : ""}${status}${progress}</span>
+      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : "sweep · ") : ""}${status}${progress}</span>
       <span class="job-title" title="${title}">${title}</span>
       ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
+      ${j.outputs.length ? `<button class="btn small" data-save-job="${j.id}" title="save this card's setup as a preset (first image = its picture)">💾</button>` : ""}
+      ${group ? "" : `<button class="btn small" data-reveal-job="${esc(j.dir)}" title="open this job's folder">📂</button>`}
     </div>${bar}
-    <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}</div>
+    <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}
+      <button class="btn small copy" data-copy-job="${j.id}" title="copy this command">Copy</button></div>
     ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
     ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
 }
 function renderQueue(jobs) {
   JOBS = Object.fromEntries(jobs.map(j => [j.id, j]));
+  statusUpdate(jobs);
+  if (BATCH.group) renderBatch();
   const active = jobs.filter(j => j.status === "queued" || j.status === "running").length;
   $("qcount").textContent = active ? `(${active})` : "";
   if (!jobs.length) return;
@@ -442,6 +1812,7 @@ function renderQueue(jobs) {
   }
   for (const g of groups) g.sort((a, b) => a.created - b.created);
   $("queuePane").innerHTML = groups.map(jobCard).join("");
+  fillPalettes($("queuePane"));
 }
 async function loadGallery() {
   try { GALLERY = (await api("/api/gallery")).items; } catch { return; }
@@ -449,6 +1820,7 @@ async function loadGallery() {
   const cells = GALLERY.flatMap(j => j.outputs.map(o => thumbHtml(j, o, 0,
     `${esc((j.params.lora || "").replace(".safetensors", ""))} · s${o.seed ?? "?"}`)));
   $("galleryPane").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
+  fillPalettes($("galleryPane"));
 }
 let pollTimer = null;
 async function poll() {
@@ -468,43 +1840,79 @@ async function poll() {
 }
 
 // ---------------- lightbox ----------------
-function openLb(jobId, file) {
+// the stack the lightbox steps through with ←/→: the images next to the one you clicked
+// (same queue card / sweep, the gallery grid, or the batch table), in on-screen order
+let lbStack = [], lbIdx = 0;
+function stackOf(el) {
+  const box = el.closest(".job, .grid, #batchBody") || el.parentElement;
+  return [...box.querySelectorAll(".thumb[data-file], .bthumb")].map(x => ({ job: x.dataset.job, file: x.dataset.file }));
+}
+function lbStep(d) {
+  if (lbStack.length < 2) return;
+  lbIdx = (lbIdx + d + lbStack.length) % lbStack.length;
+  openLb(lbStack[lbIdx].job, lbStack[lbIdx].file, lbStack);
+}
+function openLb(jobId, file, stack) {
   const job = JOBS[jobId] || GALLERY.find(j => j.id === jobId); if (!job) return;
-  const o = job.outputs.find(x => x.file === file); lbItem = { job, o };
+  const o = job.outputs.find(x => x.file === file); if (!o) return; lbItem = { job, o };
+  lbStack = stack && stack.length ? stack : [{ job: jobId, file }];
+  lbIdx = Math.max(0, lbStack.findIndex(x => x.job === jobId && x.file === file));
+  const many = lbStack.length > 1;
+  $("lbPrev").classList.toggle("hidden", !many); $("lbNext").classList.toggle("hidden", !many);
   $("lbImg").src = fileUrl(job, o);
-  $("lbTitle").textContent = job.label || `seed ${o.seed ?? "?"}`;
+  palFill($("lbPal"), job.dir, o.file, 256);
+  $("lbTitle").textContent = (job.label || `seed ${o.seed ?? "?"}`) + (many ? `   ·   ${lbIdx + 1} / ${lbStack.length}` : "");
   const p = job.params;
   $("lbInfo").innerHTML = [
     ["prompt", p.prompt], ["LoRA", `${p.lora || "default"} @ ${p.lora_strength || "1"}`], ["styles", (p.styles || []).join(", ") || "—"],
-    ["size", p.out || "default"], ["palette", p.palette], ["dither", p.dither === "none" ? "none" : `${p.dither} @ ${p.dither_amount}`],
+    ["size", p.out || "default"], ["palette", p.palette], ["dither", !p.dither || p.dither === "none" ? "none" : `${p.dither} @ ${p.dither_amount}`],
+    ["steering", p.steer && p.steer.length ? `${p.steer.length} refs @ ${p.steer_strength} · ${p.steer_weight_type}`
+      + (p.steer_start > 0 || p.steer_end < 1 ? ` · steps ${p.steer_start}→${p.steer_end}` : "") : "—"],
     ["seed", o.seed], ["file", `${job.dir}/${o.file}`],
   ].map(([k, v]) => `<div class="kv">${k}: <b>${esc(v ?? "")}</b></div>`).join("")
-    + (job.full_prompt && job.full_prompt.positive ? `<div class="full">${fullHtml(job.full_prompt)}</div>` : "");
+    + (job.full_prompt && job.full_prompt.positive ? `<div class="full">${fullHtml(job.full_prompt)}</div>` : "")
+    + (p.parent ? `<div class="kv lineage">generation <b>${p.gen || 1}</b> · evolved from
+        <img src="/files/${encodeURIComponent(p.parent.dir)}/${encodeURIComponent(p.parent.file)}" data-open-dir="${esc(p.parent.dir)}" data-open-file="${esc(p.parent.file)}" alt="parent" title="open parent">
+        ${p.evolve_init ? `· img2img change ${p.evolve_denoise}` : ""} ${+p.evolve_steer ? `· steer ${p.evolve_steer}` : ""}</div>` : "");
   $("lbCmd").textContent = job.command.replace(/ --seed \d+/, "").replace(/ -n \d+/, "") + (o.seed != null ? ` --seed ${o.seed}` : "");
   $("lb").classList.remove("hidden"); setZoom(lbZoom);
 }
 function setZoom(z) {
-  lbZoom = z; const img = $("lbImg");
+  lbZoom = z; store.set("lbZoom", z); const img = $("lbImg");
   const apply = () => {
     // "fit" = the largest whole-number zoom that fits, so pixels stay square and even
     const k = z === "fit" ? Math.max(1, Math.floor(Math.min(($("lbView").clientWidth - 40) / img.naturalWidth,
                                                           ($("lbView").clientHeight - 40) / img.naturalHeight))) : z;
     img.style.width = img.naturalWidth * k + "px";
+    drawGrid($("lbGrid"), img, k);
   };
   img.complete ? apply() : (img.onload = apply);
   $("zooms").innerHTML = ["fit", 1, 2, 3, 4, 6].map(v => `<button class="btn small ${v == z ? "on" : ""}" data-zoom="${v}">${v === "fit" ? "fit (int)" : v + "×"}</button>`).join("");
 }
-function closeLb() { $("lb").classList.add("hidden"); lbItem = null; }
+function closeLb() { $("lb").classList.add("hidden"); lbItem = null; $("lbPrev").classList.add("hidden"); $("lbNext").classList.add("hidden"); }
 function loadJobSettings(job, seed) {
-  const f = job.params.form || {};
-  if (job.params.form) writeForm({ ...f, seed: seed ?? f.seed, seedLock: seed != null });
-  else showErr("This render has no saved form state (made outside the GUI).");
+  const p = job.params, f = p.form;
+  if (!f) return showErr("This render has no saved form state (made outside the GUI).");
+  writeForm({ ...f, seed: seed ?? f.seed, seedLock: seed != null });
+  Object.assign(STEER, p.steer && p.steer.length
+    ? { use: true, sel: [...p.steer], strength: p.steer_strength ?? STEER.strength, weight: p.steer_weight_type || STEER.weight,
+        combine: p.steer_combine || STEER.combine, start: p.steer_start ?? 0, end: p.steer_end ?? 1 }
+    : { use: false });
+  $("useSteer").checked = STEER.use; $("steerStrength").value = STEER.strength;
+  $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
+  $("steerStart").value = STEER.start; $("steerEnd").value = STEER.end;
+  renderRefs(); saveSteer();
 }
 
 // ---------------- tabs & wiring ----------------
 function switchTab(t) {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
   $("queuePane").classList.toggle("hidden", t !== "queue"); $("galleryPane").classList.toggle("hidden", t !== "gallery");
+  $("steerPane").classList.toggle("hidden", t !== "steer");
+  $("presetsPane").classList.toggle("hidden", t !== "presets");
+  $("batchPane").classList.toggle("hidden", t !== "batch");
+  if (t === "presets") loadPresets();
+  if (t === "steer") loadRefs();
   if (t === "gallery") loadGallery();
   store.set("tab", t);
 }
@@ -520,11 +1928,35 @@ async function init() {
   $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
   $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
   renderStyles();
+  initHelp();
+  initPeek();
+  initCork();
+  initGridOverlay();
+  initStatus();
+  initPromptTools();
+  initSteer();
+  initEvo();
+  initPresets();
+  initBatch();
+  $("openGallery").onclick = () => reveal("gallery");
 
   const saved = store.get("form", null);
-  writeForm(Object.assign({ lora: ordered[0], lora_strength: 0.8, palette: "EGA", dither: "none", dither_amount: 0.5,
-    despeckle: 2, outW: 320, outH: 200, n: 1, kind: "scene background", era: "1980s DOS game" }, saved || {}));
+  const FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
+    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, transparent: false,
+    art: false, no_sprite_suffix: false, palette: "EGA", dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", seed: "",
+    seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, styles: [] };
+  writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
+  $("resetAll").onclick = () => {
+    if (!confirm("Reset the whole setup to defaults?\n\nPrompt, LoRA, styles, canvas, palette, dither, seed, steering and evolve go back to defaults. "
+                 + "Your gallery, presets, corkboards and steering images are NOT touched.")) return;
+    writeForm({ ...FORM_DEFAULTS }); applyPreset(); refresh();
+    Object.assign(STEER, { use: false, sel: [], strength: 0.7, weight: "style transfer", combine: "concat", start: 0, end: 1 });
+    $("useSteer").checked = false; $("steerStrength").value = 0.7; $("steerWeight").value = STEER.weight;
+    $("steerCombine").value = STEER.combine; $("steerStart").value = 0; $("steerEnd").value = 1; renderRefs(); saveSteer();
+    Object.assign(EVO, EVO_DEFAULTS, { parent: null }); renderEvo(); $("hEvoEz").textContent = "";
+    $("presetSel").value = ""; showErr();
+  };
   if (!$("negative").value.trim()) { $("negative").value = META.default_negative; refresh(); }
   $("negReset").onclick = e => { e.preventDefault(); $("negative").value = META.default_negative; refresh(); };
 
@@ -535,24 +1967,67 @@ async function init() {
     if (e.target.value !== "custom") { const [w, h] = e.target.value.split("x"); $("outW").value = w; $("outH").value = h; refresh(); }
   });
   $("dice").onclick = () => { $("seed").value = Math.floor(Math.random() * 2 ** 31); $("seedLock").checked = true; refresh(); };
-  $("renderBtn").onclick = () => render({ ...params(), form: readForm() });
+  $("renderBtn").onclick = async () => {
+    const p = { ...params(), form: readForm() };
+    if (!(await preflight(p))) return;
+    EVO.parent ? evolveRound(true) : render(p);
+  };
+  $("promptWarns").addEventListener("click", e => {
+    const b = e.target.closest("[data-fix]");
+    if (b) { const [i, j] = b.dataset.fix.split(":").map(Number); return applyFix(LAST_WARN[i].fixes[j]); }
+    if (e.target.closest("[data-fixall]")) fixAll();
+  });
   $("sweepBtn").onclick = sweep;
-  $("copyCmd").onclick = () => navigator.clipboard && navigator.clipboard.writeText(cliFor(params()));
+  $("copyCmd").onclick = e => copyText(cliFor(params()), e.currentTarget);
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
   document.addEventListener("click", e => {
-    const th = e.target.closest(".thumb[data-file]"); if (th) return openLb(th.dataset.job, th.dataset.file);
+    const ev = e.target.closest("[data-evo-job]");
+    if (ev) {
+      const job = JOBS[ev.dataset.evoJob] || GALLERY.find(j => j.id === ev.dataset.evoJob);
+      const o = job && job.outputs.find(x => x.file === ev.dataset.evoFile);
+      if (o) evolveFrom(job, o);
+      return;
+    }
+    if (e.target.closest(".gpl")) return;   // palette download, not "open"
+    const th = e.target.closest(".thumb[data-file], .bthumb"); if (th) return openLb(th.dataset.job, th.dataset.file, stackOf(th));
+    const rv = e.target.closest("[data-reveal-job]"); if (rv) return reveal("job", rv.dataset.revealJob);
+    const sv = e.target.closest("[data-save-job]");
+    if (sv) { const job = JOBS[sv.dataset.saveJob], o = job.outputs[0];
+      savePreset(snapshotOfJob(job, o), `${((job.params.form && job.params.form.subject) || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); return; }
+    const cp = e.target.closest("[data-copy-job]");
+    if (cp) { copyText(JOBS[cp.dataset.copyJob].command, cp); return; }
     const c = e.target.closest("[data-cancel]"); if (c) { c.dataset.cancel.split(",").forEach(id => api("/api/cancel/" + id, {})); poll(); }
     const z = e.target.closest("[data-zoom]"); if (z) setZoom(z.dataset.zoom === "fit" ? "fit" : +z.dataset.zoom);
   });
   $("lbClose").onclick = closeLb;
   $("lb").addEventListener("click", e => { if (e.target.id === "lbView") closeLb(); });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeLb(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") return closeLb();
+    if (!lbItem || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); lbStep(-1); }
+    if (e.key === "g" || e.key === "G") { OV.type = OV_TYPES[(OV_TYPES.indexOf(OV.type) + 1) % OV_TYPES.length];
+      $("ovType").value = OV.type; store.set("gridOverlay", OV); redrawGrids(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); lbStep(1); }
+  });
+  $("lbPrev").onclick = () => lbStep(-1);
+  $("lbNext").onclick = () => lbStep(1);
+  $("lbEvolve").onclick = () => { const { job, o } = lbItem; closeLb(); evolveFrom(job, o); };
+  $("lbParent").onclick = () => { const { job, o } = lbItem; closeLb(); setParent(job, o); };
+  $("lbPreset").onclick = () => { const { job, o } = lbItem;
+    savePreset(snapshotOfJob(job, o), `${(job.params.form && job.params.form.subject || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); };
+  $("lbInfo").addEventListener("click", e => {
+    const im = e.target.closest("[data-open-dir]"); if (!im) return;
+    const job = [...Object.values(JOBS), ...GALLERY].find(j => j.dir === im.dataset.openDir);
+    if (job) openLb(job.id, im.dataset.openFile);
+  });
   $("lbLoad").onclick = () => { loadJobSettings(lbItem.job, lbItem.o.seed); closeLb(); };
   $("lbSame").onclick = () => { render({ ...lbItem.job.params, seed: lbItem.o.seed ?? -1, n: 1 }); closeLb(); };
   $("lbReroll").onclick = () => { render({ ...lbItem.job.params, seed: -1 }); closeLb(); };
-  $("lbCopy").onclick = () => navigator.clipboard && navigator.clipboard.writeText($("lbCmd").textContent);
+  $("lbReveal").onclick = () => reveal("job", lbItem.job.dir);
+  $("lbCopy").onclick = e => copyText($("lbCmd").textContent, e.currentTarget);
 
-  switchTab(store.get("tab", "queue"));
+  const hashTab = location.hash.slice(1);   // /#batch, /#presets, … open straight to a tab
+  switchTab(["queue", "gallery", "steer", "presets", "batch"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
   poll(); loadGallery();
 }
 init().catch(e => showErr("Couldn't load: " + e.message));

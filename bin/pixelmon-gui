@@ -4,4 +4,7 @@
 #   pixelmon-gui --lan      -> reachable from other devices on the LAN
 set -euo pipefail
 REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-exec python3 "$REPO/gui/server.py" "$@"
+# Prefer ComfyUI's venv (has Pillow, for the palette readout); plain python3 works too, minus palettes.
+PY="$HOME/ComfyUI/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+exec "$PY" "$REPO/gui/server.py" "$@"

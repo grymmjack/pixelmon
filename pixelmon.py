@@ -127,6 +127,9 @@ def print_help():
         opt("--dither-amount F", "dither strength 0..1", "0.75"),
         opt("--snap-pixels", "snap to a perfect grid (pixel-snapper) — extra crisp"),
         opt("--despeckle N", "remove stray color islands of <= N px (0 = off)", "2"),
+        opt("--pixel-angles F", "EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)", "0"),
+        opt("--angle-grid G", "pixel / square / diagonal / isometric / hex / triangle", "pixel"),
+        opt("--pixel-size WxH", "exact art pixel size: 1x1, 2x1, 2x2, 4x1 … (fixes huge snapped pixels)", "auto"),
         opt("--fast", "LCM mode: ~5x faster, slightly softer"),
         opt("--seed N", "lock / repeat a result (re-run a favorite)", "random"),
         opt("--steps N", "refinement steps (more = slower)", "25"),
@@ -153,6 +156,9 @@ def print_help():
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
         opt("--no-lora", "base model only (skip pixel LoRA)"),
         opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
+        opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
+        opt("--init IMG", "img2img: start from an image (keeps its composition)"),
+        opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
         opt("--show-prompt", "print the exact positive/negative prompts sent to the model"),
@@ -324,7 +330,9 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                               "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
                               "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
-                              "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle}}
+                              "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle,
+                              "pixel_angles": a.pixel_angles, "angle_grid": a.angle_grid,
+                              "pixel_w": a.px_w, "pixel_h": a.px_h}}
         g["11"] = {"class_type": "SaveImage",
                    "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}}
         if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
@@ -372,9 +380,25 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                    "inputs": {"model": model_src, "ipadapter": ["20", 0],
                               "image": batch_src, "clip_vision": ["21", 0],
                               "weight": a.steer_strength, "weight_type": a.steer_weight_type,
-                              "combine_embeds": a.steer_combine, "start_at": 0.0,
-                              "end_at": 1.0, "embeds_scaling": "V only"}}
+                              "combine_embeds": a.steer_combine, "start_at": a.steer_start,
+                              "end_at": a.steer_end, "embeds_scaling": "V only"}}
         model_src = ["22", 0]
+
+    # --- Init image (img2img): start sampling from an existing picture instead of
+    # pure noise, so the result keeps its composition; --denoise sets how much
+    # changes (0 = identical, 1 = ignore it). The image is scaled nearest-neighbour
+    # up to the generation size so small pixel art encodes as clean blocks.
+    if getattr(a, "init", None):
+        srv = server or SERVER
+        if srv not in _INIT_UPLOADS:
+            _INIT_UPLOADS[srv] = _upload_image(os.path.abspath(os.path.expanduser(a.init)), srv)
+        g["40"] = {"class_type": "LoadImage", "inputs": {"image": _INIT_UPLOADS[srv]}}
+        g["41"] = {"class_type": "ImageScale",
+                   "inputs": {"image": ["40", 0], "upscale_method": "nearest-exact",
+                              "width": a.gen_w, "height": a.gen_h, "crop": "disabled"}}
+        g["42"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["41", 0], "vae": ["4", 2]}}
+        g["3"]["inputs"]["latent_image"] = ["42", 0]
+        g["3"]["inputs"]["denoise"] = a.denoise
 
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
@@ -447,6 +471,9 @@ def _upload_image(path, server):
         sys.exit("--steer upload failed: " + e.read().decode()[:500])
     except urllib.error.URLError:
         sys.exit("--steer: couldn't reach " + server + " to upload references.")
+
+
+_INIT_UPLOADS = {}      # server -> uploaded --init image name
 
 
 def steer_files(a, server):
@@ -611,6 +638,19 @@ def main():
     p.add_argument("--snap-pixels", dest="snap_pixels", action="store_true",
                    help="snap to a perfect pixel grid via the pixel-snapper (auto-detects size; "
                         "extra crisp). overrides --size.")
+    p.add_argument("--pixel-angles", dest="pixel_angles", type=float, default=0.0, metavar="F",
+                   help="EXPERIMENTAL: redraw region outlines with clean pixel-art angles (integer ratios "
+                        "1:1, 2:1, 3:1 … like DRAW's angle snap). F = how much wobble gets straightened, "
+                        "0 = off, ~1.5 recommended, >2.5 starts bending shapes. needs opencv on the server")
+    p.add_argument("--pixel-size", dest="pixel_size", default=None, metavar="WxH",
+                   help="size of one art pixel in output pixels: 1x1, 2x1 (wide, like EGA/CGA low-res), 2x2, 4x1 … "
+                        "the art grid = --out / pixel size, and with --snap-pixels the snapper uses that grid "
+                        "instead of guessing (which often gives huge pixels). default: auto")
+    p.add_argument("--angle-grid", dest="angle_grid", default="pixel",
+                   choices=["pixel", "square", "diagonal", "isometric", "hex", "triangle"],
+                   help="with --pixel-angles: which edge angles are allowed. pixel = all pixel-art ratios "
+                        "(DRAW's angle snap); square = 0/90; diagonal = +45; isometric = 2:1 + vertical; "
+                        "hex = flats + 45 (DRAW's flat-top hex); triangle = flats + 1:2 (~60). default pixel")
     p.add_argument("--despeckle", type=int, default=2, metavar="N",
                    help="after the palette lock, recolor stray same-color islands of <= N pixels "
                         "to their surroundings (kills random speckle noise). default 2, 0 = off. "
@@ -656,8 +696,17 @@ def main():
     # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
     p.add_argument("--steer", default=None, metavar="DIR|IMG",
                    help="steer output toward reference image(s) via IPAdapter (a folder, or one image)")
+    p.add_argument("--init", default=None, metavar="IMG",
+                   help="img2img: start from this image instead of noise (keeps its composition)")
+    p.add_argument("--denoise", type=float, default=0.6, metavar="F",
+                   help="with --init: how much to change, 0..1 (0 = same image, 1 = ignore it). default 0.6")
     p.add_argument("--steer-strength", dest="steer_strength", type=float, default=0.7,
                    help="IPAdapter weight: 0=off .. ~1 strong (default 0.7)")
+    p.add_argument("--steer-start", dest="steer_start", type=float, default=0.0, metavar="F",
+                   help="fraction of the sampling steps at which the refs switch ON (0..1). default 0")
+    p.add_argument("--steer-end", dest="steer_end", type=float, default=1.0, metavar="F",
+                   help="fraction of the sampling steps at which the refs switch OFF (0..1). e.g. 0.5 = refs set "
+                        "palette/composition early, then the prompt + LoRA finish alone. default 1")
     p.add_argument("--steer-weight-type", dest="steer_weight_type", default="style transfer",
                    help="IPAdapter weight_type (default 'style transfer'; e.g. 'linear', 'composition')")
     p.add_argument("--steer-combine", dest="steer_combine", default="concat",
@@ -758,6 +807,22 @@ def main():
         if ignored:
             print(f"   note: {', '.join(ignored)} have no effect in --art mode "
                   f"(there's no pixelation step to apply them to)")
+
+    a.px_w = a.px_h = 0
+    if a.pixel_size:
+        try:
+            a.px_w, a.px_h = (int(v) for v in str(a.pixel_size).lower().split("x", 1))
+        except ValueError:
+            p.error(f"bad --pixel-size {a.pixel_size!r}; use WxH like 1x1, 2x1, 4x4")
+        if not (1 <= a.px_w <= 32 and 1 <= a.px_h <= 32):
+            p.error("--pixel-size parts must be 1..32")
+    if not 0.0 <= a.steer_start < a.steer_end <= 1.0:
+        p.error("--steer-start/--steer-end must satisfy 0 <= start < end <= 1")
+    if a.init:
+        if not os.path.isfile(os.path.expanduser(a.init)):
+            p.error(f"--init: no such image: {a.init}")
+        if not 0.0 <= a.denoise <= 1.0:
+            p.error("--denoise must be between 0 and 1")
 
     # Resolve --style guide(s) into prompt/negative additions (used by build_graph).
     try:

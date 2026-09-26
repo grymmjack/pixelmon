@@ -16,6 +16,7 @@ import torch
 from PIL import Image, ImageFilter
 
 from .palettes import ALL_PALETTES, parse_palette
+from .pixel_angles import ANGLE_SETS, snap_angles
 
 _RESAMPLE = {"nearest": Image.NEAREST, "box (area average)": Image.BOX}
 
@@ -307,6 +308,10 @@ class PixelArtPalette:
                 "out_height": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "despeckle": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1}),
                 "dither_amount": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "pixel_angles": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 3.0, "step": 0.25}),
+                "angle_grid": (list(ANGLE_SETS.keys()), {"default": "pixel"}),
+                "pixel_w": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),   # 0 = auto
+                "pixel_h": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
             },
         }
@@ -320,7 +325,7 @@ class PixelArtPalette:
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
                 snap_pixels=False, snap_colors=0, out_width=0, out_height=0, despeckle=2,
-                dither_amount=0.75):
+                dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -340,7 +345,27 @@ class PixelArtPalette:
             scl = target_long / max(sw, sh)
             return src.resize((max(1, round(sw * scl)), max(1, round(sh * scl))), resample=resample)
 
-        if snap_pixels:
+        # Fixed pixel size (e.g. 2x1 = wide EGA/CGA pixels): the art grid is the output canvas divided by
+        # the pixel size, and every art pixel becomes exactly pixel_w x pixel_h output pixels at the end.
+        grid = None
+        if pixel_w > 0 and pixel_h > 0 and out_width > 0 and out_height > 0:
+            grid = (max(1, round(out_width / pixel_w)), max(1, round(out_height / pixel_h)))
+
+        if grid:
+            gw, gh = grid
+            if snap_pixels:
+                # the snapper cleans up at our grid instead of guessing its own (often far too coarse) one
+                k = snap_colors or (64 if palette != "none" else 24)
+                small = _snap_pixels(pil, k, pixel_size=max(1, round(pil.width / gw)))
+                small = small.resize((gw, gh), Image.NEAREST)
+            else:
+                src = pil
+                if smooth != "none":
+                    block = max(3, int(round(pil.width / gw)) | 1)
+                    fil = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
+                    src = pil.filter(fil(size=block))
+                small = src.resize((gw, gh), resample=_RESAMPLE[downscale_filter])
+        elif snap_pixels:
             # Hand the raw render to the pixel-snapper: it auto-detects the true
             # grid and outputs a perfect, grid-aligned sprite — REPLACING the
             # downscale (the snapper decides the native res; out_width/out_height
@@ -370,6 +395,11 @@ class PixelArtPalette:
 
         if despeckle > 0 and dithering == "none":   # dithering is deliberate "noise"
             pixels = _despeckle(pixels, despeckle)
+
+        # Snap region outlines to clean pixel-art angles (integer run:rise ratios, as in DRAW),
+        # at the native grid so the steps are real art pixels. 0 = off.
+        if pixel_angles > 0:
+            pixels = snap_angles(pixels, strength=pixel_angles, angle_set=angle_grid)
 
         if transparent_bg:
             pixels = _make_transparent(pixels, bg_tolerance)
