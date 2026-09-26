@@ -77,19 +77,136 @@ def _quantize_flat(small_rgb, palette_rgb):
     return Image.fromarray(out, "RGB")
 
 
-def _quantize_dither(small_rgb, palette_rgb):
-    """Floyd-Steinberg dithering against the fixed palette (via Pillow)."""
-    pal_img = Image.new("P", (1, 1))
-    flat = []
-    for rgb in palette_rgb:
-        flat.extend(rgb)
-    # Pad to 256 entries by repeating the palette so no stray colors sneak in.
-    while len(flat) < 256 * 3:
-        flat.extend(flat[: min(len(flat), 256 * 3 - len(flat))])
-    pal_img.putpalette(flat[: 256 * 3])
-    q = small_rgb.convert("RGB").quantize(palette=pal_img,
-                                          dither=Image.Dither.FLOYDSTEINBERG)
-    return q.convert("RGB")
+# ---------------------------------------------------------------------------
+# Dithering against the palette. Two families:
+#   ordered  — a fixed threshold matrix nudges each pixel before the nearest-
+#              color pick, giving the regular cross-hatch patterns of EGA/VGA-era
+#              art (Bayer) or print-style dots (clustered).
+#   error diffusion — each pixel's quantization error is pushed onto unvisited
+#              neighbours by a kernel; scanned serpentine (alternate row
+#              direction) so the error doesn't drag into diagonal "worms".
+# `amount` (0..1) scales the effect: the ordered threshold spread, or the share
+# of error diffused. Kernels are the canonical published ones (dx, dy, weight).
+# ---------------------------------------------------------------------------
+_DIFFUSION = {
+    "floyd-steinberg": (16, [(1, 0, 7), (-1, 1, 3), (0, 1, 5), (1, 1, 1)]),
+    "jarvis": (48, [(1, 0, 7), (2, 0, 5), (-2, 1, 3), (-1, 1, 5), (0, 1, 7), (1, 1, 5), (2, 1, 3),
+                    (-2, 2, 1), (-1, 2, 3), (0, 2, 5), (1, 2, 3), (2, 2, 1)]),
+    "stucki": (42, [(1, 0, 8), (2, 0, 4), (-2, 1, 2), (-1, 1, 4), (0, 1, 8), (1, 1, 4), (2, 1, 2),
+                    (-2, 2, 1), (-1, 2, 2), (0, 2, 4), (1, 2, 2), (2, 2, 1)]),
+    "burkes": (32, [(1, 0, 8), (2, 0, 4), (-2, 1, 2), (-1, 1, 4), (0, 1, 8), (1, 1, 4), (2, 1, 2)]),
+    "sierra": (32, [(1, 0, 5), (2, 0, 3), (-2, 1, 2), (-1, 1, 4), (0, 1, 5), (1, 1, 4), (2, 1, 2),
+                    (-1, 2, 2), (0, 2, 3), (1, 2, 2)]),
+    "sierra2": (16, [(1, 0, 4), (2, 0, 3), (-2, 1, 1), (-1, 1, 2), (0, 1, 3), (1, 1, 2), (2, 1, 1)]),
+    "sierra-lite": (4, [(1, 0, 2), (-1, 1, 1), (0, 1, 1)]),
+    "atkinson": (8, [(1, 0, 1), (2, 0, 1), (-1, 1, 1), (0, 1, 1), (1, 1, 1), (0, 2, 1)]),  # diffuses 6/8
+}
+
+
+def _bayer(n):
+    m = np.array([[0]])
+    while m.shape[0] < n:
+        m = np.block([[4 * m, 4 * m + 2], [4 * m + 3, 4 * m + 1]])
+    return m
+
+
+_ORDERED = {
+    "bayer2": _bayer(2), "bayer4": _bayer(4), "bayer8": _bayer(8), "bayer16": _bayer(16),
+    "clustered": np.array([[12, 5, 6, 13], [4, 0, 1, 7], [11, 3, 2, 8], [15, 10, 9, 14]]),
+}
+
+DITHER_METHODS = ["none"] + list(_ORDERED) + list(_DIFFUSION)
+
+
+def _palette_lut(pal):
+    """Nearest-palette-index lookup table over a 64^3 RGB cube (same redmean
+    metric as nearest_indices), so per-pixel error diffusion stays fast."""
+    lv = np.arange(64) * 4 + 2
+    cube = np.stack(np.meshgrid(lv, lv, lv, indexing="ij"), -1).reshape(-1, 3)
+    return nearest_indices(cube, pal).reshape(64, 64, 64)
+
+
+def _quantize_dither(small_rgb, palette_rgb, method="floyd-steinberg", amount=1.0):
+    """Dither `small_rgb` down to `palette_rgb` with an ordered or error-diffusion method."""
+    pal = np.array(palette_rgb, dtype=np.int32)
+    src = np.asarray(small_rgb.convert("RGB"), dtype=np.float64)
+    h, w, _ = src.shape
+    amount = float(max(0.0, min(1.0, amount)))
+
+    if method in _ORDERED:
+        m = _ORDERED[method]
+        n = m.size
+        thr = (m + 0.5) / n - 0.5                                   # centred, in -0.5..0.5
+        tile = np.tile(thr, (h // m.shape[0] + 1, w // m.shape[1] + 1))[:h, :w]
+        spread = 255.0 / max(1.0, len(pal) ** (1 / 3)) * amount     # ~ one palette step
+        nudged = np.clip(src + tile[..., None] * spread, 0, 255)
+        idx = nearest_indices(nudged.reshape(-1, 3).astype(np.int32), pal)
+        return Image.fromarray(pal[idx].reshape(h, w, 3).astype(np.uint8), "RGB")
+
+    div, kernel = _DIFFUSION.get(method, _DIFFUSION["floyd-steinberg"])
+    lut = _palette_lut(pal)
+    buf = src.copy()
+    out = np.zeros((h, w), dtype=np.int32)
+    for y in range(h):
+        rev = y % 2 == 1                                            # serpentine
+        xs = range(w - 1, -1, -1) if rev else range(w)
+        for x in xs:
+            old = np.clip(buf[y, x], 0, 255)
+            i = lut[int(old[0]) >> 2, int(old[1]) >> 2, int(old[2]) >> 2]
+            out[y, x] = i
+            err = (old - pal[i]) * (amount / div)
+            for dx, dy, wt in kernel:
+                nx, ny = (x - dx if rev else x + dx), y + dy
+                if 0 <= nx < w and ny < h:
+                    buf[ny, nx] += err * wt
+    return Image.fromarray(pal[out].astype(np.uint8), "RGB")
+
+
+def _despeckle(pixels_rgb, max_size, passes=2):
+    """Remove stray noise: every same-color island of <= max_size pixels
+    (8-connected, so 1px diagonal lines survive as one component) is recolored
+    to the most common color touching it. Runs after palette quantization, where
+    anti-aliased SDXL edges leave lone pixels of whichever palette color was
+    nearest."""
+    from collections import Counter, deque
+
+    arr = np.asarray(pixels_rgb.convert("RGB"), dtype=np.int32)
+    h, w, _ = arr.shape
+    nbrs = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    for _ in range(passes):
+        ids = (arr[..., 0] << 16) | (arr[..., 1] << 8) | arr[..., 2]
+        seen = np.zeros((h, w), dtype=bool)
+        out = ids.copy()
+        changed = False
+        for y0 in range(h):
+            for x0 in range(w):
+                if seen[y0, x0]:
+                    continue
+                c = ids[y0, x0]
+                comp, border = [], Counter()
+                q = deque([(y0, x0)])
+                seen[y0, x0] = True
+                while q:
+                    y, x = q.popleft()
+                    comp.append((y, x))
+                    for dy, dx in nbrs:
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < h and 0 <= nx < w:
+                            if ids[ny, nx] == c:
+                                if not seen[ny, nx]:
+                                    seen[ny, nx] = True
+                                    q.append((ny, nx))
+                            else:
+                                border[ids[ny, nx]] += 1
+                if len(comp) <= max_size and border:
+                    fill = border.most_common(1)[0][0]
+                    for y, x in comp:
+                        out[y, x] = fill
+                    changed = True
+        arr = np.stack([(out >> 16) & 255, (out >> 8) & 255, out & 255], axis=-1)
+        if not changed:
+            break
+    return Image.fromarray(arr.astype(np.uint8), "RGB")
 
 
 def _make_transparent(pixels_rgb, tolerance):
@@ -175,7 +292,7 @@ class PixelArtPalette:
                 "image": ("IMAGE",),
                 "downscale_to": ("INT", {"default": 128, "min": 8, "max": 1024, "step": 1}),
                 "palette": (palette_names,),
-                "dithering": (["none", "floyd-steinberg"],),
+                "dithering": (DITHER_METHODS,),
                 "downscale_filter": (list(_RESAMPLE.keys()), {"default": "nearest"}),
                 "view_scale": ("INT", {"default": 8, "min": 1, "max": 32, "step": 1}),
             },
@@ -188,6 +305,8 @@ class PixelArtPalette:
                 "snap_colors": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
                 "out_width": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "out_height": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
+                "despeckle": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1}),
+                "dither_amount": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
             },
         }
@@ -200,7 +319,8 @@ class PixelArtPalette:
     def process(self, image, downscale_to, palette, dithering,
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
-                snap_pixels=False, snap_colors=0, out_width=0, out_height=0):
+                snap_pixels=False, snap_colors=0, out_width=0, out_height=0, despeckle=2,
+                dither_amount=0.75):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -223,7 +343,8 @@ class PixelArtPalette:
         if snap_pixels:
             # Hand the raw render to the pixel-snapper: it auto-detects the true
             # grid and outputs a perfect, grid-aligned sprite — REPLACING the
-            # downscale (so --size is ignored; the snapper decides the real res).
+            # downscale (the snapper decides the native res; out_width/out_height
+            # below still force the final canvas if given).
             # A palette will re-quantize after, so keep colors generous here.
             k = snap_colors or (64 if palette != "none" else 24)
             small = _snap_pixels(pil, k)
@@ -237,17 +358,20 @@ class PixelArtPalette:
             small = flatten_shrink(pil, min(downscale_to, pixel_grid), _RESAMPLE[downscale_filter])
 
         # Force exact W x H (e.g. 32x48) — the grid reduce above preserves aspect
-        # and lands within a pixel; this snaps to the precise size. (snap_pixels
-        # auto-sizes, so it opts out.)
-        if not snap_pixels and out_width > 0 and out_height > 0:
+        # and lands within a pixel, and the snapper picks its own res; this
+        # nails the precise canvas size either way.
+        if out_width > 0 and out_height > 0 and small.size != (out_width, out_height):
             small = small.resize((out_width, out_height), Image.NEAREST)
 
         if palette == "none":
             pixels = small.convert("RGB")          # keep the model's own colors
-        elif dithering == "floyd-steinberg":
-            pixels = _quantize_dither(small, palette_rgb)
+        elif dithering != "none":
+            pixels = _quantize_dither(small, palette_rgb, dithering, dither_amount)
         else:
             pixels = _quantize_flat(small, palette_rgb)
+
+        if despeckle > 0 and dithering == "none":   # dithering is deliberate "noise"
+            pixels = _despeckle(pixels, despeckle)
 
         if transparent_bg:
             pixels = _make_transparent(pixels, bg_tolerance)

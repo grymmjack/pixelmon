@@ -38,6 +38,11 @@ except Exception:
     _pal = None
     PALETTES = ["PICO-8", "DAWNBRINGER-16", "ENDESGA-32", "NES", "GAMEBOY", "C=64"]
 
+# Dither methods — must match DITHER_METHODS in custom_nodes/pixelart_palette/nodes.py.
+DITHER_METHODS = ["none", "bayer2", "bayer4", "bayer8", "bayer16", "clustered",
+                  "floyd-steinberg", "jarvis", "stucki", "burkes", "sierra", "sierra2",
+                  "sierra-lite", "atkinson"]
+
 # Style guides (prompt snippets) loaded from styles.json next to this script.
 # {name: {"prompt": "...added to positive...", "negative": "...added to negative..."}}
 _SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -111,12 +116,16 @@ def print_help():
         opt("-n, --number N", "how many to make, each a different seed", "1"),
         opt('--batch "a,b,c"', "round-robin subjects → a folder each (N of each)"),
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
+        opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
-        opt("--dither", "Floyd-Steinberg dithering (faked shading)"),
+        opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
+        opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
+        opt("--dither-amount F", "dither strength 0..1", "0.75"),
         opt("--snap-pixels", "snap to a perfect grid (pixel-snapper) — extra crisp"),
+        opt("--despeckle N", "remove stray color islands of <= N px (0 = off)", "2"),
         opt("--fast", "LCM mode: ~5x faster, slightly softer"),
         opt("--seed N", "lock / repeat a result (re-run a favorite)", "random"),
         opt("--steps N", "refinement steps (more = slower)", "25"),
@@ -249,7 +258,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
     tag = "art" if a.art else palette
-    prefix = f"pixelmon/{name}_{a.sw}x{a.sh}_{tag}_s{seed}"
+    ow, oh = (a.sw, a.sh) if a.art else (a.ow, a.oh)
+    prefix = f"pixelmon/{name}_{ow}x{oh}_{tag}_s{seed}"
 
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": a.base}},
@@ -274,12 +284,12 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                    "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
                               "pixel_grid": (a.pixel_grid if getattr(a, "pixel_grid", 0) > 0
                                              else (min(512, max(a.sw, a.sh)) if max(a.sw, a.sh) > 128 else 128)),
-                              "dithering": "floyd-steinberg" if a.dither else "none",
+                              "dithering": a.dither, "dither_amount": a.dither_amount,
                               "downscale_filter": a.filter, "smooth": a.smooth,
                               "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                               "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
                               "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
-                              "out_width": a.sw, "out_height": a.sh}}
+                              "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle}}
         g["11"] = {"class_type": "SaveImage",
                    "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}}
         if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
@@ -533,6 +543,10 @@ def main():
     p.add_argument("--size", default=None,
                    help="output size: N (square) or WxH, e.g. 32x48. "
                         "default 128 (pixel sprite) or 1024 (--art)")
+    p.add_argument("--out", default=None, metavar="N|WxH",
+                   help="exact final canvas size, e.g. 320x200 (default: --size). --size still sets "
+                        "the sampling aspect/detail; when only --out is given, --size follows it. "
+                        "Also forces the size with --snap-pixels")
     p.add_argument("-n", "--number", type=int, default=1,
                    help="how many to generate, each with a different seed. default 1 "
                         "(with --batch: how many of EACH subject)")
@@ -549,10 +563,20 @@ def main():
     p.add_argument("--style", default="",
                    help="style guide(s) to append to the prompt, comma-separated "
                         "(e.g. geometric,detailed). see --list-styles")
-    p.add_argument("--dither", action="store_true", help="Floyd-Steinberg dithering")
+    p.add_argument("--dither", nargs="?", const="floyd-steinberg", default="none", metavar="NAME",
+                   choices=DITHER_METHODS,
+                   help="dither between palette colors (needs --palette): " + ", ".join(DITHER_METHODS[1:]) +
+                        ". bare --dither = floyd-steinberg")
+    p.add_argument("--dither-amount", dest="dither_amount", type=float, default=0.75, metavar="F",
+                   help="dither strength 0..1: ordered = threshold spread, diffusion = share of error pushed on. "
+                        "default 0.75")
     p.add_argument("--snap-pixels", dest="snap_pixels", action="store_true",
                    help="snap to a perfect pixel grid via the pixel-snapper (auto-detects size; "
                         "extra crisp). overrides --size.")
+    p.add_argument("--despeckle", type=int, default=2, metavar="N",
+                   help="after the palette lock, recolor stray same-color islands of <= N pixels "
+                        "to their surroundings (kills random speckle noise). default 2, 0 = off. "
+                        "skipped with --dither")
     p.add_argument("--snap-colors", dest="snap_colors", type=int, default=0,
                    help="color cap for --snap-pixels (0 = auto)")
     p.add_argument("--smooth", choices=["mode", "median", "none"], default="mode",
@@ -679,12 +703,12 @@ def main():
     #   --art  -> full-res illustration: bigger canvas, illustration-tuned negative.
     #   pixel  -> small sprite, pixel-tuned negative.
     if a.size is None:
-        a.size = "1024" if a.art else "128"
+        a.size = a.out if a.out else ("1024" if a.art else "128")
     if a.negative is None:
         a.negative = ART_NEGATIVE if a.art else PIXEL_NEGATIVE
     if a.art:
         ignored = [f for f, on in [
-            ("--transparent", a.transparent), ("--dither", a.dither),
+            ("--transparent", a.transparent), ("--dither", a.dither != "none"),
             ("--snap-pixels", a.snap_pixels), ("--pixel-grid", a.pixel_grid > 0),
             ("--palette", a.palette not in ("none", "random"))] if on]
         if ignored:
@@ -730,6 +754,17 @@ def main():
         p.error(f"bad --size {a.size!r}; use N or WxH (e.g. 32 or 32x48)")
     if a.sw < 1 or a.sh < 1:
         p.error("--size dimensions must be >= 1")
+    a.ow, a.oh = a.sw, a.sh
+    if a.out:
+        try:
+            if "x" in str(a.out).lower():
+                a.ow, a.oh = (int(v) for v in str(a.out).lower().split("x", 1))
+            else:
+                a.ow = a.oh = int(a.out)
+        except ValueError:
+            p.error(f"bad --out {a.out!r}; use N or WxH (e.g. 320x200)")
+        if not (1 <= a.ow <= 1024 and 1 <= a.oh <= 1024):
+            p.error("--out dimensions must be 1..1024")
 
     def _r64(v):
         return max(64, int(round(v / 64.0)) * 64)
@@ -789,7 +824,8 @@ def main():
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
-    size_label = f"{a.sw}x{a.sh}" if a.sw != a.sh else f"{a.sw}px"
+    lw, lh = (a.sw, a.sh) if a.art else (a.ow, a.oh)
+    size_label = f"{lw}x{lh}" if lw != lh else f"{lw}px"
     if len(POOL) > 1:
         print(f"🚜 render farm: {len(POOL)} servers — {', '.join(_short(s) for s in POOL)}")
     elif REMOTE:
