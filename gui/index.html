@@ -220,6 +220,8 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .peeking img, img.peeking { outline: 2px solid var(--accent2); outline-offset: 1px; }
 
 /* ---- fold-out sections ---- */
+.foldall { display: flex; justify-content: flex-end; margin: -8px 0 2px; }
+.foldall .btn { min-width: 34px; font: 600 14px var(--mono); padding: 1px 8px; }
 fieldset > legend { cursor: pointer; user-select: none; }
 fieldset > legend::before { content: "▾ "; color: var(--accent); }
 fieldset.closed > legend::before { content: "▸ "; }
@@ -335,6 +337,7 @@ fieldset.closed { padding-bottom: 2px; }
       <button type="button" class="btn small" id="snapZip" title="📦 save everything right now as a preset AND download it as a .zip (with its images) — for posterity">📦</button>
     </div>
 
+    <div class="foldall"><button type="button" class="btn small" id="foldAll" title="expand / collapse all sections">−</button></div>
     <fieldset id="evoBox">
       <legend>🧬 Evolve</legend>
       <div id="evoNone" class="err" style="color:var(--dim)">Click 🧬 on any result to breed from it.</div>
@@ -997,8 +1000,18 @@ function initFolds() {
     });
   });
   const sf = $("stylesFold"), apply = () => { sf.classList.toggle("closed", !!folds.styles); $("styles").classList.toggle("hidden", !!folds.styles); };
-  sf.addEventListener("click", e => { if (e.target.closest(".help")) return; folds.styles = !folds.styles; store.set("folds", folds); apply(); });
-  apply();
+  const sets = () => [...document.querySelectorAll(".form fieldset")].filter(fs => fs.querySelector(":scope > legend"));
+  const anyClosed = () => sets().some(fs => fs.classList.contains("closed")) || !!folds.styles;
+  const label = () => { $("foldAll").textContent = anyClosed() ? "+" : "−";
+                        $("foldAll").title = anyClosed() ? "expand all sections" : "collapse all sections"; };
+  sf.addEventListener("click", e => { if (e.target.closest(".help")) return; folds.styles = !folds.styles; store.set("folds", folds); apply(); label(); });
+  document.querySelectorAll(".form fieldset > legend").forEach(lg => lg.addEventListener("click", () => setTimeout(label)));
+  $("foldAll").onclick = () => {
+    const close = !anyClosed();                   // everything open -> collapse all; anything closed -> expand all
+    sets().forEach(fs => { fs.classList.toggle("closed", close); folds[keyOf(fs)] = close; });
+    folds.styles = close; store.set("folds", folds); apply(); label();
+  };
+  apply(); label();
 }
 
 // ---------------- help: live hints under sliders + ⓘ tooltips ----------------
