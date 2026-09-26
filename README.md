@@ -405,6 +405,10 @@ pixelmon-gui --lan      # also reachable from other devices on your LAN
   `job.json`, and the gallery can reload the settings, re-run the same seed, or reroll.
 
 LoRA presets (trigger tags, default strength and palette) live in `gui/presets.json`.
+Starter presets — scenes, sprites, hardware looks (CGA, Tandy, C64, ZX, Game Boy) and a
+**style demo for every `--style`**, each with a sample image — are built by
+`~/ComfyUI/.venv/bin/python gui/make_starter_presets.py` into `~/pixelmon-gallery/gui-presets/`
+(`--try 4 NAME` renders candidate seeds to pick from; your own presets are never touched).
 
 ---
 

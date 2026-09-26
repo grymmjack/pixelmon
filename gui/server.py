@@ -163,7 +163,7 @@ def full_prompt(p):
 NEGATION = re.compile(r"\b(?:no|not|without|never|avoid|don'?t)\b[^,.;]*", re.I)
 STOP = {"the", "and", "with", "for", "from", "into", "onto", "set", "its", "his", "her", "their", "that", "this",
         "very", "some", "over", "under", "near", "far", "top", "side", "while", "each", "one", "two", "has", "have"}
-PEOPLE = r"\(?(person|people|character|figure|human|creature)s?\b"
+PEOPLE = r"(?<!full )\(?(person|people|character|figure|human|creature)s?\b"   # "full figure" = framing, not a person
 
 
 def _words(text):
@@ -253,6 +253,15 @@ def prompt_warnings(p, pm):
     if str(p.get("dither") or "none") != "none" and float(p.get("dither_amount") or 0) < 0.15:
         warn(f"dither amount {float(p.get('dither_amount') or 0):g} is too small to see", setf("amount → 0.5", "dither_amount", 0.5))
     pa = float(p.get("pixel_angles") or 0)
+    tl = int(p.get("thin_lines") or 0)
+    if w and max(w, h) <= 160 and not art:
+        # on small sprites/portraits almost every feature (eyes, nose, beard shading) IS a thin stroke
+        if tl > 2:
+            warn(f"1-px outlines ≤{tl} on a {w}×{h} image thins away the features themselves (eyes, shading) — "
+                 "use ≤2 or off for small sprites/portraits", setf("outlines → ≤2", "thin_lines", "2"), setf("outlines off", "thin_lines", "0"))
+        if pa:
+            warn(f"pixel-art angles on a {w}×{h} image reshapes the features — it's meant for 320×200+ scenes",
+                 setf("angles off", "pixel_angles", 0))
     if pa > 2.5:
         warn(f"pixel-art angles {pa:g} starts bending shapes — 1.25–2 straightens edges without distorting",
              setf("angles → 1.5", "pixel_angles", 1.5))
