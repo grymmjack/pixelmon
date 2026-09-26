@@ -676,12 +676,16 @@ def image_size(path):
 
 
 ADJ_DEFAULTS = {"brightness": 0, "contrast": 0, "gamma": 1.0, "saturation": 100, "hue": 0, "clean": 0,
-                "sharpen": 0, "posterize": 0, "gray": False, "invert": False}
+                "sharpen": 0, "posterize": 0, "gray": False, "invert": False, "crop": None}
 
 
 def adjust_is_default(adj):
-    return not adj or all(adj.get(k, v) == v or (isinstance(v, (int, float)) and float(adj.get(k, v)) == float(v))
-                          for k, v in ADJ_DEFAULTS.items())
+    if not adj:
+        return True
+    if adj.get("crop"):
+        return False
+    return all(adj.get(k, v) == v or (isinstance(v, (int, float)) and float(adj.get(k, v)) == float(v))
+               for k, v in ADJ_DEFAULTS.items() if k != "crop")
 
 
 def adjust_image(path, adj, max_side=None):
@@ -689,6 +693,12 @@ def adjust_image(path, adj, max_side=None):
     sharpen → posterize → grayscale → invert. Returns an RGB PIL image."""
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     im = Image.open(path).convert("RGB")
+    crop = (adj or {}).get("crop")
+    if crop:                                    # [x, y, w, h] as fractions of the image — applied first
+        x, y, w, h = (min(1.0, max(0.0, float(v))) for v in crop)
+        W, H = im.size
+        box = (int(x * W), int(y * H), max(int(x * W) + 1, int((x + w) * W)), max(int(y * H) + 1, int((y + h) * H)))
+        im = im.crop(box)
     if max_side and max(im.size) > max_side:
         im.thumbnail((max_side, max_side), Image.LANCZOS)
     a = dict(ADJ_DEFAULTS, **(adj or {}))
@@ -754,6 +764,123 @@ def list_boards():
                            key=lambda f: os.path.getmtime(os.path.join(d, f)))
             out.append({"name": b, "items": files})
     return out
+
+
+def export_bundle(name, gallery):
+    """A preset + everything it references, as zip bytes (see README.txt inside)."""
+    f = os.path.join(PRESETS, safe_name(name) + ".json")
+    if not os.path.isfile(f):
+        raise ValueError(f"no preset {name!r}")
+    with open(f, encoding="utf-8") as fh:
+        rec = json.load(fh)
+    snap = rec.get("snapshot") or {}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("preset.json", json.dumps(rec, indent=1))
+        if rec.get("image") and os.path.isfile(os.path.join(PRESETS, rec["image"])):
+            z.write(os.path.join(PRESETS, rec["image"]), "picture" + os.path.splitext(rec["image"])[1])
+        lab = snap.get("lab") or {}
+        if lab.get("file"):
+            try:
+                z.write(lab_path(lab["file"]), "lab-input/" + os.path.basename(lab["file"]))
+            except ValueError:
+                pass
+        for ref in (snap.get("steer") or {}).get("sel") or []:
+            try:
+                z.write(ref_path(ref), "steering/" + ref)
+            except ValueError:
+                pass
+        par = (snap.get("evo") or {}).get("parent")
+        if par:
+            try:
+                z.write(os.path.realpath(os.path.join(gallery, par["dir"], par["file"])), "evolve-parent/" + par["file"])
+            except OSError:
+                pass
+        form = snap.get("form") or {}
+        styles = {n: load_styles().get(n) for n in form.get("styles") or [] if n in load_styles()}
+        z.writestr("styles.json", json.dumps(styles, indent=1))
+        loras = sorted({x for x in [form.get("lora")] if x and x != "(none)"}
+                       | ({"controlnet-union-sdxl-promax.safetensors"} if lab.get("active") else set()))
+        commit = subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%h %s"], capture_output=True, text=True).stdout.strip()
+        z.writestr("README.txt", "\n".join([
+            f"pixelmon preset bundle: {rec.get('name')}",
+            f"saved: {time.strftime('%Y-%m-%d %H:%M', time.localtime(rec.get('saved') or time.time()))}",
+            f"note: {rec.get('note') or '-'}", f"pixelmon: {commit or 'unknown'}", "",
+            "Import it in pixelmon-gui: Presets tab -> IMPORT (drop this .zip). Images are restored next to",
+            "pixelmon's own (lab-inputs, pixelmon-refs, gallery) without overwriting anything.", "",
+            "Contents: preset.json (every setting), picture, lab-input/, steering/, evolve-parent/,",
+            "styles.json (the style guides it uses, as they were).", "",
+            "Model files it needs on the render server (not included):",
+            *[f"  - {x}" for x in loras], "",
+            "Prompt: " + str(form.get("subject") or ""),
+        ]) + "\n")
+    return buf.getvalue(), safe_name(rec.get("name") or name)
+
+
+def import_bundle(data, gallery):
+    """Unpack a bundle: images go back where pixelmon looks for them (never overwriting), the preset's
+    references are rewritten to wherever they landed, and the preset is saved. Returns the saved record."""
+    z = zipfile.ZipFile(io.BytesIO(data))
+    names = set(z.namelist())
+    if "preset.json" not in names:
+        raise ValueError("not a pixelmon preset bundle (no preset.json)")
+    rec = json.loads(z.read("preset.json"))
+    snap = rec.setdefault("snapshot", {})
+
+    def put(member, dest_dir, fname):
+        """copy a zip member to dest_dir/fname unless an identical file is already there; returns the name used"""
+        blob = z.read(member)
+        if len(blob) > 60 * 1024 * 1024 or not fname.lower().endswith(IMG_EXT):
+            raise ValueError(f"refusing {member}")
+        os.makedirs(dest_dir, exist_ok=True)
+        fname = safe_name(fname, 120)
+        target = os.path.join(dest_dir, fname)
+        if os.path.exists(target):
+            with open(target, "rb") as fh:
+                if fh.read() == blob:
+                    return fname                  # already here: reuse it
+            target = unique_path(dest_dir, fname)
+        with open(target, "wb") as fh:
+            fh.write(blob)
+        return os.path.basename(target)
+
+    lab = snap.get("lab") or {}
+    if lab.get("file") and f"lab-input/{os.path.basename(lab['file'])}" in names:
+        lab["file"] = put(f"lab-input/{os.path.basename(lab['file'])}", LAB, os.path.basename(lab["file"]))
+    steer = snap.get("steer") or {}
+    sel = []
+    for ref in steer.get("sel") or []:
+        member = "steering/" + ref
+        if member in names and "/" in ref:
+            col = safe_name(ref.split("/", 1)[0])
+            sel.append(f"{col}/{put(member, os.path.join(REFS, col), os.path.basename(ref))}")
+    if steer:
+        steer["sel"] = sel
+    par = (snap.get("evo") or {}).get("parent")
+    if par and f"evolve-parent/{par.get('file')}" in names:
+        jid = "import-" + time.strftime("%Y%m%d-%H%M%S")
+        d = os.path.join(gallery, jid)
+        fname = put(f"evolve-parent/{par['file']}", d, par["file"])
+        with open(os.path.join(d, "job.json"), "w", encoding="utf-8") as fh:   # so it shows in the gallery
+            json.dump({"id": jid, "dir": jid, "status": "done", "command": "(imported from a preset bundle)",
+                       "params": {"prompt": (snap.get("form") or {}).get("subject", ""), "form": snap.get("form")},
+                       "outputs": [{"file": fname, "seed": par.get("seed")}], "created": time.time()}, fh, indent=1)
+        par.update({"dir": jid, "file": fname})
+    name = safe_name(rec.get("name") or "imported")
+    base, k = name, 1
+    while os.path.exists(os.path.join(PRESETS, name + ".json")):
+        name, k = f"{base}-{k}", k + 1
+    rec["name"] = name
+    os.makedirs(PRESETS, exist_ok=True)
+    pic = next((m for m in names if m.startswith("picture.")), None)
+    rec["image"] = None
+    if pic and pic.lower().endswith(IMG_EXT):
+        rec["image"] = name + os.path.splitext(pic)[1]
+        with open(os.path.join(PRESETS, rec["image"]), "wb") as fh:
+            fh.write(z.read(pic))
+    with open(os.path.join(PRESETS, name + ".json"), "w", encoding="utf-8") as fh:
+        json.dump(rec, fh, indent=1)
+    return rec
 
 
 def list_presets():
@@ -893,6 +1020,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
         if u.path == "/api/presets":
             return self._json({"presets": list_presets()})
+        if u.path == "/api/presets/export":
+            try:
+                body, fname = export_bundle(urllib.parse.parse_qs(u.query).get("name", [""])[0], self.gallery)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="pixelmon-preset-{fname}.zip"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if u.path == "/api/lab/preview":
             q = urllib.parse.parse_qs(u.query)
             try:
@@ -969,6 +1108,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path == "/api/presets/import":
+            n = int(self.headers.get("Content-Length") or 0)
+            if not 0 < n <= 300 * 1024 * 1024:
+                return self._json({"error": "bundle must be under 300 MB"}, 400)
+            try:
+                rec = import_bundle(self.rfile.read(n), self.gallery)
+            except (ValueError, zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
+                return self._json({"error": f"couldn't import: {e}"}, 400)
+            return self._json({"name": rec["name"], "snapshot": rec.get("snapshot")})
         if u.path == "/api/lab/upload":
             return self._upload(urllib.parse.parse_qs(u.query), lab=True)
         if u.path == "/api/refs/upload":            # raw image bytes; ?collection=&filename=

@@ -156,6 +156,15 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
   text-align: center; color: var(--dim); cursor: pointer; padding: 8px; }
 .lab-drop.over { border-color: var(--accent); color: var(--accent); }
 .lab-drop img { max-width: 100%; max-height: 420px; image-rendering: auto; display: block; }
+.cropwrap { position: relative; display: inline-block; line-height: 0; overflow: hidden; touch-action: none; }
+.cropwrap.editing { cursor: crosshair; }
+.cropbox { position: absolute; border: 1px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0,0,0,.55); cursor: move; }
+.cropbox i { position: absolute; width: 10px; height: 10px; background: var(--accent); border: 1px solid #000; }
+.cropbox .nw { left: -6px; top: -6px; cursor: nwse-resize; } .cropbox .ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.cropbox .sw { left: -6px; bottom: -6px; cursor: nesw-resize; } .cropbox .se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.croptools { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
+.croptools select { width: auto; padding: 3px 6px; }
+.croptools .btn.on { border-color: var(--accent); color: var(--accent); }
 .lab-recent { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .lab-recent img { width: 54px; height: 54px; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
 .lab-recent img.on { border-color: var(--accent); }
@@ -238,7 +247,10 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .pcard .acts { display: flex; gap: 6px; margin-top: 8px; }
 
 /* ---- presets + evolve ---- */
-.presetbar { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; margin-bottom: 12px; }
+.presetbar { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px; margin-bottom: 12px; }
+.pimport { border: 2px dashed var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; color: var(--dim);
+  display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; cursor: pointer; }
+.pimport.over { border-color: var(--accent); color: var(--accent); }
 .evo-parent { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
 .evo-parent img { width: 96px; image-rendering: pixelated; border: 1px solid var(--accent2); }
 .evo-parent .meta { font-size: 12px; color: var(--dim); }
@@ -302,6 +314,7 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
       <button type="button" class="btn small" id="presetLoad">Load</button>
       <button type="button" class="btn small" id="presetSave" title="save the whole setup (prompt, LoRA, styles, canvas, palette, dither, seed, steering, evolve)">Save…</button>
       <button type="button" class="btn small" id="presetDel">Delete</button>
+      <button type="button" class="btn small" id="snapZip" title="📦 save everything right now as a preset AND download it as a .zip (with its images) — for posterity">📦</button>
     </div>
 
     <fieldset id="evoBox">
@@ -491,6 +504,11 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
         <div class="lab-col"><h3>1 · Input image</h3>
           <div class="lab-drop" id="labDrop"><span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span></div>
           <input type="file" id="labFile" accept="image/*" hidden>
+          <div class="croptools"><button type="button" class="btn small" id="cropBtn" title="draw a box to use only part of the image">✂ crop</button>
+            aspect <select id="cropAspect"><option value="0">free</option><option value="1.6">320×200</option><option value="1.905">320×168</option>
+              <option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option></select>
+            <button type="button" class="btn small" id="cropClear">clear crop</button><span id="cropInfo"></span>
+            <i class="help" data-help="crop">i</i></div>
           <div class="lab-recent" id="labRecent"></div>
           <details class="adj" id="adjBox"><summary>Adjust source<i class="help" data-help="adjust">i</i></summary>
             <div class="row3">
@@ -1022,6 +1040,10 @@ const HELP = {
     <li><b>posterize</b>: fewer color levels (1–7 bits) — flatter shapes, closer to pixel art before restyling</li></ul>
     Tip: turn on <b>👁 what the AI sees</b> while adjusting — you want clean, continuous outlines around your subject
     and not much speckle in the background.`,
+  crop: `<span class="tipk">Crop</span>: use only part of your input. Click <b>✂ crop</b>, then drag a box on the image —
+    drag inside it to move it, drag its corners to resize, or drag anywhere else to start a new one. <b>aspect</b> locks the
+    shape (320×200 = a DOS screen). Click ✂ again when done. The crop is part of the source adjustments, so it's used for
+    CONVERT and the live preview, the output size follows its shape, and it's saved in presets and preset .zips.`,
   edges: `<span class="tipk">What the AI sees</span>: shows (approximately) the outline map the "shape" mode follows.
     Clean, connected lines around your subject = good results. Lots of speckle = messy results: raise <b>clean</b> or
     lower <b>sharpen</b>. Faint or missing outlines: raise <b>contrast</b> or <b>sharpen</b>.`,
@@ -1287,7 +1309,10 @@ async function loadPresets(select) {
   $("presetSel").innerHTML = `<option value="">— presets (${PRESETS.length}) —</option>` +
     PRESETS.map(p => `<option value="${esc(p.name)}" title="${esc(p.note || "")}">${esc(p.name)}</option>`).join("");
   if (select) $("presetSel").value = select;
-  $("presetsPane").innerHTML = PRESETS.length ? `<div class="pcards">${PRESETS.map(p => {
+  const importZone = `<div class="pimport" id="pImport">⬆ IMPORT a preset .zip — drop it here or click
+    <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="pImportLoad" ${store.get("importLoad", true) ? "checked" : ""}> load it now</label>
+    <input type="file" id="pImportFile" accept=".zip,application/zip" hidden></div>`;
+  $("presetsPane").innerHTML = importZone + (PRESETS.length ? `<div class="pcards">${PRESETS.map(p => {
     const f = (p.snapshot && p.snapshot.form) || {};
     const bits = [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
                   f.dither && f.dither !== "none" && f.dither, f.seedLock && f.seed && `seed ${f.seed}`,
@@ -1299,8 +1324,10 @@ async function loadPresets(select) {
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
         <div class="acts"><button class="btn small" data-pload="${esc(p.name)}">Load</button>
           <button class="btn small" data-prender="${esc(p.name)}">Load + render</button>
+          <a class="btn small" href="/api/presets/export?name=${encodeURIComponent(p.name)}" download
+             title="download this preset + all its images as a .zip">⬇ zip</a>
           <button class="btn small" data-pdel="${esc(p.name)}">Delete</button></div></div></div>`;
-  }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`;
+  }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`);
 }
 function latestOutput() {
   if (EVO.parent) return { dir: EVO.parent.dir, file: EVO.parent.file };
@@ -1957,7 +1984,8 @@ function initPromptTools() {
 }
 
 // ---------------- ⚗ LAB: input image -> restyled by the current setup, shape kept by ControlNet ----------------
-const ADJ0 = { brightness: 0, contrast: 0, gamma: 1, saturation: 100, hue: 0, clean: 0, sharpen: 0, posterize: 0, gray: false, invert: false };
+const ADJ0 = { brightness: 0, contrast: 0, gamma: 1, saturation: 100, hue: 0, clean: 0, sharpen: 0, posterize: 0, gray: false, invert: false, crop: null };
+let cropEdit = false;
 const LABS = Object.assign({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8, init: false,
                              denoise: 0.7, w: 320, n: 4, group: null }, store.get("lab", {}));
 async function loadLab() {
@@ -1968,15 +1996,76 @@ async function loadLab() {
   renderLab();
 }
 function labOut() {   // LAB's height follows the input's proportions, rounded to the pixel size
-  const [iw, ih] = LABS.size, w = Math.max(16, +LABS.w || 320);
+  const c = LABS.adj && LABS.adj.crop, iw = LABS.size[0] * (c ? c[2] : 1), ih = LABS.size[1] * (c ? c[3] : 1);
+  const w = Math.max(16, +LABS.w || 320);
   const m = /^(\d+)x(\d+)$/.exec($("pixel_size").value || ""), ph = m ? +m[2] : 1;
   const h = iw && ih ? Math.max(16, Math.round((w * ih / iw) / ph) * ph) : Math.round(w * 0.625);
   return [w, h];
 }
-const adjTouched = () => Object.keys(ADJ0).some(k => LABS.adj[k] !== undefined && LABS.adj[k] != ADJ0[k]);
+const adjTouched = () => Object.keys(ADJ0).some(k => k === "crop" ? !!LABS.adj.crop : LABS.adj[k] !== undefined && LABS.adj[k] != ADJ0[k]);
 function labSrcUrl() {   // the (adjusted) input as the server will use it — or its edge view
-  if (!adjTouched() && !LABS.edges) return `/lab/${encodeURIComponent(LABS.file)}`;
-  return `/api/lab/preview?file=${encodeURIComponent(LABS.file)}&adj=${encodeURIComponent(JSON.stringify(LABS.adj))}${LABS.edges ? "&edges=1" : ""}`;
+  // while drawing the crop box, show the whole image (adjusted, but uncropped)
+  const adj = cropEdit ? { ...LABS.adj, crop: null } : LABS.adj;
+  const touched = Object.keys(ADJ0).some(k => k === "crop" ? !!adj.crop : adj[k] !== undefined && adj[k] != ADJ0[k]);
+  if (!touched && !LABS.edges) return `/lab/${encodeURIComponent(LABS.file)}`;
+  return `/api/lab/preview?file=${encodeURIComponent(LABS.file)}&adj=${encodeURIComponent(JSON.stringify(adj))}${LABS.edges ? "&edges=1" : ""}`;
+}
+function cropRect() { const c = LABS.adj.crop; return c ? { x: c[0], y: c[1], w: c[2], h: c[3] } : null; }
+function renderCropBox() {
+  const wrap = $("labDrop").querySelector(".cropwrap"); if (!wrap) return;
+  wrap.classList.toggle("editing", cropEdit);
+  let box = wrap.querySelector(".cropbox");
+  const r = cropRect();
+  if (!cropEdit || !r) { if (box) box.remove(); }
+  else {
+    if (!box) { box = document.createElement("div"); box.className = "cropbox"; box.innerHTML = '<i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i>'; wrap.appendChild(box); }
+    Object.assign(box.style, { left: r.x * 100 + "%", top: r.y * 100 + "%", width: r.w * 100 + "%", height: r.h * 100 + "%" });
+  }
+  $("cropBtn").classList.toggle("on", cropEdit);
+  $("cropBtn").textContent = cropEdit ? "✓ done" : "✂ crop";
+  const [iw, ih] = LABS.size;
+  $("cropInfo").textContent = r ? `${Math.round(r.w * iw)}×${Math.round(r.h * ih)} of ${iw}×${ih}` : "";
+}
+function initCrop() {
+  let drag = null;   // {mode: move|nw|ne|sw|se|new, sx, sy, r0}
+  const drop = $("labDrop");
+  const pt = e => { const img = drop.querySelector(".cropwrap img"), b = img.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)), b }; };
+  const aspect = () => +$("cropAspect").value;   // wanted pixel width / height (0 = free)
+  function fit(r, b) {   // apply the aspect lock (in pixels, not fractions) and clamp to the image
+    const A = aspect();
+    if (A) r.h = (r.w * b.width / A) / b.height;
+    if (r.h > 1) { r.h = 1; if (A) r.w = (r.h * b.height * A) / b.width; }
+    r.w = Math.min(Math.max(r.w, 0.02), 1); r.h = Math.min(Math.max(r.h, 0.02), 1);
+    r.x = Math.min(Math.max(r.x, 0), 1 - r.w); r.y = Math.min(Math.max(r.y, 0), 1 - r.h);
+    return r;
+  }
+  drop.addEventListener("pointerdown", e => {
+    if (!cropEdit || !e.target.closest(".cropwrap")) return;
+    e.preventDefault(); e.stopPropagation();
+    const p = pt(e), r = cropRect(), h = e.target.closest(".cropbox i");
+    drag = { mode: h ? h.className : e.target.closest(".cropbox") ? "move" : "new", sx: p.x, sy: p.y, r0: r ? { ...r } : null };
+    if (drag.mode === "new") drag.r0 = { x: p.x, y: p.y, w: 0.02, h: 0.02 };
+    drop.setPointerCapture(e.pointerId);
+  });
+  drop.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const p = pt(e), dx = p.x - drag.sx, dy = p.y - drag.sy, o = drag.r0;
+    let r = { ...o };
+    if (drag.mode === "move") { r.x = o.x + dx; r.y = o.y + dy; }
+    else if (drag.mode === "new") { r = { x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(dx), h: Math.abs(dy) }; }
+    else {
+      const L = drag.mode.includes("w"), T = drag.mode.includes("n");
+      if (L) { r.x = Math.min(o.x + dx, o.x + o.w - 0.02); r.w = o.w - (r.x - o.x); } else r.w = o.w + dx;
+      if (T) { r.y = Math.min(o.y + dy, o.y + o.h - 0.02); r.h = o.h - (r.y - o.y); } else r.h = o.h + dy;
+    }
+    r = fit(r, p.b);
+    LABS.adj.crop = [r.x, r.y, r.w, r.h].map(v => Math.round(v * 10000) / 10000);
+    renderCropBox();
+  });
+  drop.addEventListener("pointerup", () => { if (!drag) return; drag = null; store.set("lab", LABS); renderLab(); labSchedule(); });
+  $("cropBtn").onclick = () => { if (!LABS.file) return; cropEdit = !cropEdit; renderLab(); if (!cropEdit) labSchedule(); };
+  $("cropClear").onclick = () => { LABS.adj.crop = null; cropEdit = false; store.set("lab", LABS); renderLab(); labSchedule(); };
 }
 let adjTimer = null;
 function adjUpdate() {   // debounced: sliders fire many events
@@ -1996,7 +2085,7 @@ function renderAdj() {
 }
 function renderLab() {
   renderAdj();
-  $("labDrop").innerHTML = LABS.file ? `<img src="${labSrcUrl()}" alt="">`
+  $("labDrop").innerHTML = LABS.file ? `<div class="cropwrap"><img src="${labSrcUrl()}" alt=""></div>`
     : `<span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span>`;
   document.querySelectorAll("#labRecent img").forEach(i => i.classList.toggle("on", i.dataset.labfile === LABS.file));
   $("labSubject").value = LABS.subject; $("labMode").value = LABS.mode; $("labStrength").value = LABS.strength;
@@ -2016,9 +2105,11 @@ function renderLab() {
     + ` · palette <b>${esc(f.palette)}</b>${f.dither !== "none" ? ` · ${esc(f.dither)}` : ""}${f.styles.length ? ` · ${esc(f.styles.join(", "))}` : ""}`
     + `${f.pixel_size ? ` · pixels ${esc(f.pixel_size)}` : ""}${STEER.use && STEER.sel.length ? ` · 🧭 ${STEER.sel.length} style refs` : ""}`;
   const [w, h] = labOut();
-  $("labSize").textContent = LABS.file ? `input ${LABS.size[0]}×${LABS.size[1]} → output ${w}×${h}` : "";
+  const cr = LABS.adj && LABS.adj.crop;
+  $("labSize").textContent = LABS.file ? `input ${LABS.size[0]}×${LABS.size[1]}${cr ? ` (cropped to ${Math.round(cr[2] * LABS.size[0])}×${Math.round(cr[3] * LABS.size[1])})` : ""} → output ${w}×${h}` : "";
   $("labLive").checked = !!LABS.live;
   renderLabPreview();
+  renderCropBox();
   $("labGo").disabled = !LABS.file;
   store.set("lab", LABS);
   if (LABS.group) {
@@ -2082,7 +2173,7 @@ async function labConvert() {
 }
 function initLab() {
   const drop = $("labDrop");
-  drop.onclick = () => $("labFile").click();
+  drop.onclick = e => { if (!cropEdit && !e.target.closest(".cropwrap")) $("labFile").click(); };   // image clicks don't reopen the picker
   $("labFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (f) await labUpload(f); };
   async function labUpload(f) {
     try {
@@ -2117,6 +2208,7 @@ function initLab() {
   $("labPSeed").onclick = () => { LABS.pseed = Math.floor(Math.random() * 2 ** 31); labSchedule(); };
   $("labN").oninput = e => { LABS.n = Math.max(1, Math.min(8, +e.target.value || 1)); store.set("lab", LABS); };
   $("labGo").onclick = labConvert;
+  initCrop();
   $("labSave").onclick = () => {
     const jobs = Object.values(JOBS).filter(j => j.group === LABS.group && j.outputs.length).sort((a, b) => b.created - a.created);
     const pj = LABS.prevJob && JOBS[LABS.prevJob];
@@ -2124,6 +2216,44 @@ function initLab() {
               : pj && pj.outputs.length ? { dir: pj.dir, file: pj.outputs[0].file } : null;
     savePreset(snapshot(true), `lab-${(LABS.subject || "preset").slice(0, 24)}`, img);
   };
+}
+
+// ---------------- preset bundles: .zip with every setting + every image it uses ----------------
+async function importBundle(file) {
+  try {
+    const r = await fetch("/api/presets/import", { method: "POST", body: file });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    await loadPresets(j.name);
+    if (store.get("importLoad", true) && j.snapshot) { applySnapshot(j.snapshot); $("presetSel").value = j.name; }
+    showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = `imported preset “${j.name}”`;
+    setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 4000);
+  } catch (e) { showErr(e); }
+}
+async function snapshotZip() {
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  const name = `snap-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const inLab = !$("labPane").classList.contains("hidden");
+  try {
+    const r = await api("/api/presets", { name, note: (readForm().subject || "").slice(0, 200), snapshot: snapshot(inLab), image: latestOutput() });
+    await loadPresets(r.name);
+    location.href = `/api/presets/export?name=${encodeURIComponent(r.name)}`;
+  } catch (e) { showErr(e); }
+}
+function initBundles() {
+  $("snapZip").onclick = snapshotZip;
+  const pane = $("presetsPane");
+  pane.addEventListener("click", e => { if (e.target.closest("#pImport") && !e.target.closest("label")) $("pImportFile").click(); });
+  pane.addEventListener("change", e => {
+    if (e.target.id === "pImportFile" && e.target.files[0]) { importBundle(e.target.files[0]); e.target.value = ""; }
+    if (e.target.id === "pImportLoad") store.set("importLoad", e.target.checked);
+  });
+  pane.addEventListener("dragover", e => { if (e.target.closest("#pImport")) { e.preventDefault(); $("pImport").classList.add("over"); } });
+  pane.addEventListener("dragleave", e => { if (e.target.closest("#pImport")) $("pImport").classList.remove("over"); });
+  pane.addEventListener("drop", e => {
+    const z = e.target.closest("#pImport"); if (!z) return;
+    e.preventDefault(); z.classList.remove("over");
+    const f = [...e.dataTransfer.files].find(x => /\.zip$/i.test(x.name)); if (f) importBundle(f);
+  });
 }
 
 // ---------------- API ----------------
@@ -2347,6 +2477,7 @@ async function init() {
   initStatus();
   initPromptTools();
   initLab();
+  initBundles();
   initSteer();
   initEvo();
   initPresets();
