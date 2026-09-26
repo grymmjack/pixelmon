@@ -162,6 +162,13 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .cropbox i { position: absolute; width: 10px; height: 10px; background: var(--accent); border: 1px solid #000; }
 .cropbox .nw { left: -6px; top: -6px; cursor: nwse-resize; } .cropbox .ne { right: -6px; top: -6px; cursor: nesw-resize; }
 .cropbox .sw { left: -6px; bottom: -6px; cursor: nesw-resize; } .cropbox .se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.cropwrap canvas.maskc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: .55; pointer-events: none; }
+.cropwrap.masking { cursor: crosshair; }
+.masktools { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
+.masktools input[type=range] { width: 90px; } .masktools input[type=text] { width: 150px; padding: 3px 6px; }
+.masktools .btn.on { border-color: var(--accent2); color: var(--accent2); }
+.editbox { margin-top: 12px; border: 1px solid var(--accent2); border-radius: var(--radius); padding: 8px 10px; }
+.editbox h4 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent2); }
 .croptools { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
 .croptools select { width: auto; padding: 3px 6px; }
 .croptools .btn.on { border-color: var(--accent); color: var(--accent); }
@@ -211,6 +218,17 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 #peek .pk-cmd { position: relative; background: var(--bg); border-radius: 4px; padding: 6px 60px 6px 8px; margin-top: 5px; color: var(--text); }
 #peek .pk-cmd .copy { position: absolute; top: 4px; right: 4px; }
 .peeking img, img.peeking { outline: 2px solid var(--accent2); outline-offset: 1px; }
+
+/* ---- fold-out sections ---- */
+fieldset > legend { cursor: pointer; user-select: none; }
+fieldset > legend::before { content: "▾ "; color: var(--accent); }
+fieldset.closed > legend::before { content: "▸ "; }
+fieldset.closed > :not(legend) { display: none !important; }
+fieldset.closed { padding-bottom: 2px; }
+.foldlabel { cursor: pointer; user-select: none; }
+.foldlabel::before { content: "▾ "; color: var(--accent); }
+.foldlabel.closed::before { content: "▸ "; }
+.foldlabel .sel { color: var(--accent); margin-left: 4px; }
 
 /* ---- evolve "ez mode" pill ---- */
 .pill { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: 4px 0 2px; }
@@ -376,7 +394,7 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
             <option value="">(none)</option><option>1980s DOS game</option><option>1990s DOS game</option></select></div>
         </div>
       </div>
-      <label>Style guides<i class="help" data-help="styles">i</i></label>
+      <label class="foldlabel" id="stylesFold">Style guides<i class="help" data-help="styles">i</i><span class="sel" id="stylesSel"></span></label>
       <div class="chips" id="styles"></div>
       <div class="final" id="finalPrompt" title="your prompt + LoRA tags"></div>
       <label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="showFull"> Show full prompt</label>
@@ -509,6 +527,17 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
               <option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option></select>
             <button type="button" class="btn small" id="cropClear">clear crop</button><span id="cropInfo"></span>
             <i class="help" data-help="crop">i</i></div>
+          <div class="croptools"><button type="button" class="btn small" id="maskBtn" title="paint the area to change">✏️ mask</button>
+            <span id="maskInfo"></span><i class="help" data-help="mask">i</i></div>
+          <div class="masktools hidden" id="maskTools">
+            <button type="button" class="btn small on" id="maskPaint" title="paint (P)">🖌 paint</button>
+            <button type="button" class="btn small" id="maskErase" title="erase (E)">⌫ erase</button>
+            size <input type="range" id="maskSize" min="2" max="80" step="1"><b id="maskSizeVal"></b>
+            <button type="button" class="btn small" id="maskInvert">invert</button>
+            <button type="button" class="btn small" id="maskClear">clear</button>
+            <input type="text" id="maskWords" placeholder="select by words: the moon">
+            <button type="button" class="btn small" id="maskSelect">select</button>
+          </div>
           <div class="lab-recent" id="labRecent"></div>
           <details class="adj" id="adjBox"><summary>Adjust source<i class="help" data-help="adjust">i</i></summary>
             <div class="row3">
@@ -550,6 +579,16 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
             <label class="inline" style="color:var(--text);margin:0"><input type="checkbox" id="labLive"> live preview (--fast, 1 image)<i class="help" data-help="labprev">i</i></label>
             <button type="button" class="btn small" id="labPSeed" title="new preview seed">🎲 seed</button></div>
           <div class="lab-prev hidden" id="labPrev"></div>
+          <div class="editbox hidden" id="editBox"><h4>✏️ Edit masked area<i class="help" data-help="edit">i</i></h4>
+            <div class="row"><div><label>Action</label><select id="editAction">
+                <option value="change">change it to…</option><option value="erase">erase it (fill with…)</option>
+                <option value="add">add…</option><option value="tweak">subtle tweak</option></select></div>
+              <div><label>Strength <b id="editStrVal"></b></label><input type="range" id="editStrength" min="0.3" max="1" step="0.05"></div></div>
+            <label id="editWhatLbl">What should be there?</label>
+            <input type="text" id="editWhat" placeholder="a red skull">
+            <div class="hint" id="hEdit"></div>
+            <button type="button" class="btn primary" id="editGo" style="width:100%">✏️ Apply edit</button>
+          </div>
           <button type="button" class="btn" id="labSave" style="width:100%;margin-top:10px"
             title="save everything — input, adjustments, steering, and the style in the left panel — as a preset">💾 Save LAB preset</button></div>
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
@@ -804,6 +843,7 @@ function queueFullPrompt() {
 }
 function renderStyles() {
   const box = $("styles"); box.innerHTML = "";
+  $("stylesSel").textContent = activeStyles.size ? `· ${[...activeStyles].join(", ")}` : "";
   for (const [name, s] of Object.entries(META.styles)) {
     const c = document.createElement("span");
     c.className = "chip" + (activeStyles.has(name) ? " on" : "");
@@ -944,6 +984,23 @@ function initSteer() {
   loadRefs();
 }
 
+// ---------------- fold-out sections (remembered) ----------------
+function initFolds() {
+  const folds = store.get("folds", {});
+  const keyOf = fs => fs.id || (fs.querySelector("legend").childNodes[0].nodeValue || "").trim().toLowerCase();
+  document.querySelectorAll(".form fieldset").forEach(fs => {
+    const lg = fs.querySelector(":scope > legend"); if (!lg) return;
+    fs.classList.toggle("closed", !!folds[keyOf(fs)]);
+    lg.addEventListener("click", e => {
+      if (e.target.closest(".help")) return;
+      fs.classList.toggle("closed"); folds[keyOf(fs)] = fs.classList.contains("closed"); store.set("folds", folds);
+    });
+  });
+  const sf = $("stylesFold"), apply = () => { sf.classList.toggle("closed", !!folds.styles); $("styles").classList.toggle("hidden", !!folds.styles); };
+  sf.addEventListener("click", e => { if (e.target.closest(".help")) return; folds.styles = !folds.styles; store.set("folds", folds); apply(); });
+  apply();
+}
+
 // ---------------- help: live hints under sliders + ⓘ tooltips ----------------
 const band = (v, rows) => rows.find(([max]) => v <= max)[1];
 const HINT = {
@@ -1040,6 +1097,16 @@ const HELP = {
     <li><b>posterize</b>: fewer color levels (1–7 bits) — flatter shapes, closer to pixel art before restyling</li></ul>
     Tip: turn on <b>👁 what the AI sees</b> while adjusting — you want clean, continuous outlines around your subject
     and not much speckle in the background.`,
+  mask: `<span class="tipk">Mask</span>: mark the part of the picture you want to change. Click <b>✏️ mask</b>, then paint
+    over it (🖌 paint / ⌫ erase, brush size), or type what it is — "the moon", "the sword" — and press <b>select</b>, then
+    touch it up. <b>invert</b> swaps inside/outside. Then use <b>Edit masked area</b> on the right.
+    Everything outside the mask stays exactly as it is. Tip: paint a little bigger than the object.`,
+  edit: `<span class="tipk">Edit masked area</span> (inpainting): redraws only what you masked.
+    <ul><li><b>change it to…</b>: replace it — "a red skull"</li><li><b>erase it</b>: remove it; say what's behind — "night sky", "stone wall"</li>
+    <li><b>add…</b>: paint roughly where it goes, say what — "a dragon flying"</li>
+    <li><b>subtle tweak</b>: keep what's there, just nudge it (lower strength)</li></ul>
+    The style comes from the left panel (LoRA, palette…). Describe just the new thing, and make a few results — small
+    edits vary a lot between seeds. Drag a result onto the input to keep editing it.`,
   crop: `<span class="tipk">Crop</span>: use only part of your input. Click <b>✂ crop</b>, then drag a box on the image —
     drag inside it to move it, drag its corners to resize, or drag anywhere else to start a new one. <b>aspect</b> locks the
     shape (320×200 = a DOS screen). Click ✂ again when done. The crop is part of the source adjustments, so it's used for
@@ -1265,7 +1332,7 @@ function initEvo() {
 
 // ---------------- presets (lab snapshots) ----------------
 let PRESETS = [];
-const LAB_KEYS = ["file", "size", "subject", "mode", "strength", "init", "denoise", "w", "n", "adj", "edges", "live", "pseed"];
+const LAB_KEYS = ["file", "size", "subject", "mode", "strength", "init", "denoise", "w", "n", "adj", "edges", "live", "pseed", "mask", "edit"];
 function labSnapshot(active) {
   const l = Object.fromEntries(LAB_KEYS.map(k => [k, LABS[k]]));
   return { ...l, adj: { ...LABS.adj }, active: !!active };
@@ -1296,6 +1363,7 @@ function applySnapshot(snap) {
   Object.assign(EVO, snap.evo || {}); renderEvo(); refresh();
   if (snap.lab) {
     Object.assign(LABS, snap.lab, { adj: { ...ADJ0, ...(snap.lab.adj || {}) }, group: null, prevJob: null });
+    maskCanvas.width = 0;   // rebuilt from LABS.mask when the input image loads
     store.set("lab", LABS);
     loadLab().then(() => {
       if (snap.lab.file && LABS.file !== snap.lab.file)
@@ -2026,6 +2094,144 @@ function renderCropBox() {
   const [iw, ih] = LABS.size;
   $("cropInfo").textContent = r ? `${Math.round(r.w * iw)}×${Math.round(r.h * ih)} of ${iw}×${ih}` : "";
 }
+// ---- ✏️ mask painting (stored as a PNG data URL at the preview image's resolution; white = redraw)
+let maskEdit = false, maskErase = false;
+const maskCanvas = document.createElement("canvas");   // the real mask (white on transparent)
+function maskHasPaint() {
+  if (!maskCanvas.width) return false;
+  const d = maskCanvas.getContext("2d").getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
+  for (let i = 3; i < d.length; i += 16) if (d[i]) return true;
+  return false;
+}
+function maskSave() {
+  if (!maskHasPaint()) { LABS.mask = null; }
+  else {   // export as opaque black/white
+    const c = document.createElement("canvas"); c.width = maskCanvas.width; c.height = maskCanvas.height;
+    const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, c.width, c.height); g.drawImage(maskCanvas, 0, 0);
+    LABS.mask = c.toDataURL("image/png");
+  }
+  store.set("lab", LABS); renderEditBox();
+}
+function maskLoad(url, w, h) {   // (re)build the paint canvas from a stored/segmented mask
+  maskCanvas.width = w; maskCanvas.height = h;
+  const g = maskCanvas.getContext("2d"); g.clearRect(0, 0, w, h);
+  if (!url) return drawMaskOverlay();
+  const im = new Image();
+  im.onload = () => {   // white -> opaque white, black -> transparent
+    const t = document.createElement("canvas"); t.width = w; t.height = h; const tg = t.getContext("2d");
+    tg.drawImage(im, 0, 0, w, h); const d = tg.getImageData(0, 0, w, h);
+    for (let i = 0; i < d.data.length; i += 4) { const on = d.data[i] > 127; d.data[i] = d.data[i + 1] = d.data[i + 2] = 255; d.data[i + 3] = on ? 255 : 0; }
+    g.putImageData(d, 0, 0); drawMaskOverlay();
+  };
+  im.src = url;
+}
+function drawMaskOverlay() {
+  const wrap = $("labDrop").querySelector(".cropwrap"); if (!wrap) return;
+  let ov = wrap.querySelector("canvas.maskc");
+  if (!LABS.mask && !maskEdit) { if (ov) ov.remove(); return; }
+  if (!ov) { ov = document.createElement("canvas"); ov.className = "maskc"; wrap.appendChild(ov); }
+  ov.width = maskCanvas.width; ov.height = maskCanvas.height;
+  const g = ov.getContext("2d"); g.clearRect(0, 0, ov.width, ov.height);
+  g.drawImage(maskCanvas, 0, 0); g.globalCompositeOperation = "source-in"; g.fillStyle = "#ff2266"; g.fillRect(0, 0, ov.width, ov.height);
+  g.globalCompositeOperation = "source-over";
+}
+function renderEditBox() {
+  const has = !!LABS.mask;
+  $("editBox").classList.toggle("hidden", !has);
+  $("maskBtn").classList.toggle("on", maskEdit); $("maskBtn").textContent = maskEdit ? "✓ done" : "✏️ mask";
+  $("maskTools").classList.toggle("hidden", !maskEdit);
+  $("maskInfo").textContent = has ? "mask set" : "";
+  const E = LABS.edit || (LABS.edit = { action: "change", strength: 1, what: "" });
+  $("editAction").value = E.action; $("editStrength").value = E.strength; $("editStrVal").textContent = (+E.strength).toFixed(2);
+  $("editWhat").value = E.what;
+  $("editWhatLbl").textContent = { change: "Change it to…", erase: "What's behind it?", add: "Add what?", tweak: "Nudge it toward…" }[E.action];
+  $("editWhat").placeholder = { change: "a red skull", erase: "night sky, stone wall", add: "a dragon flying", tweak: "brighter, more detailed" }[E.action];
+  $("hEdit").textContent = E.action === "tweak"
+    ? (E.strength < 0.5 ? "light touch — mostly keeps what's there" : "noticeable change, same basic shapes")
+    : "draws something new inside the mask; everything outside stays exactly the same";
+  $("maskSize").value = LABS.brush || 16; $("maskSizeVal").textContent = LABS.brush || 16;
+}
+async function editApply() {
+  if (!LABS.file || !LABS.mask) return showErr("Paint a mask first (✏️ mask).");
+  const E = LABS.edit, what = (E.what || "").trim();
+  if (!what) return showErr("Say what should be there.");
+  const f = readForm(), img = $("labDrop").querySelector(".cropwrap img");
+  // edit at the input's own size (pixel art stays 1:1); big photos use the LAB width
+  const c = LABS.adj.crop, iw = Math.round(LABS.size[0] * (c ? c[2] : 1)), ih = Math.round(LABS.size[1] * (c ? c[3] : 1));
+  const [w, h] = Math.max(iw, ih) <= 640 ? [iw, ih] : labOut();
+  const form = { ...f, subject: what, outW: w, outH: h, n: 1 };
+  const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
+                 inpaint: { file: LABS.file, mask: LABS.mask, mode: E.action === "tweak" ? "blend" : "fill" },
+                 lab_init: LABS.file, lab_denoise: E.strength };
+  delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
+  if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  if (!(await preflight(base))) return;
+  LABS.group = `lab-edit-${Date.now()}`;
+  const seed0 = Math.floor(Math.random() * 2 ** 31);
+  for (let i = 0; i < LABS.n; i++) {
+    try { await api("/api/render", { ...base, seed: seed0 + i, group: LABS.group, label: `edit · seed ${seed0 + i}` }); }
+    catch (e) { showErr(e); break; }
+  }
+  poll(); renderLab();
+}
+function initMask() {
+  let painting = false, last = null;
+  const drop = $("labDrop");
+  const at = e => { const img = drop.querySelector(".cropwrap img"), b = img.getBoundingClientRect();
+    return { x: (e.clientX - b.left) / b.width * maskCanvas.width, y: (e.clientY - b.top) / b.height * maskCanvas.height,
+             k: maskCanvas.width / b.width }; };
+  const stroke = (p) => {
+    const g = maskCanvas.getContext("2d"), r = (LABS.brush || 16) / 2 * p.k;
+    g.globalCompositeOperation = maskErase ? "destination-out" : "source-over";
+    g.strokeStyle = g.fillStyle = "#fff"; g.lineWidth = r * 2; g.lineCap = "round";
+    g.beginPath(); if (last) { g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); }
+    g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = "source-over"; last = p; drawMaskOverlay();
+  };
+  drop.addEventListener("pointerdown", e => {
+    if (!maskEdit || !e.target.closest(".cropwrap")) return;
+    e.preventDefault(); e.stopPropagation(); painting = true; last = null; drop.setPointerCapture(e.pointerId); stroke(at(e));
+  });
+  drop.addEventListener("pointermove", e => { if (painting) stroke(at(e)); });
+  drop.addEventListener("pointerup", () => { if (painting) { painting = false; last = null; maskSave(); } });
+  $("maskBtn").onclick = () => {
+    if (!LABS.file) return;
+    if (!maskEdit && cropEdit) { cropEdit = false; }
+    maskEdit = !maskEdit;
+    const img = drop.querySelector(".cropwrap img");
+    if (maskEdit && img && img.naturalWidth && maskCanvas.width !== img.naturalWidth) maskLoad(LABS.mask, img.naturalWidth, img.naturalHeight);
+    renderLab();
+  };
+  $("maskPaint").onclick = () => { maskErase = false; $("maskPaint").classList.add("on"); $("maskErase").classList.remove("on"); };
+  $("maskErase").onclick = () => { maskErase = true; $("maskErase").classList.add("on"); $("maskPaint").classList.remove("on"); };
+  $("maskSize").oninput = e => { LABS.brush = +e.target.value; $("maskSizeVal").textContent = LABS.brush; store.set("lab", LABS); };
+  $("maskClear").onclick = () => { maskCanvas.getContext("2d").clearRect(0, 0, maskCanvas.width, maskCanvas.height); drawMaskOverlay(); maskSave(); };
+  $("maskInvert").onclick = () => {
+    const g = maskCanvas.getContext("2d"), d = g.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+    for (let i = 3; i < d.data.length; i += 4) { d.data[i] = d.data[i] ? 0 : 255; d.data[i - 1] = d.data[i - 2] = d.data[i - 3] = 255; }
+    g.putImageData(d, 0, 0); drawMaskOverlay(); maskSave();
+  };
+  $("maskSelect").onclick = async () => {
+    const text = $("maskWords").value.trim(); if (!text || !LABS.file) return;
+    $("maskSelect").textContent = "…";
+    try {
+      const r = await api("/api/lab/segment", { file: LABS.file, adj: LABS.adj, text });
+      const img = drop.querySelector(".cropwrap img");
+      maskLoad(r.mask, img.naturalWidth || r.size[0], img.naturalHeight || r.size[1]);
+      setTimeout(maskSave, 300);
+    } catch (e) { showErr(e); }
+    $("maskSelect").textContent = "select";
+  };
+  document.addEventListener("keydown", e => {
+    if (!maskEdit || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (e.key === "p" || e.key === "P") $("maskPaint").click();
+    if (e.key === "e" || e.key === "E") $("maskErase").click();
+  });
+  $("editAction").onchange = e => { LABS.edit.action = e.target.value; LABS.edit.strength = e.target.value === "tweak" ? 0.5 : 1; store.set("lab", LABS); renderEditBox(); };
+  $("editStrength").oninput = e => { LABS.edit.strength = +e.target.value; store.set("lab", LABS); renderEditBox(); };
+  $("editWhat").oninput = e => { LABS.edit.what = e.target.value; store.set("lab", LABS); };
+  $("editGo").onclick = editApply;
+}
 function initCrop() {
   let drag = null;   // {mode: move|nw|ne|sw|se|new, sx, sy, r0}
   const drop = $("labDrop");
@@ -2063,8 +2269,10 @@ function initCrop() {
     LABS.adj.crop = [r.x, r.y, r.w, r.h].map(v => Math.round(v * 10000) / 10000);
     renderCropBox();
   });
-  drop.addEventListener("pointerup", () => { if (!drag) return; drag = null; store.set("lab", LABS); renderLab(); labSchedule(); });
-  $("cropBtn").onclick = () => { if (!LABS.file) return; cropEdit = !cropEdit; renderLab(); if (!cropEdit) labSchedule(); };
+  drop.addEventListener("pointerup", () => { if (!drag) return; drag = null;
+    if (LABS.mask) { LABS.mask = null; showErr("The crop changed, so the mask was cleared — repaint it."); }
+    store.set("lab", LABS); renderLab(); labSchedule(); });
+  $("cropBtn").onclick = () => { if (!LABS.file) return; cropEdit = !cropEdit; if (cropEdit) maskEdit = false; renderLab(); if (!cropEdit) labSchedule(); };
   $("cropClear").onclick = () => { LABS.adj.crop = null; cropEdit = false; store.set("lab", LABS); renderLab(); labSchedule(); };
 }
 let adjTimer = null;
@@ -2110,6 +2318,16 @@ function renderLab() {
   $("labLive").checked = !!LABS.live;
   renderLabPreview();
   renderCropBox();
+  renderEditBox();
+  const limg = $("labDrop").querySelector(".cropwrap img");
+  if (limg) {
+    limg.onload = () => {
+      if (maskCanvas.width !== limg.naturalWidth || maskCanvas.height !== limg.naturalHeight) maskLoad(LABS.mask, limg.naturalWidth, limg.naturalHeight);
+      else drawMaskOverlay();
+    };
+    if (limg.complete && limg.naturalWidth) limg.onload();
+  }
+  $("labDrop").querySelector(".cropwrap")?.classList.toggle("masking", maskEdit);
   $("labGo").disabled = !LABS.file;
   store.set("lab", LABS);
   if (LABS.group) {
@@ -2117,7 +2335,7 @@ function renderLab() {
     if (jobs.length) { $("labOut").innerHTML = jobCard(jobs.length > 1 ? jobs : [jobs[0]]); fillPalettes($("labOut")); }
   }
 }
-async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; await loadLab(); labSchedule(); }
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
   const subject = (LABS.subject || "the subject").trim();
@@ -2190,7 +2408,7 @@ function initLab() {
     const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) labUpload(f);
   });
   $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
-    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; renderLab(); labSchedule(); };
+    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; maskCanvas.width = 0; renderLab(); labSchedule(); };
   $("labSubject").oninput = e => { LABS.subject = e.target.value; store.set("lab", LABS); labSchedule(); };
   $("labMode").onchange = e => { LABS.mode = e.target.value; renderLab(); labSchedule(); };
   $("labStrength").oninput = e => { LABS.strength = +e.target.value; renderLab(); labSchedule(); };
@@ -2209,6 +2427,7 @@ function initLab() {
   $("labN").oninput = e => { LABS.n = Math.max(1, Math.min(8, +e.target.value || 1)); store.set("lab", LABS); };
   $("labGo").onclick = labConvert;
   initCrop();
+  initMask();
   $("labSave").onclick = () => {
     const jobs = Object.values(JOBS).filter(j => j.group === LABS.group && j.outputs.length).sort((a, b) => b.created - a.created);
     const pj = LABS.prevJob && JOBS[LABS.prevJob];
@@ -2471,6 +2690,7 @@ async function init() {
   $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
   renderStyles();
   initHelp();
+  initFolds();
   initPeek();
   initCork();
   initGridOverlay();

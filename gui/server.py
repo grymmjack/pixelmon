@@ -10,6 +10,7 @@ Standard library only. usage: pixelmon-gui [--port 8190] [--lan] [--gallery DIR]
 """
 import argparse
 import ast
+import base64
 import glob
 import http.server
 import importlib.util
@@ -358,7 +359,7 @@ def list_refs():
     return cols
 
 
-def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None):
+def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
         v = p.get(key, default)
@@ -463,6 +464,11 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None):
     if init:
         d = num("evolve_denoise", float, 0.01, 1.0, 0.45)
         argv += ["--init", init, "--denoise", f"{d:g}"]
+    if mask and init:
+        mm = str((p.get("inpaint") or {}).get("mode") or "fill")
+        if mm not in ("fill", "blend"):
+            raise ValueError(f"unknown mask mode {mm!r}")
+        argv += ["--mask", mask, "--mask-mode", mm]
     if control:
         c = p.get("control") or {}
         mode = str(c.get("mode") or "canny")
@@ -524,7 +530,9 @@ class JobQueue:
                 params["steer_weight_type"] = params.get("evolve_weight_type") or "style and composition"
                 params["steer_start"] = params.get("evolve_steer_start", 0.0)
                 params["steer_end"] = params.get("evolve_steer_end", 1.0)
-        control = None
+        control = mask = None
+        if params.get("inpaint"):
+            params["lab_init"] = params.get("lab_init") or (params["inpaint"].get("file"))
         lab = (params.get("control") or {}).get("file") or params.get("lab_init")
         if lab:                                      # LAB: the job keeps its own copy of the input image
             src = lab_path(lab)
@@ -542,13 +550,21 @@ class JobQueue:
             if params.get("lab_init"):
                 init = kept
                 params["evolve_denoise"] = params.get("lab_denoise", 0.7)
+            if params.get("inpaint"):                # the painted mask, as sent (white = redraw)
+                data = str(params["inpaint"].get("mask") or "")
+                raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
+                if raw[:8] != b"\x89PNG\r\n\x1a\n":
+                    raise ValueError("mask must be a PNG")
+                mask = os.path.join(jdir, "mask.png")
+                with open(mask, "wb") as fh:
+                    fh.write(raw)
         steer_dir = None
         if srcs:
             steer_dir = os.path.join(jdir, "steer")
             os.makedirs(steer_dir, exist_ok=True)
             for i, src in enumerate(srcs):           # numbered so same-named files can't collide
                 os.symlink(src, os.path.join(steer_dir, f"{i:02d}_{os.path.basename(src)}"))
-        argv = build_argv(params, steer_dir, len(srcs), init, control)   # validate before queueing
+        argv = build_argv(params, steer_dir, len(srcs), init, control, mask)   # validate before queueing
         export = export_target(params)
         job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
@@ -638,7 +654,7 @@ class JobQueue:
             with self.lock:
                 # trust the folder over log parsing (covers moved/renamed files)
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
-                               if not os.path.basename(f).startswith(("parent.", "input")))   # kept parent / LAB input aren't output
+                               if not os.path.basename(f).startswith(("parent.", "input", "mask.")))   # kept parent / LAB input aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
@@ -935,7 +951,7 @@ def gallery_items(gallery, limit=300):
                 job = json.load(f)
         except Exception:
             continue
-        job["outputs"] = [o for o in job.get("outputs") or [] if not o["file"].startswith(("parent.", "input"))]
+        job["outputs"] = [o for o in job.get("outputs") or [] if not o["file"].startswith(("parent.", "input", "mask."))]
         if job["outputs"]:
             items.append(job)
     return items
@@ -1184,6 +1200,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
                 return self._json({"opened": target})
+            if u.path == "/api/lab/segment":
+                # "select by words": CLIPSeg (CPU, the model pixelmon's --animate uses) on the adjusted input
+                src = lab_path(body.get("file"))
+                text = str(body.get("text") or "").strip()
+                if not text:
+                    raise ValueError("type what to select, e.g. “the moon”")
+                im = adjust_image(src, body.get("adj") or {}, max_side=720)
+                try:
+                    spec = importlib.util.spec_from_file_location("pixelmon_animate", os.path.join(REPO, "animate.py"))
+                    anim = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(anim)
+                    m = anim._clipseg_mask(im, text)
+                except ImportError as e:
+                    raise ValueError(f"select-by-words needs torch + transformers (run pixelmon-gui with ComfyUI's venv): {e}")
+                buf = io.BytesIO()
+                m.convert("L").save(buf, "PNG")
+                return self._json({"mask": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
+                                   "size": m.size})
             if u.path == "/api/lab/import":
                 # bring a render / steering ref / corkboard item into the LAB as an input
                 if body.get("ref"):

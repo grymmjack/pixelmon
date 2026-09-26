@@ -160,6 +160,7 @@ def print_help():
         opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
+        opt("--mask IMG", "inpaint with --init: redraw only the mask's white area"),
         opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
@@ -401,6 +402,24 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["42"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["41", 0], "vae": ["4", 2]}}
         g["3"]["inputs"]["latent_image"] = ["42", 0]
         g["3"]["inputs"]["denoise"] = a.denoise
+        if getattr(a, "mask", None):
+            # inpaint: only the white area of --mask is re-sampled; the rest of the latent is kept
+            if srv not in _MASK_UPLOADS:
+                _MASK_UPLOADS[srv] = _upload_image(os.path.abspath(os.path.expanduser(a.mask)), srv, "--mask")
+            g["43"] = {"class_type": "LoadImage", "inputs": {"image": _MASK_UPLOADS[srv]}}
+            g["44"] = {"class_type": "ImageScale",
+                       "inputs": {"image": ["43", 0], "upscale_method": "nearest-exact",
+                                  "width": a.gen_w, "height": a.gen_h, "crop": "disabled"}}
+            g["46"] = {"class_type": "ImageToMask", "inputs": {"image": ["44", 0], "channel": "red"}}
+            g["47"] = {"class_type": "GrowMask", "inputs": {"mask": ["46", 0], "expand": a.mask_grow, "tapered_corners": True}}
+            if a.mask_mode == "fill":
+                # fill: the masked area starts neutral, so the model draws something genuinely new there
+                # (change / add / erase). blend: it starts from what's there (subtle tweaks).
+                g["48"] = {"class_type": "VAEEncodeForInpaint",
+                           "inputs": {"pixels": ["41", 0], "vae": ["4", 2], "mask": ["46", 0], "grow_mask_by": a.mask_grow}}
+            else:
+                g["48"] = {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["42", 0], "mask": ["47", 0]}}
+            g["3"]["inputs"]["latent_image"] = ["48", 0]
 
     # --- ControlNet (--control): keep the SHAPE of a reference image while the prompt / LoRA / palette
     # restyle everything else. canny = follow its edges; tile = keep its layout + colors. Uses the SDXL
@@ -507,6 +526,78 @@ def _upload_image(path, server, what="--steer"):
 
 _INIT_UPLOADS = {}      # server -> uploaded --init image name
 _CONTROL_UPLOADS = {}   # server -> uploaded --control image name
+_MASK_UPLOADS = {}      # server -> uploaded --mask image name
+
+
+def prepare_inpaint_crop(a, r64):
+    """Crop init + mask to the mask's neighbourhood; retarget sizes to it. Returns stitch info or None."""
+    import tempfile
+    from PIL import Image
+    full = Image.open(os.path.expanduser(a.init)).convert("RGB")
+    fw, fh = full.size
+    m = Image.open(os.path.expanduser(a.mask)).convert("L").resize(full.size, Image.NEAREST)
+    bbox = m.point(lambda v: 255 if v > 127 else 0).getbbox()
+    if not bbox:
+        return None
+    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    # context = 2x the mask each way (at least a quarter of the image), squarish so the render isn't a sliver
+    side = max(bw, bh) * 2
+    cw = min(fw, max(int(side), fw // 4, 16))
+    ch = min(fh, max(int(side), fh // 4, 16))
+    if cw * ch > 0.6 * fw * fh:                 # the mask already covers most of it: no point cropping
+        return None
+    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    x0 = int(min(max(cx - cw / 2, 0), fw - cw))
+    y0 = int(min(max(cy - ch / 2, 0), fh - ch))
+    td = tempfile.mkdtemp(prefix="pixelmon-inpaint-")
+    ci, cm = os.path.join(td, "init-crop.png"), os.path.join(td, "mask-crop.png")
+    full.crop((x0, y0, x0 + cw, y0 + ch)).save(ci)
+    m.crop((x0, y0, x0 + cw, y0 + ch)).save(cm)
+    info = {"init": a.init, "mask": a.mask, "box": (x0, y0, cw, ch), "src": (fw, fh), "out": (a.ow, a.oh)}
+    sx, sy = a.ow / fw, a.oh / fh               # init pixels -> output pixels
+    a.init, a.mask = ci, cm
+    a.ow = a.sw = max(8, round(cw * sx))
+    a.oh = a.sh = max(8, round(ch * sy))
+    a.gen_w = a.res if a.sw >= a.sh else r64(a.res * a.sw / a.sh)
+    a.gen_h = a.res if a.sh >= a.sw else r64(a.res * a.sh / a.sw)
+    print(f"   ✂ inpaint: rendering the {cw}x{ch} area around the mask at full size, then stitching it back")
+    return info
+
+
+def stitch_inpaint(a, sprite):
+    """Paste the cropped inpaint result back into the full original at the output size."""
+    st = getattr(a, "_stitch", None)
+    if not (st and sprite and os.path.isfile(sprite)):
+        return
+    from PIL import Image
+    part = Image.open(sprite)
+    mode = "RGBA" if part.mode in ("RGBA", "LA") or "transparency" in part.info else "RGB"
+    ow, oh = st["out"]
+    fw, fh = st["src"]
+    x0, y0, cw, ch = st["box"]
+    full = Image.open(os.path.expanduser(st["init"])).convert(mode).resize((ow, oh), Image.NEAREST)
+    px, py = round(x0 * ow / fw), round(y0 * oh / fh)
+    full.paste(part.convert(mode), (px, py))
+    full.save(sprite)
+
+
+def keep_outside_mask(a, sprite):
+    """--mask: paste ONLY the masked pixels of the new render onto the original (--init), at the output's
+    native size, so everything outside the mask stays exactly as it was."""
+    if not (getattr(a, "mask", None) and a.init and a.keep_outside and sprite and os.path.isfile(sprite)):
+        return
+    try:
+        from PIL import Image, ImageFilter
+    except ImportError:
+        return
+    new = Image.open(sprite)
+    mode = "RGBA" if new.mode in ("RGBA", "LA") or "transparency" in new.info else "RGB"
+    new = new.convert(mode)
+    orig = Image.open(os.path.expanduser(a.init)).convert(mode).resize(new.size, Image.NEAREST)
+    m = Image.open(os.path.expanduser(a.mask)).convert("L").resize(new.size, Image.NEAREST)
+    m = m.point(lambda v: 255 if v > 127 else 0).filter(ImageFilter.MaxFilter(3))   # +1 px so no seam shows
+    orig.paste(new, (0, 0), m)
+    orig.save(sprite)
 
 
 def steer_files(a, server):
@@ -617,6 +708,8 @@ def run_farm(a, work):
             dest_dir = d or os.path.join(OUTPUT, "pixelmon")
             files = [fetch_image(im, dest_dir, srv) for im in imgs]
             sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
+            keep_outside_mask(a, sprite)
+            stitch_inpaint(a, sprite)
             done += 1
             sj = f"{subj}  " if a.batch else ""
             print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
@@ -743,6 +836,19 @@ def main():
                    help="fraction of the steps the control applies for; the rest are free for style. default 0.8")
     p.add_argument("--control-model", dest="control_model", default="controlnet-union-sdxl-promax.safetensors",
                    help="ControlNet file in the server's models/controlnet/")
+    p.add_argument("--mask", default=None, metavar="IMG",
+                   help="inpaint (with --init): only the WHITE area of this mask image is redrawn; everything else "
+                        "stays exactly as in --init. Use with --denoise ~0.85 (change), 0.95 (erase/add)")
+    p.add_argument("--mask-mode", dest="mask_mode", default="fill", choices=["fill", "blend"],
+                   help="fill = the masked area starts blank, so something new is drawn (change/add/erase; use "
+                        "--denoise 1); blend = starts from what's there (subtle tweaks, --denoise 0.4-0.7). default fill")
+    p.add_argument("--mask-grow", dest="mask_grow", type=int, default=6, metavar="PX",
+                   help="blend margin around the mask at generation size. default 6")
+    p.add_argument("--no-inpaint-crop", dest="inpaint_crop", action="store_false",
+                   help="with --mask: render the whole image instead of just the area around a small mask "
+                        "(crop-and-stitch is on by default: small edits get far more detail and follow the prompt)")
+    p.add_argument("--no-keep-outside", dest="keep_outside", action="store_false",
+                   help="with --mask: don't paste the result back onto the original (let the whole image drift)")
     p.add_argument("--init", default=None, metavar="IMG",
                    help="img2img: start from this image instead of noise (keeps its composition)")
     p.add_argument("--denoise", type=float, default=0.6, metavar="F",
@@ -865,6 +971,10 @@ def main():
             p.error("--pixel-size parts must be 1..32")
     if not 0.0 <= a.steer_start < a.steer_end <= 1.0:
         p.error("--steer-start/--steer-end must satisfy 0 <= start < end <= 1")
+    if a.mask and not a.init:
+        p.error("--mask needs --init (the image to edit)")
+    if a.mask and not os.path.isfile(os.path.expanduser(a.mask)):
+        p.error(f"--mask: no such image: {a.mask}")
     if a.control and not os.path.isfile(os.path.expanduser(a.control)):
         p.error(f"--control: no such image: {a.control}")
     if not (0 < a.control_end <= 1.0 and 0 <= a.control_strength <= 2.0):
@@ -928,6 +1038,13 @@ def main():
         # sets the SDXL resolution directly (rounded to a /64 multiple SDXL likes).
         a.gen_w, a.gen_h = _r64(a.sw), _r64(a.sh)
         a.sw, a.sh = a.gen_w, a.gen_h   # filename/labels reflect the true output size
+
+    # Inpaint crop-and-stitch: a small mask is a small patch of a 1024px render, so the model mostly
+    # continues the surroundings. Cut out the mask's neighbourhood (with context), render THAT at full
+    # size — the edit gets real detail and follows the prompt — and paste it back afterwards.
+    a._stitch = None
+    if a.mask and a.init and a.inpaint_crop and not a.art:
+        a._stitch = prepare_inpaint_crop(a, _r64)
 
     # Animation mode is its own pipeline (base -> mask -> inpaint frames -> GIF).
     if a.animate:
@@ -1036,6 +1153,8 @@ def main():
                             moved.append(tgt)
                     files = moved
             sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
+            keep_outside_mask(a, sprite)
+            stitch_inpaint(a, sprite)
             preview = next((f for f in files if "_preview_" in f), None)
             first_open = first_open or preview or sprite   # open preview if saved, else the sprite
             tag = f"[{i}/{total}] " if total > 1 else ""
