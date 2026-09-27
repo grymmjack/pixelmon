@@ -223,7 +223,7 @@ select.advset { border-color: var(--accent); }
 .labzoom { position: sticky; bottom: 0; z-index: 6; margin: 14px -14px -14px; padding: 12px 14px 12px;
   background: var(--panel); border-top: 1px solid var(--accent); box-shadow: 0 -8px 22px rgba(0,0,0,.55); }
 .labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
-.lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr); margin-top: 8px;
+.lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr) 8px var(--lz-c3, .7fr) 8px var(--lz-c4, .45fr); margin-top: 8px;
   height: var(--lz-h, 420px); overflow: hidden; }
 .lz-div { cursor: col-resize; } .lz-div:hover, .lz-div.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
 .lz-grip { position: absolute; left: 0; right: 0; top: -5px; height: 10px; cursor: row-resize;
@@ -238,7 +238,7 @@ select.advset { border-color: var(--accent); }
 .lz-scroll { flex: 1; overflow: auto; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px;
   border: 1px solid var(--line); cursor: grab; } .lz-scroll.drag { cursor: grabbing; }
 .lz-scroll img { display: block; max-width: none; image-rendering: pixelated; }
-.lz-view[data-z="0.5"] .lz-scroll img { image-rendering: auto; }
+.lz-view[data-z="0.5"] .lz-scroll img, .lz-view[data-z="0.33"] .lz-scroll img, .lz-view[data-z="0.1"] .lz-scroll img { image-rendering: auto; }
 @media (max-width: 1300px) { .lab { grid-template-columns: 1fr; } }
 .lab-col { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
 .lab-col h3 { margin: 0 0 8px; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
@@ -770,7 +770,7 @@ fieldset.closed { padding-bottom: 2px; }
             title="save everything — input, adjustments, steering, and the style in the left panel — as a preset">💾 Save LAB preset</button></div>
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
       </div>
-      <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50%
+      <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50% · 33% · 10%
           <span class="dim">(follows your pointer over the input · scroll or drag a view and the others follow · drag the top edge or the dividers to resize)</span></summary>
         <div class="lz-views" id="lzViews">
           <div class="lz-view" data-z="3"><div class="lz-cap">300%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
@@ -778,6 +778,10 @@ fieldset.closed { padding-bottom: 2px; }
           <div class="lz-view" data-z="2"><div class="lz-cap">200%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
           <div class="lz-div" data-div="1" title="drag to resize the views · double-click to reset"></div>
           <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          <div class="lz-div" data-div="2" title="drag to resize the views · double-click to reset"></div>
+          <div class="lz-view" data-z="0.33"><div class="lz-cap">33%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          <div class="lz-div" data-div="3" title="drag to resize the views · double-click to reset"></div>
+          <div class="lz-view" data-z="0.1"><div class="lz-cap">10%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
         </div>
         <div class="lz-grip" id="lzGrip" title="drag to make the zoom pane taller or shorter · double-click to reset"></div></details>
     </div>
@@ -2238,7 +2242,8 @@ function initLabZoomFollow() {
   });
   grip.addEventListener("dblclick", () => { views.style.setProperty("--lz-h", "300px"); store.set("lzH", 300); });
   const setCols = c => c.forEach((v, i) => views.style.setProperty(`--lz-c${i}`, v + "fr"));
-  let cols = store.get("lzCols", [3, 2, 1]); setCols(cols);
+  const COLS0 = [3, 2, 1, 0.7, 0.45];
+  let cols = store.get("lzCols", COLS0); if (cols.length !== COLS0.length) cols = COLS0; setCols(cols);
   views.querySelectorAll(".lz-div").forEach(d => {
     d.addEventListener("pointerdown", e => {
       e.preventDefault(); d.setPointerCapture(e.pointerId); d.classList.add("drag");
@@ -2248,7 +2253,7 @@ function initLabZoomFollow() {
       const up = () => { d.classList.remove("drag"); d.removeEventListener("pointermove", mv); d.removeEventListener("pointerup", up); store.set("lzCols", cols); };
       d.addEventListener("pointermove", mv); d.addEventListener("pointerup", up);
     });
-    d.addEventListener("dblclick", () => { cols = [3, 2, 1]; setCols(cols); store.set("lzCols", cols); });
+    d.addEventListener("dblclick", () => { cols = [...COLS0]; setCols(cols); store.set("lzCols", cols); });
   });
 }
 // ---------------- LAB zoom pane: the input at 300% / 200% / 50%, scrolled together ----------------
