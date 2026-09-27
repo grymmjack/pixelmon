@@ -1812,8 +1812,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
             d, f = q.get("dir", [""])[0], q.get("file", [""])[0]
-            if d in ("@presets", "@refs") or d.startswith("@board:"):   # preset picture / steering ref / corkboard image
-                root = PRESETS if d == "@presets" else REFS if d == "@refs" else os.path.join(BOARDS, safe_name(d[len("@board:"):]))
+            if d in ("@presets", "@refs", "@lab") or d.startswith("@board:"):   # preset picture / ref / LAB input / board image
+                root = {"@presets": PRESETS, "@refs": REFS, "@lab": LAB}.get(d) or os.path.join(BOARDS, safe_name(d[len("@board:"):]))
                 path = os.path.realpath(os.path.join(root, f))
                 if not path.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(path):
                     return self._json({"error": "image not found"}, 404)
@@ -2174,6 +2174,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/boards/layout":
                 save_board_layout(body.get("board"), body.get("order"), body.get("sizes"))
                 return self._json({"ok": True})
+            if u.path == "/api/lab/remove":
+                # take LAB input images off the recents strip (the files are moved to lab-inputs/.removed, not deleted)
+                files = body.get("files") or ([body["file"]] if body.get("file") else [])
+                trash = os.path.join(LAB, ".removed")
+                os.makedirs(trash, exist_ok=True)
+                n = 0
+                for f in files:
+                    try:
+                        src = lab_path(f)
+                    except ValueError:
+                        continue
+                    shutil.move(src, unique_path(trash, os.path.basename(src)))
+                    n += 1
+                return self._json({"removed": n})
             if u.path == "/api/boards/rename":
                 src, dst = board_dir(body.get("board")), board_dir(body.get("name"))
                 if not os.path.isdir(src):
@@ -2204,6 +2218,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 elif body.get("src"):
                     src = self.jobs.gallery_path(body["src"])
                     name = safe_name(f"{body['src'].get('dir')}__{os.path.basename(src)}", 160)  # keeps provenance
+                elif body.get("lab"):                        # a LAB input image
+                    src = lab_path(body["lab"])
+                    name = safe_name(os.path.basename(src), 120)
                 else:
                     raise ValueError("nothing to add")
                 if os.path.exists(os.path.join(d, name)):

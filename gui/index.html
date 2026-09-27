@@ -225,7 +225,7 @@ select.advset { border-color: var(--accent); }
 .labzoom { flex: none; position: relative; z-index: 6; padding: 12px 14px 12px;
   background: var(--panel); border-top: 1px solid var(--accent); box-shadow: 0 -8px 22px rgba(0,0,0,.55); }
 .labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
-.lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr) 8px var(--lz-c3, .7fr) 8px var(--lz-c4, .45fr); margin-top: 8px;
+.lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1.3fr); margin-top: 8px;
   height: var(--lz-h, 420px); overflow: hidden; }
 .lz-div { cursor: col-resize; } .lz-div:hover, .lz-div.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
 .lz-grip { position: absolute; left: 0; right: 0; top: -5px; height: 10px; cursor: row-resize;
@@ -235,6 +235,9 @@ select.advset { border-color: var(--accent); }
 .lz-mask { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; pointer-events: none; image-rendering: pixelated; }
 .lz-dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent); border-radius: 50%;
   box-shadow: 0 0 0 1px #000; pointer-events: none; display: none; } .lz-hover .lz-dot { display: block; }
+/* 50% on top, 33% + 10% side by side under it */
+.lz-small { display: grid; grid-template-columns: 1.6fr 1fr; grid-template-rows: 1.2fr 1fr; gap: 6px; min-width: 0; min-height: 0; }
+.lz-small .lz-view[data-z="0.5"] { grid-column: 1 / 3; }
 .lz-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .lz-cap { font: 11px var(--mono); color: var(--dim); margin-bottom: 3px; }
 .lz-scroll { flex: 1; overflow: auto; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px;
@@ -404,6 +407,11 @@ fieldset.closed { padding-bottom: 2px; }
 #brushCur.cross { border-radius: 0; border: 0; box-shadow: none;
   background: linear-gradient(#fff, #fff) center / 1px 100% no-repeat, linear-gradient(#fff, #fff) center / 100% 1px no-repeat; filter: drop-shadow(0 0 1px #000); } #brushCur::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 2px;
   margin: -1px 0 0 -1px; background: #fff; box-shadow: 0 0 0 1px #000; }
+.lr-item { position: relative; display: inline-block; }
+.lr-x { position: absolute; top: 2px; right: 2px; border: 1px solid var(--line); background: rgba(0,0,0,.75); color: var(--text);
+  border-radius: 4px; font-size: 11px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0; }
+.lr-item:hover .lr-x { opacity: 1; } .lr-x:hover { border-color: var(--bad); color: var(--bad); }
+.lr-clear { align-self: center; }
 .masktoolset { display: inline-flex; gap: 2px; } .masktoolset .btn { min-width: 30px; padding: 3px 6px; font-size: 14px; }
 .masktoolset .btn.on { border-color: var(--accent); color: var(--accent); }
 .editkeep { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
@@ -780,11 +788,11 @@ fieldset.closed { padding-bottom: 2px; }
           <div class="lz-div" data-div="0" title="drag to resize the views · double-click to reset"></div>
           <div class="lz-view" data-z="2"><div class="lz-cap">200%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
           <div class="lz-div" data-div="1" title="drag to resize the views · double-click to reset"></div>
-          <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
-          <div class="lz-div" data-div="2" title="drag to resize the views · double-click to reset"></div>
-          <div class="lz-view" data-z="0.33"><div class="lz-cap">33%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
-          <div class="lz-div" data-div="3" title="drag to resize the views · double-click to reset"></div>
-          <div class="lz-view" data-z="0.1"><div class="lz-cap">10%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          <div class="lz-small">
+            <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+            <div class="lz-view" data-z="0.33"><div class="lz-cap">33%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+            <div class="lz-view" data-z="0.1"><div class="lz-cap">10%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          </div>
         </div>
         <div class="lz-grip" id="lzGrip" title="drag to make the zoom pane taller or shorter · double-click to reset"></div></details>
     </div>
@@ -908,11 +916,22 @@ fieldset.closed { padding-bottom: 2px; }
 
 <script>
 const $ = id => document.getElementById(id);
+// [value, label] rows; a row with only a label starts a group in the dropdown
 const SIZES = [
+  ["DOS screens"],
   ["320x200", "320×200 — EGA/VGA screen"], ["320x168", "320×168 — Sierra AGI/SCI play area"],
-  ["320x240", "320×240"], ["640x350", "640×350 — EGA hi-res"], ["640x480", "640×480 — VGA hi-res"],
-  ["256x256", "256×256"], ["128x128", "128×128 — sprite"], ["64x64", "64×64"], ["48x48", "48×48"],
-  ["32x32", "32×32"], ["16x16", "16×16"], ["custom", "custom…"]];
+  ["320x240", "320×240"], ["160x200", "160×200 — CGA/Tandy low-res"], ["640x350", "640×350 — EGA hi-res"],
+  ["640x480", "640×480 — VGA hi-res"], ["640x400", "640×400"],
+  ["Text-mode sized (1 pixel per character cell)"],
+  ["40x25", "40×25"], ["80x25", "80×25"], ["80x43", "80×43 — EGA 43-line"], ["80x50", "80×50 — VGA 50-line"],
+  ["132x25", "132×25"], ["132x50", "132×50"], ["160x50", "160×50"],
+  ["Squares"],
+  ["1024x1024", "1024×1024"], ["768x768", "768×768"], ["512x512", "512×512"], ["256x256", "256×256"],
+  ["128x128", "128×128 — sprite"], ["96x96", "96×96"], ["64x64", "64×64"], ["48x48", "48×48"], ["32x32", "32×32"], ["16x16", "16×16"],
+  ["Wide"],
+  ["1024x576", "1024×576 — 16:9"], ["512x288", "512×288 — 16:9"], ["384x216", "384×216 — 16:9"],
+  ["Other"],
+  ["custom", "custom…"]];
 let META = null, lbItem = null, lbZoom = "fit", lastJobsJSON = "";
 const store = {
   get(k, d) { try { const v = localStorage.getItem("pmgui." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -1075,7 +1094,7 @@ function showStyleTip(name, el) {
 function hideStyleTip() { $("styleTip").classList.add("hidden"); }
 function syncOutPreset() {
   const v = `${$("outW").value}x${$("outH").value}`;
-  $("outPreset").value = SIZES.some(s => s[0] === v) ? v : "custom";
+  $("outPreset").value = SIZES.some(s => s.length === 2 && s[0] === v) ? v : "custom";
 }
 function applyPreset() {
   const p = preset(); if (!p) return;
@@ -1941,6 +1960,7 @@ function peekTarget() {
   const it = PEEK.stack[PEEK.idx]; if (!it) return null;
   if (it.ref) return { ref: it.ref };
   if (it.preset) return { preset: it.preset };
+  if (it.lab) return { lab: it.lab };
   if (it.src) return { board: it.board, file: it.cork };
   const job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
   return job ? { src: { dir: job.dir, file: it.file } } : null;
@@ -2249,12 +2269,13 @@ function initLabZoomFollow() {
   });
   grip.addEventListener("dblclick", () => { views.style.setProperty("--lz-h", "300px"); store.set("lzH", 300); });
   const setCols = c => c.forEach((v, i) => views.style.setProperty(`--lz-c${i}`, v + "fr"));
-  const COLS0 = [3, 2, 1, 0.7, 0.45];
+  const COLS0 = [3, 2, 1.3];
   let cols = store.get("lzCols", COLS0); if (cols.length !== COLS0.length) cols = COLS0; setCols(cols);
   views.querySelectorAll(".lz-div").forEach(d => {
     d.addEventListener("pointerdown", e => {
       e.preventDefault(); d.setPointerCapture(e.pointerId); d.classList.add("drag");
-      const i = +d.dataset.div, w = [...views.querySelectorAll(".lz-view")].map(v => v.offsetWidth), x0 = e.clientX, pair = w[i] + w[i + 1];
+      const cols3 = [...views.children].filter(c => !c.classList.contains("lz-div"));
+      const i = +d.dataset.div, w = cols3.map(v => v.offsetWidth), x0 = e.clientX, pair = w[i] + w[i + 1];
       const mv = ev => { const a = Math.max(60, Math.min(pair - 60, w[i] + ev.clientX - x0)), nw = [...w];
         nw[i] = a; nw[i + 1] = pair - a; cols = nw.map(x => +(x / 100).toFixed(3)); setCols(cols); };
       const up = () => { d.classList.remove("drag"); d.removeEventListener("pointermove", mv); d.removeEventListener("pointerup", up); store.set("lzCols", cols); };
@@ -2819,10 +2840,11 @@ function initGridOverlay() {
 
 // ---------------- hover peek: blown-up preview of a thumbnail ----------------
 let PEEK = { el: null, stack: [], idx: 0, zoom: 3, timer: null, hideTimer: null };
-const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item, .ref[data-ref], .pcard[data-pid] > img";
+const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item, .ref[data-ref], .pcard[data-pid] > img, #labRecent img[data-labfile]";
 function peekFind(item) {   // the on-screen thumbnail for a stack item
   if (item.cork) return [...document.querySelectorAll(".cork-item")].find(x => x.dataset.cork === item.cork);
   if (item.ref) return [...document.querySelectorAll(".ref[data-ref]")].find(x => x.dataset.ref === item.ref);
+  if (item.lab) return [...document.querySelectorAll("#labRecent img[data-labfile]")].find(x => x.dataset.labfile === item.lab);
   if (item.preset) return [...document.querySelectorAll(".pcard[data-pid] > img")].find(x => x.parentElement.dataset.pid === item.preset);
   return [...document.querySelectorAll(".thumb[data-file], .bthumb")]
     .find(x => x.dataset.job === item.job && x.dataset.file === item.file);
@@ -2832,6 +2854,10 @@ function corkStack() {   // the current board: renders keep their full preview; 
   return b.items.map(f => { const hit = boardJobOf(f);
     return hit ? { ...hit, cork: f } : { cork: f, board: b.name, src: `/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}`,
                                           cap: f, pdir: "@board:" + b.name, pfile: f }; });
+}
+function labRecentStack() {
+  return [...document.querySelectorAll("#labRecent img[data-labfile]")].map(i => ({ lab: i.dataset.labfile,
+    src: `/lab/${encodeURIComponent(i.dataset.labfile)}`, cap: i.dataset.labfile, pdir: "@lab", pfile: i.dataset.labfile }));
 }
 function presetStack() {   // the preset cards on screen (the folder being viewed), as plain pictures
   return [...document.querySelectorAll(".pcard[data-pid] > img")].map(img => { const p = presetById(img.parentElement.dataset.pid);
@@ -2913,7 +2939,7 @@ function showPeek(el) {
   if (img.complete && img.naturalWidth) img.onload();
 }
 function peekKey(el) {   // what a hovered element shows, so re-hovering the same image doesn't restart the preview
-  return el.dataset.job ? `${el.dataset.job}|${el.dataset.file}` : el.dataset.cork || el.dataset.ref
+  return el.dataset.job ? `${el.dataset.job}|${el.dataset.file}` : el.dataset.cork || el.dataset.ref || el.dataset.labfile
     || (el.parentElement && el.parentElement.dataset.pid) || "";
 }
 function hidePeek() {
@@ -2943,6 +2969,8 @@ function initPeek() {
       PEEK.el = th;
       if (th.matches(".cork-item")) {
         PEEK.stack = corkStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.cork === th.dataset.cork));
+      } else if (th.matches("#labRecent img[data-labfile]")) {
+        PEEK.stack = labRecentStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.lab === th.dataset.labfile));
       } else if (th.matches(".pcard[data-pid] > img")) {
         PEEK.stack = presetStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.preset === th.parentElement.dataset.pid));
       } else if (th.matches(".ref[data-ref]")) {
@@ -3039,6 +3067,7 @@ function initCork() {
     const ref = e.target.closest && e.target.closest(".ref[data-ref]");
     if (th) { const job = JOBS[th.dataset.job] || GALLERY.find(j => j.id === th.dataset.job); if (job) payload = { src: { dir: job.dir, file: th.dataset.file } }; }
     else if (ref) payload = { ref: ref.dataset.ref };
+    else if (e.target.closest && e.target.closest("#labRecent img[data-labfile]")) payload = { lab: e.target.closest("[data-labfile]").dataset.labfile };
     else if (e.target.closest && e.target.closest("[data-cork]")) payload = { board: CORK.board, file: e.target.closest("[data-cork]").dataset.cork };
     else if (e.target.id === "lbImg" && lbItem) payload = { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
     else if (e.target.id === "peekImg" && PEEK.stack[PEEK.idx]) {
@@ -3362,8 +3391,10 @@ const LABS = Object.assign({ adj: { ...ADJ0 }, edges: false, file: null, size: [
                              denoise: 0.7, w: 320, n: 4, group: null }, store.get("lab", {}));
 async function loadLab() {
   let r; try { r = await api("/api/lab/inputs"); } catch { return; }
-  $("labRecent").innerHTML = r.inputs.map(x => `<img src="/lab/${encodeURIComponent(x.file)}" data-labfile="${esc(x.file)}"
-      data-w="${x.size[0]}" data-h="${x.size[1]}" class="${x.file === LABS.file ? "on" : ""}" title="${esc(x.file)}" alt="">`).join("");
+  $("labRecent").innerHTML = r.inputs.map(x => `<span class="lr-item"><img src="/lab/${encodeURIComponent(x.file)}" data-labfile="${esc(x.file)}"
+      data-w="${x.size[0]}" data-h="${x.size[1]}" class="${x.file === LABS.file ? "on" : ""}" alt="">
+      <button type="button" class="lr-x" data-lab-remove="${esc(x.file)}" title="remove from recents">×</button></span>`).join("")
+    + (r.inputs.length > 1 ? `<button type="button" class="btn small lr-clear" id="labRecentClear" title="remove every recent input except the one in use">✕ clear recents</button>` : "");
   if (LABS.file && !r.inputs.some(x => x.file === LABS.file)) LABS.file = null;
   renderLab();
 }
@@ -3854,6 +3885,16 @@ function initLab() {
     if (raw) { try { await labSet(await api("/api/lab/import", JSON.parse(raw))); } catch (err) { showErr(err); } return; }
     const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/") || /\.(draw|ora|psd)$/i.test(x.name)); if (f) labUpload(f);
   });
+  $("labRecent").addEventListener("click", async e => {
+    const x = e.target.closest("[data-lab-remove]"), all = e.target.closest("#labRecentClear");
+    if (!x && !all) return;
+    e.stopPropagation();
+    const files = x ? [x.dataset.labRemove] : [...document.querySelectorAll("#labRecent [data-labfile]")].map(i => i.dataset.labfile).filter(f => f !== LABS.file);
+    if (all && !confirm(`Remove ${files.length} recent input${files.length > 1 ? "s" : ""} from the strip? (the one in use stays)\n\nThey're moved to lab-inputs/.removed, not deleted.`)) return;
+    try { await api("/api/lab/remove", { files }); } catch (err) { return showErr(err); }
+    if (files.includes(LABS.file)) { LABS.file = null; LABS.mask = null; store.set("lab", LABS); }
+    loadLab();
+  }, true);
   $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
     LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; maskCanvas.width = 0; renderLab(); labSchedule(); };
   $("labSubject").oninput = e => { LABS.subject = e.target.value; store.set("lab", LABS); labSchedule(); };
@@ -4152,7 +4193,8 @@ async function init() {
   $("palette").innerHTML = `<option value="none">none — keep model colors</option><option value="random">random</option>`
     + Object.entries(META.palettes).map(([k, v]) => `<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join("");
   $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
-  $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  $("outPreset").innerHTML = SIZES.reduce((h, r, i) => h + (r.length === 1 ? `${i ? "</optgroup>" : ""}<optgroup label="${esc(r[0])}">`
+    : `<option value="${r[0]}">${r[1]}</option>`), "") + "</optgroup>";
   renderStyles(); advCount(); syncAdvMirrors();
   initHelp();
   initFolds();
