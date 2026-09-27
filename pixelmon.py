@@ -17,6 +17,8 @@ import time
 import urllib.error
 import urllib.request
 
+__version__ = "1.0.0"
+
 # pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
 # target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
 # or the PIXELMON_SERVER env var. Default is local. When the target is remote, results
@@ -141,6 +143,7 @@ def print_help():
         opt("--list-palettes", "show every palette name"),
         opt("--list-styles", "show every style guide"),
         opt("-h, --help", "show this help"),
+        opt("--version", "print the pixelmon version"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
         opt("--server NAMES", "render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs", "local"),
@@ -630,6 +633,30 @@ def _transient(err):
     return bool(err) and (("Loader" in err.split(" (node")[0] and "IndexError" in err) or "out of memory" in err.lower())
 
 
+class CachedNoOutput(RuntimeError):
+    """ComfyUI answered an identical, fully cached prompt with 'success' but no image list."""
+
+
+def _cached_empty(entry):
+    st = (entry or {}).get("status") or {}
+    return st.get("status_str") == "success" and st.get("completed") and not (entry or {}).get("outputs")
+
+
+def fresh_copy(graph):
+    """The same graph, saved under a unique subfolder: ComfyUI re-runs only the save step (everything
+    upstream stays cached, so it's instant) and reports the images again. File names don't change."""
+    import copy
+    import uuid
+    g = copy.deepcopy(graph)
+    tag = uuid.uuid4().hex[:8]
+    for node in g.values():
+        if node.get("class_type") == "SaveImage":
+            pre = node["inputs"]["filename_prefix"]
+            head, _, tail = pre.rpartition("/")
+            node["inputs"]["filename_prefix"] = f"{head + '/' if head else ''}rerun-{tag}/{tail}"
+    return g
+
+
 def _queued(pid, server):
     """True while the prompt is still waiting in the server's queue (not started yet)."""
     try:
@@ -643,9 +670,11 @@ def _queued(pid, server):
 def wait(pid, server=None, timeout=600, resubmit=None):
     """Wait for a prompt's outputs. timeout = seconds of actual rendering; time spent queued behind
     other jobs doesn't count. A server-side error stops at once with the node's message — except a
-    transient model-loading hiccup, which is resubmitted once when resubmit() is given."""
+    transient model-loading hiccup, which is resubmitted once when resubmit(fresh) is given. An identical
+    re-run that ComfyUI answers from its cache with no images is resubmitted once with fresh=True."""
     server = server or SERVER
     waited = 0
+    refreshed = False
     while waited < timeout:
         with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
             hist = json.loads(r.read())
@@ -653,8 +682,14 @@ def wait(pid, server=None, timeout=600, resubmit=None):
             err = _render_error(hist[pid])
             if err and resubmit and _transient(err):
                 print(f"   ↻ server hiccup ({err.split(': ', 1)[-1][:60]}) — retrying once")
-                pid, resubmit, waited = resubmit(), None, 0
+                pid, resubmit, waited = resubmit(False), None, 0
                 continue
+            if _cached_empty(hist[pid]):
+                if resubmit and not refreshed:
+                    print("   ↻ identical re-run answered from the server's cache without images — re-saving")
+                    pid, refreshed, waited = resubmit(True), True, 0
+                    continue
+                sys.exit("The server finished but returned no images (identical cached prompt).")
             if err:
                 sys.exit(f"Render failed on the server — {err}")
             if hist[pid].get("outputs"):
@@ -673,6 +708,8 @@ def poll(pid, server):
         err = _render_error(hist[pid])
         if err:
             raise RuntimeError(err)
+        if _cached_empty(hist[pid]):
+            raise CachedNoOutput("identical cached prompt returned no images")
         if hist[pid].get("outputs"):
             return hist[pid]["outputs"]
     return None
@@ -743,6 +780,19 @@ def run_farm(a, work):
         for srv, (subj, seed, pal, d, pid) in list(inflight.items()):
             try:
                 outs = poll(pid, srv)
+            except CachedNoOutput:
+                if (subj, seed, pal, d) not in retried:   # re-save the cached result under a fresh folder
+                    retried.add((subj, seed, pal, d))
+                    g = fresh_copy(build_graph(a, seed, pal, subject=subj, server=srv))
+                    inflight[srv] = (subj, seed, pal, d, submit(g, srv))
+                    advanced = True
+                    continue
+                print(f"   ✗ {_short(srv)}: the server returned no images for {subj or 'the job'} (seed {seed})")
+                failed += 1
+                del inflight[srv]
+                advanced = True
+                launch(srv)
+                continue
             except RuntimeError as e:          # the render itself failed: report it, don't retry it forever
                 if _transient(str(e)) and (subj, seed, pal, d) not in retried:
                     print(f"   ↻ {_short(srv)}: server hiccup — requeueing once")
@@ -798,6 +848,7 @@ def main():
     # of argparse's plain default (shown via print_help on -h or no args).
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)
     p.add_argument("-h", "--help", action="store_true", dest="show_help")
+    p.add_argument("--version", action="version", version=f"pixelmon {__version__}")
     p.add_argument("prompt", nargs="?", help='what to draw, e.g. "a goblin warrior"')
     p.add_argument("--size", default=None,
                    help="output size: N (square) or WxH, e.g. 32x48. "
@@ -1216,7 +1267,7 @@ def main():
         if total > 1:
             print(f"   queued {total} jobs; generating...")
         for i, (subj, seed, pal, d, pid, g) in enumerate(jobs, 1):
-            outs = wait(pid, resubmit=lambda g=g: submit(g))
+            outs = wait(pid, resubmit=lambda fresh, g=g: submit(fresh_copy(g) if fresh else g))
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             if REMOTE:
                 # Files live on the remote server's disk — download them here over HTTP.

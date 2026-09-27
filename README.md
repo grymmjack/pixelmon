@@ -392,23 +392,48 @@ pixelmon-gui            # http://127.0.0.1:8190
 pixelmon-gui --lan      # also reachable from other devices on your LAN
 ```
 
-- **Prompt:** LoRA picker (live list from the render server) with strength.
-  dos-art LoRA presets add their trigger + Kind/Genre/Era caption tags for you,
-  and the exact prompt that gets sent is shown under the style-guide chips.
-- **Canvas / palette / dither:** exact `--out` size presets (320×200, 320×168…),
-  palette with swatches, dither method + amount, despeckle, snap, transparent.
-- **Seed & batch:** lock / reroll seeds, `-n` counts, and **sweeps**: the same
-  seed rendered across several values of one setting (LoRA strength, dither,
-  palette, style…), shown side by side.
-- **Queue / gallery:** jobs run one at a time with a live log and the equivalent
-  CLI command; every render is kept in `~/pixelmon-gallery/gui/<job>/` with a
-  `job.json`, and the gallery can reload the settings, re-run the same seed, or reroll.
+**📖 DOCS** (top of the form) opens the [settings atlas](docs/settings-atlas.html):
+every GUI control, CLI flag and ComfyUI node input with its range, default and an
+example, plus a picture-by-picture walkthrough of how a render is built. The GUI also
+serves it locally at `/docs/settings-atlas.html`.
 
+**The form (left):**
+- **Prompt:** LoRA picker (live list from the render server) with strength.
+  dos-art LoRA presets add their trigger + Kind/Genre/Era caption tags for you, the
+  exact prompt sent is shown under the style-guide chips, 🎲 invents a subject and
+  🕘 recalls old ones. Weighting like `(castle:1.3)` works in both prompts (see the ⓘ).
+- **Setup check:** a yellow box warns when settings fight each other (a style that bans
+  a word in your subject, outlines too thick for a small sprite…) with one-click fixes.
+- **Canvas / palette / dither:** exact output size, pixel size (1×1, 2×1 wide pixels…),
+  palette with swatches, dither method + amount, despeckle, 1-px outlines, pixel-art
+  angles with DRAW's grids (pixel, square, diagonal, isometric, hex, triangle).
+- **Seed & batch:** lock / reroll seeds, `-n` counts, steps / CFG / sampler / scheduler /
+  checkpoint, and **sweeps**: the same seed across several values of one setting, side by side.
+
+**The tabs (right):**
+- **Presets:** full snapshots of the form, steering, evolve, LAB and Advanced settings, each
+  with a sample picture and its palette. 65 factory presets ship: scenes, sprites, hardware
+  looks (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**.
+  Presets export/import as `.zip` bundles.
+- **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
+  adjust the source first (brightness, contrast, posterize, crop…), and **edit** part of an
+  image by painting a mask or selecting by words (inpainting).
+- **Steering:** push renders toward reference images (IPAdapter), with strength, weight
+  type and a start/end window.
+- **Batch:** a list of prompts (`path | style | size | prompt`) queued in one go.
+- **Gallery / Queue:** every render with its settings and CLI command; hover for a
+  blown-up preview, 🧬 to **evolve** variations of any result, reload or re-run a seed.
+- **⚙ Advanced:** every remaining pixelmon setting (sampler, scheduler, checkpoint,
+  generation resolution, pixel-pipeline internals, ControlNet/inpaint tuning, IPAdapter
+  models, animation). Blank = default; the tab shows how many overrides are active.
+- **📌 Corkboard:** collect images from anywhere into boards (drag its edge to resize,
+  hover to preview), zip a board or send it to steering.
+
+Every render is kept in `~/pixelmon-gallery/gui/<job>/` with a `job.json`.
 LoRA presets (trigger tags, default strength and palette) live in `gui/presets.json`.
-Starter presets — scenes, sprites, hardware looks (CGA, Tandy, C64, ZX, Game Boy) and a
-**style demo for every `--style`**, each with a sample image — are built by
-`~/ComfyUI/.venv/bin/python gui/make_starter_presets.py` into `~/pixelmon-gallery/gui-presets/`
-(`--try 4 NAME` renders candidate seeds to pick from; your own presets are never touched).
+The factory presets are built by `~/ComfyUI/.venv/bin/python gui/make_starter_presets.py`
+into `~/pixelmon-gallery/gui-presets/` (`--try 4 NAME` renders candidate seeds to pick from;
+presets you save yourself are never touched).
 
 ---
 
@@ -446,6 +471,10 @@ OPTIONS
   --dither-amount F   dither strength 0..1  [0.75]
   --snap-pixels       snap to a perfect grid (pixel-snapper) — extra crisp
   --despeckle N       remove stray color islands of <= N px (0 = off)  [2]
+  --pixel-angles F    EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)  [0]
+  --angle-grid G      pixel / square / diagonal / isometric / hex / triangle  [pixel]
+  --pixel-size WxH    exact art pixel size: 1x1, 2x1, 2x2, 4x1 … (fixes huge snapped pixels)  [auto]
+  --thin-lines N      1-px outlines: thin dark strokes up to N px (0 off, ~4)  [0]
   --fast              LCM mode: ~5x faster, slightly softer
   --seed N            lock / repeat a result (re-run a favorite)  [random]
   --steps N           refinement steps (more = slower)  [25]
@@ -456,6 +485,7 @@ OPTIONS
   --list-palettes     show every palette name
   --list-styles       show every style guide
   -h, --help          show this help
+  --version           print the pixelmon version
 
 ADVANCED
   --server NAMES      render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs  [local]
@@ -467,11 +497,18 @@ ADVANCED
   --name NAME         output filename base  [from prompt]
   --res N             SDXL generation resolution  [1024]
   --sampler NAME      ksampler sampler  [euler / lcm]
+  --scheduler NAME    ksampler noise schedule (karras, exponential …)  [normal / sgm_uniform]
   --base FILE         SDXL checkpoint  [sd_xl_base_1.0]
   --lora FILE         pixel-art LoRA  [pixel-art-xl]
   --lcm-lora FILE     LCM LoRA (used with --fast)  [lcm-lora-sdxl]
   --no-lora           base model only (skip pixel LoRA)
   --steer DIR         steer toward a folder of reference images (IPAdapter)
+  --steer-start/--steer-end F when (fraction of steps) the refs apply  [0 / 1]
+  --init IMG          img2img: start from an image (keeps its composition)
+  --control IMG       ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)
+  --canny-low/--canny-high F canny edge thresholds (lower = more edges)  [0.3 / 0.7]
+  --mask IMG          inpaint with --init: redraw only the mask's white area
+  --denoise F         with --init: how much to change, 0..1  [0.6]
   --steer-strength N  how strongly the refs influence the result  [0.7]
   --no-open           don't auto-open the result
   --show-prompt       print the exact positive/negative prompts sent to the model
@@ -506,25 +543,32 @@ OUTPUT
 ```
 prompt ──► ComfyUI API
             CheckpointLoader (SDXL base)
-              └─ LoraLoader (Pixel Art XL)  [─ LoraLoader (LCM) if --fast]
-                   └─ KSampler ─► VAEDecode ─► PixelArtPalette ─► SaveImage
+              └─ LoraLoader (Pixel Art XL / ega-art / dosart-vga …)  [─ LoraLoader (LCM) if --fast]
+                   └─ [IPAdapter --steer] ─ [ControlNet --control] ─ KSampler ─► VAEDecode ─► PixelArtPalette ─► SaveImage
+                                                                        ▲
+                                                   [--init img2img / --mask inpaint]
 ```
 
 The custom **`PixelArtPalette`** node (`custom_nodes/pixelart_palette/`) is the
-finishing pass that makes output a *true* sprite:
+finishing pass that makes output a *true* sprite. Everything in it runs after the model
+is done, so none of it changes what gets drawn:
 
 1. **smooth** (mode/median filter) — flattens soft gradients so backgrounds don't
    shatter into speckle when quantized.
-2. **downscale**, grid-aware, to the target size — recovers the model's native
-   ~128px pixel grid first (`nearest`), then integer-reduces to your size. This
-   is what keeps edges **crisp** instead of soft; a single big reduction samples
-   mid-block noise and looks fuzzy. (`--filter box` gives the old soft look.)
-3. **palette** quantize — locks colors to a palette using *perceptual* (redmean)
-   color distance; or `none` to keep the model's own colors.
-4. **transparent** (optional) — border flood-fill removes the background, giving
-   hard 1-bit alpha (no soft matte fringe — what sprites want).
-5. **preview** (optional, `--preview`) — a nearest-neighbour upscaled copy so you
-   can eyeball the tiny sprite without zooming.
+2. **downscale**, grid-aware, to the art grid (output size ÷ `--pixel-size`) — this
+   is what keeps edges **crisp** instead of soft. (`--filter box` gives a soft look.)
+3. **palette** lock — perceptual (redmean) color matching to a palette, optionally with
+   **dithering** (Bayer, clustered or error diffusion) done in palette space.
+4. **despeckle** — stray single-color islands of ≤ N px take their surroundings' color.
+5. **1-px outlines** (`--thin-lines`) — strokes of the darkest color are skeletonized to
+   single-pixel lines; wider dark areas are kept.
+6. **pixel-art angles** (`--pixel-angles`, `--angle-grid`) — region edges are redrawn
+   along clean integer-ratio angles (1:1, 2:1, 3:1 …, as in DRAW).
+7. **transparent** (optional) — border flood-fill removes the background (hard 1-bit alpha).
+8. **final resize** — each art pixel is scaled up to its `--pixel-size` (e.g. 2×1 wide
+   pixels) to land exactly on `--out`.
+
+The [settings atlas](docs/settings-atlas.html) shows each of these layers with real renders.
 
 Palettes **auto-load** from `custom_nodes/pixelart_palette/gpl/*.GPL` — 55 are
 bundled (PICO-8, DAWNBRINGER, ENDESGA, NES, Game Boy, C=64, VGA, QUAKE, and more).
@@ -586,18 +630,23 @@ pixelmon/
 ├── README-WINDOWS-NVIDIA.md   Windows + NVIDIA (WSL2) setup guide
 ├── install.sh                 reproducible setup — auto-detects NVIDIA/AMD/CPU (venv + torch + links)
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
-├── pixelmon.py                the CLI brains (talks to ComfyUI's API)
+├── pixelmon.py                the CLI brains (talks to ComfyUI's API); `pixelmon --version`
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
 ├── styles.json                --style guide snippets (edit / add your own)
 ├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
 ├── bin/pixelmon-gui           launches the web GUI (gui/server.py)
-├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets)
+├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets),
+│                              make_starter_presets.py (builds the factory presets)
+├── docs/                      settings-atlas.html (every setting + how a render is built) and its pipeline/ images
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/
-│   └── pixelart_palette/       the finishing node (smooth→downscale→palette→transparent)
+│   └── pixelart_palette/       the finishing node (smooth→downscale→palette/dither→cleanup→outlines→angles→transparent)
 │       ├── nodes.py
-│       └── palettes.py         palette registry — add your own here
+│       ├── palettes.py         palette registry — add your own here
+│       ├── thin_lines.py       1-px outlines (Zhang–Suen thinning)
+│       ├── pixel_angles.py     pixel-art angle snapping + grids
+│       └── web/                ComfyUI extension: loads the running pixelmon job onto the canvas
 └── examples/                   sample sprites + the full style gallery (examples/README.md)
 ```
 

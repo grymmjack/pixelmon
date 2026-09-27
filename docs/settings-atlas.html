@@ -377,6 +377,7 @@ const S = [
   ["Render server", [C], { cli: "--server NAMES" }, "servers.json alias, host[:port] or URL; comma list = render farm", "local", "<code>--server rtx</code>", "The GUI always renders on rtx."],
   ["ComfyUI launch", [N], { node: "~/launch-comfyui.sh on rtx (tmux \"comfy\")" }, "--listen · --lowvram · --cpu · any main.py flag", "--listen 0.0.0.0", "<code>~/launch-comfyui.sh --lowvram</code>", "rtx runs fully loaded on the 3070; add --lowvram if it runs out of memory."],
   ["GUI server", [G], { gui: "pixelmon-gui --port N --lan --gallery DIR" }, "port any", "8190 · local only · ~/pixelmon-gallery/gui", "<code>pixelmon-gui --lan</code>", "--lan lets other devices on your network use it."],
+  ["Version", [C], { cli: "--version" }, "—", "—", "<code>pixelmon --version</code>", "Prints the installed pixelmon version (1.0.0 is the first release)."],
   ["Auto-open", [C], { cli: "--no-open" }, "on / off", "opens results", "<code>--no-open</code>", "Stops pixelmon opening each image on screen."],
   ["Notifications", [G], { gui: "status bar: on · done · errors · sound · per image 🪙" }, "on / off each", "on", "—", "Status-bar messages and sounds when jobs finish or fail."],
   ["Grid overlay", [G], { gui: "lightbox / peek grid" }, "off · pixels · square · diagonal · isometric · hex · triangle · size 2 – 128", "off", "—", "Viewing aid over the zoomed image; doesn't change the render."],
