@@ -26,8 +26,10 @@ MY_PALETTES = {
 
 
 def hex_to_rgb(h):
-    """'#RRGGBB' or 'RRGGBB' -> (r, g, b) ints. Raises ValueError if malformed."""
+    """'#RRGGBB', 'RRGGBB' or shorthand '#RGB' -> (r, g, b) ints. Raises ValueError if malformed."""
     h = h.strip().lstrip("#")
+    if len(h) == 3:                      # #0af -> #00aaff
+        h = "".join(c * 2 for c in h)
     if len(h) != 6:
         raise ValueError(f"bad hex color: {h!r}")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))

@@ -152,6 +152,7 @@ def print_help():
         opt("--name NAME", "output filename base", "from prompt"),
         opt("--res N", "SDXL generation resolution", "1024"),
         opt("--sampler NAME", "ksampler sampler", "euler / lcm"),
+        opt("--scheduler NAME", "ksampler noise schedule (karras, exponential …)", "normal / sgm_uniform"),
         opt("--base FILE", "SDXL checkpoint", "sd_xl_base_1.0"),
         opt("--lora FILE", "pixel-art LoRA", "pixel-art-xl"),
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
@@ -160,6 +161,7 @@ def print_help():
         opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
+        opt("--canny-low/--canny-high F", "canny edge thresholds (lower = more edges)", "0.3 / 0.7"),
         opt("--mask IMG", "inpaint with --init: redraw only the mask's white area"),
         opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
@@ -434,7 +436,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "width": a.gen_w, "height": a.gen_h, "crop": "center"}}
         hint = ["51", 0]
         if a.control_mode == "canny":
-            g["52"] = {"class_type": "Canny", "inputs": {"image": ["51", 0], "low_threshold": 0.3, "high_threshold": 0.7}}
+            g["52"] = {"class_type": "Canny", "inputs": {"image": ["51", 0], "low_threshold": a.canny_low, "high_threshold": a.canny_high}}
             hint = ["52", 0]
         g["53"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": a.control_model}}
         g["54"] = {"class_type": "SetUnionControlNetType",
@@ -611,14 +613,44 @@ def steer_files(a, server):
     return _STEER_UPLOADS[server]
 
 
+def _render_error(entry):
+    """The ComfyUI error message of a finished-with-error history entry, or None."""
+    st = (entry or {}).get("status") or {}
+    if st.get("status_str") != "error":
+        return None
+    for kind, m in st.get("messages", []):
+        if kind == "execution_error":
+            return f"{m.get('node_type')} (node {m.get('node_id')}): {m.get('exception_type')}: {m.get('exception_message', '').strip()}"
+    return "the render failed on the server"
+
+
+def _queued(pid, server):
+    """True while the prompt is still waiting in the server's queue (not started yet)."""
+    try:
+        with urllib.request.urlopen(f"{server}/queue", timeout=10) as r:
+            q = json.loads(r.read())
+        return any(item[1] == pid for item in q.get("queue_pending", []))
+    except Exception:
+        return False
+
+
 def wait(pid, server=None, timeout=600):
+    """Wait for a prompt's outputs. timeout = seconds of actual rendering; time spent queued behind
+    other jobs doesn't count. A server-side error stops at once with the node's message."""
     server = server or SERVER
-    for _ in range(timeout):
+    waited = 0
+    while waited < timeout:
         with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
             hist = json.loads(r.read())
-        if pid in hist and hist[pid].get("outputs"):
-            return hist[pid]["outputs"]
+        if pid in hist:
+            err = _render_error(hist[pid])
+            if err:
+                sys.exit(f"Render failed on the server — {err}")
+            if hist[pid].get("outputs"):
+                return hist[pid]["outputs"]
         time.sleep(1)
+        if waited % 10 or not _queued(pid, server):
+            waited += 1
     sys.exit("Timed out waiting for the image.")
 
 
@@ -626,8 +658,12 @@ def poll(pid, server):
     """One non-blocking /history check; returns the outputs dict, or None if not ready."""
     with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
         hist = json.loads(r.read())
-    if pid in hist and hist[pid].get("outputs"):
-        return hist[pid]["outputs"]
+    if pid in hist:
+        err = _render_error(hist[pid])
+        if err:
+            raise RuntimeError(err)
+        if hist[pid].get("outputs"):
+            return hist[pid]["outputs"]
     return None
 
 
@@ -671,7 +707,7 @@ def run_farm(a, work):
     pending = list(work)        # (subject, seed, palette, dest)
     inflight = {}               # server -> (subject, seed, palette, dest, pid)
     total = len(work)
-    done = 0
+    done = failed = 0
 
     def launch(srv):
         """Submit the next pending job to srv. False = server unusable (drop it)."""
@@ -695,6 +731,14 @@ def run_farm(a, work):
         for srv, (subj, seed, pal, d, pid) in list(inflight.items()):
             try:
                 outs = poll(pid, srv)
+            except RuntimeError as e:          # the render itself failed: report it, don't retry it forever
+                print(f"   ✗ {_short(srv)}: render failed — {e}")
+                failed += 1
+                del inflight[srv]
+                advanced = True
+                if launch(srv) is False:
+                    live.remove(srv)
+                continue
             except Exception:
                 print(f"   ⚠ {_short(srv)} unreachable — requeueing its job")
                 pending.append((subj, seed, pal, d))
@@ -720,6 +764,10 @@ def run_farm(a, work):
 
     if pending:
         print(f"   ⚠ {len(pending)} job(s) left undone (all GPUs dropped).")
+    if failed:
+        print(f"   ✗ {failed} of {total} render(s) failed on the server (see above).")
+        if not done:
+            sys.exit(1)
 
 
 def main():
@@ -832,6 +880,10 @@ def main():
                    help="canny = follow its edges/outlines (most restyle freedom); tile = keep its layout + colors")
     p.add_argument("--control-strength", dest="control_strength", type=float, default=0.8, metavar="F",
                    help="how strictly to follow the control image, 0..2. default 0.8")
+    p.add_argument("--canny-low", dest="canny_low", type=float, default=0.3, metavar="F",
+                   help="with --control-mode canny: low edge threshold 0.01..0.99 (lower = more faint edges). default 0.3")
+    p.add_argument("--canny-high", dest="canny_high", type=float, default=0.7, metavar="F",
+                   help="with --control-mode canny: high edge threshold 0.01..0.99 (lower = more strong edges). default 0.7")
     p.add_argument("--control-end", dest="control_end", type=float, default=0.8, metavar="F",
                    help="fraction of the steps the control applies for; the rest are free for style. default 0.8")
     p.add_argument("--control-model", dest="control_model", default="controlnet-union-sdxl-promax.safetensors",
@@ -879,6 +931,9 @@ def main():
                         "it evenly (e.g. 160 for 320x200 = clean 2x blocks).")
     p.add_argument("--sampler", default=None,
                    help="ksampler sampler_name (default euler, or lcm with --fast)")
+    p.add_argument("--scheduler", default=None,
+                   help="ksampler scheduler: normal, karras, exponential, sgm_uniform, simple, beta … "
+                        "(default normal, or sgm_uniform with --fast)")
     p.add_argument("--no-lora", dest="no_lora", action="store_true",
                    help="generate from the base model only (no pixel-art LoRA)")
     p.add_argument("--art", action="store_true",
@@ -942,6 +997,9 @@ def main():
     if a.list_styles:
         print_styles()
         return
+    if a.custom_hex:                     # #0af -> #00aaff (older palette nodes only take 6 digits)
+        hexes = [t.lstrip("#") for t in a.custom_hex.replace(",", " ").split()]
+        a.custom_hex = " ".join("#" + ("".join(c * 2 for c in h) if len(h) == 3 else h) for h in hexes)
     if a.palette not in ("none", "random", "Custom") and a.palette not in PALETTES:
         p.error(f"unknown palette {a.palette!r}. See --list-palettes.")
 
@@ -979,6 +1037,8 @@ def main():
         p.error(f"--control: no such image: {a.control}")
     if not (0 < a.control_end <= 1.0 and 0 <= a.control_strength <= 2.0):
         p.error("--control-end must be in (0, 1] and --control-strength in [0, 2]")
+    if not (0 < a.canny_low < a.canny_high < 1):
+        p.error("--canny-low / --canny-high must be 0..1 with low < high")
     if a.init:
         if not os.path.isfile(os.path.expanduser(a.init)):
             p.error(f"--init: no such image: {a.init}")
@@ -997,12 +1057,12 @@ def main():
         a.steps = 8 if a.steps is None else a.steps
         a.cfg = 1.5 if a.cfg is None else a.cfg
         a.sampler = "lcm" if a.sampler is None else a.sampler
-        a.scheduler = "sgm_uniform"
+        a.scheduler = "sgm_uniform" if a.scheduler is None else a.scheduler
     else:
         a.steps = 25 if a.steps is None else a.steps
         a.cfg = 7.0 if a.cfg is None else a.cfg
         a.sampler = "euler" if a.sampler is None else a.sampler
-        a.scheduler = "normal"
+        a.scheduler = "normal" if a.scheduler is None else a.scheduler
 
     # Parse --size into target W x H (square if a single number), plus a matching
     # generation resolution (long side = --res, kept ~proportional so the subject

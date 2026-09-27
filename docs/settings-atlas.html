@@ -1,0 +1,399 @@
+<title>pixelmon Settings Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef0f6; --surface: #ffffff; --surface2: #f6f7fb; --ink: #15152b; --muted: #5a5b74; --line: #d6d8e6;
+  --accent: #0000aa; --gui: #007a7a; --cli: #0000aa; --node: #9a009a; --hl: #fff1a8;
+  --code-bg: #eceefa;
+  --display: "VT323", "Courier New", monospace;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0a18; --surface: #111127; --surface2: #151531; --ink: #e6e6f2; --muted: #9c9cb9; --line: #26264a;
+    --accent: #55ffff; --gui: #55ffff; --cli: #8f8fff; --node: #ff55ff; --hl: #4a4410; --code-bg: #1b1b3a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0a18; --surface: #111127; --surface2: #151531; --ink: #e6e6f2; --muted: #9c9cb9; --line: #26264a;
+  --accent: #55ffff; --gui: #55ffff; --cli: #8f8fff; --node: #ff55ff; --hl: #4a4410; --code-bg: #1b1b3a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); padding-inline: 16px; padding-block: 0 48px; }
+.wrap { max-width: 1400px; margin: 0 auto; }
+header.top { padding-block: 28px 8px; display: grid; gap: 10px; }
+h1 { font: 400 52px/1 var(--display); margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.lede { max-width: 72ch; color: var(--muted); margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; color: var(--muted); align-items: center; }
+.legend b { color: var(--ink); font-weight: 500; }
+.badge { display: inline-block; font: 500 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 5px 2px; border: 1px solid currentColor; border-radius: 2px; vertical-align: 1px; white-space: nowrap; }
+.b-gui { color: var(--gui); } .b-cli { color: var(--cli); } .b-node { color: var(--node); }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 12px 10px;
+  border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.search { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.search input { flex: 1 1 260px; min-width: 0; font: 15px var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 4px; padding: 9px 12px; }
+.search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.count { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips a { font: 12.5px var(--mono); color: var(--ink); text-decoration: none; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 3px; padding: 3px 8px; }
+.chips a:hover, .chips a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+section { margin-top: 34px; scroll-margin-top: 130px; }
+section h2 { font: 400 34px/1 var(--display); margin: 0 0 4px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+section h2 small { font: 13px var(--mono); color: var(--muted); }
+section > p { margin: 0 0 12px; color: var(--muted); max-width: 90ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 1060px; font-size: 13.8px; }
+th { text-align: left; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--surface2); position: sticky; top: 0; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.name { width: 15%; font-weight: 600; }
+td.name .where { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; font-weight: 400; }
+td.ctl { width: 19%; }
+td.rng { width: 17%; }
+td.def { width: 10%; }
+td.ex { width: 15%; }
+code { font: 12.5px/1.45 var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 2px; overflow-wrap: anywhere; }
+td.ctl code { display: inline-block; margin: 0 0 3px; }
+.ctl .lbl { font: 10.5px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
+.ctl div + div { margin-top: 3px; }
+.dim { color: var(--muted); }
+.list { font: 12px/1.5 var(--mono); color: var(--muted); }
+mark { background: var(--hl); color: inherit; padding: 0 1px; }
+.empty { padding: 40px 0; color: var(--muted); text-align: center; }
+footer { margin-top: 40px; color: var(--muted); font-size: 13px; max-width: 90ch; }
+@media (max-width: 600px) { h1 { font-size: 40px; } section h2 { font-size: 28px; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <h1>pixelmon <span>settings atlas</span></h1>
+  <p class="lede">Every knob in the pixelmon GUI, the <code>pixelmon</code> command line, and the ComfyUI nodes they drive on the rtx render box, with ranges, defaults and a working example for each. Ranges are the limits the controls accept; where a narrower range is what actually looks good, it's called out. Settings marked <b>⚙ Advanced</b> live in the GUI's rightmost tab.</p>
+  <div class="legend">
+    <span><span class="badge b-gui">GUI</span> <b>pixelmon-gui</b> control</span>
+    <span><span class="badge b-cli">CLI</span> <b>pixelmon</b> flag</span>
+    <span><span class="badge b-node">Node</span> <b>ComfyUI</b> node input it sets</span>
+  </div>
+</header>
+
+<div class="bar">
+  <div class="search">
+    <input id="q" type="search" placeholder="Filter: dither, seed, 320x200, IPAdapter, --mask …" aria-label="Filter settings">
+    <span class="count" id="count"></span>
+  </div>
+  <nav class="chips" id="chips" aria-label="Sections"></nav>
+</div>
+
+<main id="main"></main>
+<div class="empty" id="empty" hidden>No setting matches that filter.</div>
+
+<footer>
+  Pipeline order on the server: prompt → CLIP text encode → (IPAdapter steering) → (ControlNet) → KSampler → VAE decode → PixelArtPalette node:
+  smooth/downscale → palette lock + dither → despeckle → 1-px outlines → pixel-art angles → transparent → final nearest resize to the output size.
+  Everything after the KSampler is post-processing, so palette, dither and cleanup never change what the model draws.
+</footer>
+</div>
+
+<script>
+const G = "gui", C = "cli", N = "node";
+const PALETTES = "1BIT 2BIT 6BIT AMSTRADCPC ANSI32 APPLE2-HIRES APPLE2-LORES ATARI-8BIT ATARI2600 BBCMICRO BLOODMOON21 C=64 CGA0-HIGH CGA0-LOW CGA1-HIGH CGA1-LOW CGA2-HIGH CGA2-LOW CGA32 COLODORE CYBERPUNK-NEONS DAWNBRINGER-16 DAWNBRINGER-32 DAWNBRINGERS-8-COLOR EGA ENDESGA-16 ENDESGA-32 ENDESGA-36 ENDESGA-64 FAIRCHILD FUNKYFUTURE GAMEBOY GAMEBOY-BGB HALLOWPUMPKIN INK INK-CRIMSON INTELLIVISION JUNGLE-8 MS-WINDOWS MSX NES PICO-8 PICO-8-SECRET PINEAPPLE-32 QUAKE SECAM SEGA SHOVEL-KNIGHT-NES SODA-CAP SYNTHEWAVE-CITY TELETEXT VGA VINES-FLEXIBLE-LINEAR-RAMPS VIVIDMEMORY ZXSPECTRUM";
+const STYLES = "clean detailed minimal 8bit 16bit gameboy geometric outline cute dark horror hyperlight deadcells blasphemous owlboy stardew dosrpg darkest undertale mario zelda hollowknight metroid finalfantasy pokemon ega wasteland portrait dosega item solo scene r3tr0 pixelartredmond bourassa mignola painterly painterlyscene";
+const SAMPLERS = "euler, euler_cfg_pp, euler_ancestral, euler_ancestral_cfg_pp, heun, heunpp2, exp_heun_2_x0, exp_heun_2_x0_sde, dpm_2, dpm_2_ancestral, lms, dpm_fast, dpm_adaptive, dpmpp_2s_ancestral, dpmpp_2s_ancestral_cfg_pp, dpmpp_sde, dpmpp_sde_gpu, dpmpp_2m, dpmpp_2m_cfg_pp, dpmpp_2m_sde, dpmpp_2m_sde_gpu, dpmpp_2m_sde_heun, dpmpp_2m_sde_heun_gpu, dpmpp_3m_sde, dpmpp_3m_sde_gpu, ddpm, lcm, ipndm, ipndm_v, deis, res_multistep, res_multistep_cfg_pp, res_multistep_ancestral, res_multistep_ancestral_cfg_pp, gradient_estimation, gradient_estimation_cfg_pp, er_sde, seeds_2, seeds_3, sa_solver, sa_solver_pece, ddim, uni_pc, uni_pc_bh2";
+const LORAS = "ega-art-v2, ega-art (v1), dosart-vga, pixel-art-xl, dosegafx, retro-game-art, pixelartredmond, c64-style-xl, zxspectrum-xl, greenphosphor-xl, teletext-page-xl, teletext-screens-xl, teletext-vidiot-xl, teletext-vidiot2-xl, ansi-art-xl, ansi-ansii-xl, ascii-art-xl, ascii-image-xl, ascii-skyscrapers-xl, lcm-lora-sdxl";
+const IPA_ALL = "linear, ease in, ease out, ease in-out, reverse in-out, weak input, weak output, weak middle, strong middle, style transfer, composition, strong style transfer, style and composition, style transfer precise, composition precise";
+
+// [name, where[], controls{gui,cli,node}, range, default, example, what it does]
+const S = [
+ { id: "prompt", title: "Prompt & words", note: "What the model is asked to draw. Text goes through CLIP text encoders, so weighting syntax applies to both prompts.", rows: [
+  ["Prompt (subject)", [G, C, N], { gui: "Prompt box", cli: "\"a prompt\" (first argument)", node: "CLIPTextEncode.text (positive)" },
+   "Free text. Short comma-separated phrases; the first ~75 tokens count most.", "—", "<code>a (stone castle:1.3) on a green hill, sunset</code>",
+   "Describes the picture. Put the most important thing first. Never write \"no X\" here: the model sees X and draws it. Put unwanted things in the negative."],
+  ["Weighting syntax", [G, C, N], { gui: "inside either prompt", cli: "inside either prompt", node: "CLIPTextEncode parser" },
+   "<code>(w)</code> ×1.1 · <code>((w))</code> ×1.21 · <code>(((w)))</code> ×1.33 · <code>(w:0.5–1.5)</code>. Useful 1.1–1.4; above ~1.5 breaks the image.", "weight 1.0",
+   "<code>(castle:1.3)</code>, <code>(red cape, gold crown:1.2)</code>, <code>(sky:0.8)</code>, <code>\\(1987\\)</code>",
+   "Makes a word or group count more (&gt;1) or less (&lt;1). <code>[word]</code> does nothing special in ComfyUI. Escape real brackets with a backslash."],
+  ["Negative prompt", [G, C, N], { gui: "Negative prompt (fold)", cli: "--negative \"…\"", node: "CLIPTextEncode.text (negative)" },
+   "Free text, same weighting syntax.", "a pixel-art list (art mode: an illustration list)",
+   "<code>(text, letters, logo:1.4), border</code>",
+   "Things to steer away from. Plain nouns, no \"no\". Weighting here pushes harder away. Add to the defaults rather than replacing them. Pixel default: <code>3d render, realistic, photograph, blurry, smooth gradient, antialiased, jpeg artifacts, text, watermark, signature</code>."],
+  ["Style guides", [G, C], { gui: "Style chips (click to toggle)", cli: "--style a,b", node: "adds to both CLIPTextEncode texts" },
+   `Any combination of 38: <span class="list">${STYLES}</span>`, "none", "<code>--style dark,solo</code>",
+   "Ready-made prompt snippets with their own negatives. Some are LoRA-specific (dosega, r3tr0, pixelartredmond); scene/solo/item/portrait are framing modifiers."],
+  ["Kind", [G], { gui: "Kind", cli: "(written into the prompt)", node: "CLIPTextEncode.text" },
+   "(none) · scene background · character portrait · game sprite", "scene background", "<code>character portrait</code>",
+   "Caption tag the dos-art LoRAs (ega-art, dosart-vga) were trained with; picking the right one helps them a lot. Ignored for LoRAs without caption tags. \"scene background\" also drops the sprite suffix."],
+  ["Genre", [G], { gui: "Genre", cli: "(written into the prompt)", node: "CLIPTextEncode.text" },
+   "(none) · adventure · role-playing · action · strategy · puzzle · simulation · sports · education game", "(none)", "<code>role-playing game</code>",
+   "Nudges the flavor toward how those games looked. dos-art LoRAs only."],
+  ["Era", [G], { gui: "Era", cli: "(written into the prompt)", node: "CLIPTextEncode.text" },
+   "(none) · 1980s DOS game · 1990s DOS game", "per LoRA (EGA 1980s, VGA 1990s)", "<code>1990s DOS game</code>",
+   "1980s = chunkier and simpler; 1990s = more detail. dos-art LoRAs only."],
+  ["LoRA trigger words", [G], { gui: "automatic (gui/presets.json)", cli: "type them yourself", node: "CLIPTextEncode.text" },
+   "ega-art: <code>ega_art, EGA 16-color pixel art</code> · dosart-vga: <code>dosart_vga, 256-color VGA pixel art</code>", "added after your subject", "—",
+   "Words a LoRA was trained to respond to. The GUI inserts them for you; on the command line, include them in the prompt."],
+  ["No sprite suffix", [G, C], { gui: "no sprite suffix", cli: "--no-sprite-suffix" },
+   "on / off", "off (automatic for scene background)", "<code>--no-sprite-suffix</code>",
+   "pixelmon normally appends \"game sprite … solid background\" to pixel prompts. Turn it off for full scenes."],
+  ["Show full prompt", [G, C], { gui: "Show full prompt", cli: "--show-prompt" }, "on / off", "off (GUI jobs always log it)", "<code>--show-prompt</code>",
+   "Prints the exact positive and negative text sent to the model, after styles, triggers and pixelmon's own additions."],
+  ["Random prompt / history", [G], { gui: "🎲 and 🕘 next to the prompt" }, "—", "—", "—",
+   "🎲 invents a subject; 🕘 brings back ones you used before (stored in this browser)."],
+  ["Setup check", [G], { gui: "yellow warning box · setup check toggle in the status bar" }, "on / off", "on", "—",
+   "Warns when settings fight each other (a style banning a word in your subject, outlines too thick for a small image, grid without angles…) and offers one-click fixes."],
+ ]},
+ { id: "model", title: "Model & LoRA", note: "SDXL base model plus one LoRA that teaches the look.", rows: [
+  ["Checkpoint", [G, C, N], { gui: "⚙ Advanced › Checkpoint", cli: "--base FILE", node: "CheckpointLoaderSimple.ckpt_name" },
+   "any SDXL checkpoint in models/checkpoints/", "<code>sd_xl_base_1.0.safetensors</code>", "<code>--base sd_xl_base_1.0.safetensors</code>",
+   "The base model. The LoRAs were trained on SDXL base 1.0; other checkpoints (juggernautXL) change the look a lot."],
+  ["LoRA", [G, C, N], { gui: "LoRA", cli: "--lora FILE", node: "LoraLoader.lora_name" },
+   `On rtx: <span class="list">${LORAS}</span>; GUI also offers (none)`, "CLI: pixel-art-xl · GUI: ega-art-v2", "<code>--lora dosart-vga.safetensors</code>",
+   "The add-on that sets the look. ega-art-v2 = 16-color 1980s PC games, dosart-vga = 256-color 1990s games, pixel-art-xl = modern pixel art and most style guides."],
+  ["LoRA strength", [G, C, N], { gui: "LoRA strength (number)", cli: "--lora-strength F", node: "LoraLoader.strength_model + strength_clip" },
+   "0 – 2 (step 0.05). Good: 0.6 – 1.1; above ~1.2 warps.", "CLI 1.0 · GUI per LoRA (0.8 for ega/vga, 1.0 pixel-art-xl)", "<code>--lora-strength 0.65</code>",
+   "How strongly the LoRA is applied. Lower it when the LoRA overrides your prompt (the EGA night scene needs 0.65 or it paints daylight)."],
+  ["No LoRA", [G, C], { gui: "LoRA → (none)", cli: "--no-lora" }, "on / off", "off", "<code>--no-lora</code>",
+   "Base SDXL only. Output looks like a blurry photo after downscaling. Mainly for comparison."],
+  ["LCM LoRA", [G, C, N], { gui: "⚙ Advanced › LCM LoRA", cli: "--lcm-lora FILE", node: "second LoraLoader" }, "LoRA file", "<code>lcm-lora-sdxl.safetensors</code>", "—",
+   "Loaded only with fast mode; makes 8-step sampling possible."],
+ ]},
+ { id: "sampler", title: "Sampling", note: "The KSampler node: how the image is denoised out of random noise.", rows: [
+  ["Seed", [G, C, N], { gui: "Seed + 🔒 lock", cli: "--seed N", node: "KSampler.seed" },
+   "0 – 18446744073709551615; -1 = random", "random each run", "<code>--seed 1444</code>",
+   "Same seed + same settings = same picture. Lock it to change one setting and see only that change."],
+  ["Steps", [G, C, N], { gui: "Steps (blank = default)", cli: "--steps N", node: "KSampler.steps" },
+   "1 – 150. Good: 20 – 40 (fast: 6 – 10)", "25 (fast: 8)", "<code>--steps 30</code>",
+   "Refinement passes. More is slower; past ~40 it barely changes."],
+  ["CFG", [G, C, N], { gui: "CFG (blank = default)", cli: "--cfg F", node: "KSampler.cfg" },
+   "0 – 30 (step 0.5). Good: 5 – 9 (fast: 1 – 2)", "7 (fast: 1.5)", "<code>--cfg 6.5</code>",
+   "How strictly the picture follows the prompt. Too high = harsh, over-saturated, fried."],
+  ["Sampler", [G, C, N], { gui: "⚙ Advanced › Sampler", cli: "--sampler NAME", node: "KSampler.sampler_name" },
+   `Any of ComfyUI's 44: <span class="list">${SAMPLERS}</span>`, "euler (fast: lcm)", "<code>--sampler dpmpp_2m</code>",
+   "The denoising algorithm. dpmpp_2m / dpmpp_2m_sde are sharper; euler_ancestral is looser. With fast mode keep lcm."],
+  ["Scheduler", [G, C, N], { gui: "⚙ Advanced › Scheduler", cli: "--scheduler NAME", node: "KSampler.scheduler" },
+   "ComfyUI offers: simple, sgm_uniform, karras, exponential, ddim_uniform, beta, normal, linear_quadratic, kl_optimal", "normal (fast: sgm_uniform)", "<code>--sampler dpmpp_2m --scheduler karras</code>",
+   "How noise is spread over the steps. karras is a common upgrade with the dpmpp samplers."],
+  ["Denoise (text-to-image)", [N], { node: "KSampler.denoise (set by pixelmon)" }, "0 – 1", "1.0", "—",
+   "Always 1.0 when starting from noise. See img2img for the adjustable version."],
+  ["Fast mode", [G, C], { gui: "fast", cli: "--fast" }, "on / off", "off", "<code>--fast -n 8</code>",
+   "LCM LoRA, 8 steps, CFG 1.5, lcm + sgm_uniform. About 3–4× faster, a bit softer. Scout with it, then re-render the seed you like without it."],
+  ["Count", [G, C], { gui: "n", cli: "-n N / --number N" }, "GUI 1 – 32 · CLI any", "1", "<code>-n 4</code>",
+   "How many images, each with its own seed (seed, seed+1, … when locked in the GUI)."],
+  ["Generation resolution", [G, C, N], { gui: "⚙ Advanced › Generation resolution", cli: "--res N", node: "EmptyLatentImage.width/height" },
+   "multiple of 64; SDXL likes ~1024 on the long side", "1024 (animation: 768)", "<code>--res 1152</code>",
+   "Size the model actually draws at. The other side follows your output's aspect ratio, then everything is downscaled."],
+  ["Sampling size", [G, C], { gui: "⚙ Advanced › Sampling size", cli: "--size N|WxH" }, "N or WxH, up to 1024", "128 (art mode 1024)", "<code>--size 32x48</code>",
+   "Sets aspect and detail for sprites. Usually set --out instead; --size follows it."],
+ ]},
+ { id: "canvas", title: "Canvas & pixels", note: "The finished image size and how its pixel grid is built. Handled by the PixelArtPalette node.", rows: [
+  ["Output size", [G, C, N], { gui: "Output size preset + W × H", cli: "--out WxH", node: "PixelArtPalette.out_width / out_height" },
+   "1 – 1024 each side. Presets: 320×200, 320×168, 320×240, 640×350, 640×480, 256×256, 128×128, 64, 48, 32, 16", "GUI 320×200 · CLI = --size", "<code>--out 320x200</code>",
+   "Exact width × height of the finished picture."],
+  ["Pixel size", [G, C, N], { gui: "Pixel size", cli: "--pixel-size WxH", node: "PixelArtPalette.pixel_w / pixel_h" },
+   "0 – 32 each (0 = auto). GUI: auto, 1×1, 2×1, 1×2, 2×2, 3×3, 4×1, 4×2, 4×4", "auto", "<code>--pixel-size 2x1</code>",
+   "How many output pixels one art pixel covers. Art grid = output ÷ pixel size. 2×1 = the wide pixels of Sierra AGI, Tandy and C64 multicolor."],
+  ["Snap pixels", [G, C, N], { gui: "snap pixels", cli: "--snap-pixels", node: "PixelArtPalette.snap_pixels" },
+   "on / off", "off", "<code>--snap-pixels --pixel-size 2x2</code>",
+   "Re-snaps the image onto a detected pixel grid (pixel-snapper) for extra crispness. Set a pixel size too, or it can pick huge pixels."],
+  ["Snap colors", [G, C, N], { gui: "⚙ Advanced › Snap color cap", cli: "--snap-colors N", node: "PixelArtPalette.snap_colors" }, "0 – 256 (0 = auto)", "0", "<code>--snap-colors 16</code>",
+   "Color cap used while snapping."],
+  ["Pixel grid", [G, C, N], { gui: "⚙ Advanced › Pixel grid", cli: "--pixel-grid N", node: "PixelArtPalette.pixel_grid" }, "32 – 1024 (step 8); 0 = auto", "auto", "<code>--pixel-grid 160</code>",
+   "Logical resolution (long side) before upscaling. Pick one that divides the output evenly."],
+  ["Smooth", [G, C, N], { gui: "⚙ Advanced › Smooth before downscale", cli: "--smooth MODE", node: "PixelArtPalette.smooth" }, "mode · median · none", "mode", "<code>--smooth median</code>",
+   "Flattens noise before downscaling; mode gives the cleanest flat areas."],
+  ["Downscale filter", [G, C, N], { gui: "⚙ Advanced › Downscale filter", cli: "--filter MODE", node: "PixelArtPalette.downscale_filter" }, "nearest · box", "nearest", "<code>--filter box</code>",
+   "nearest = crisp hard pixels; box = averaged, softer."],
+  ["Transparent background", [G, C, N], { gui: "transparent bg", cli: "--transparent", node: "PixelArtPalette.transparent_bg" },
+   "on / off", "off", "<code>--transparent</code>", "Cuts out the plain background around a single sprite. Not for scenes."],
+  ["Background tolerance", [G, C, N], { gui: "⚙ Advanced › Background tolerance", cli: "--bg-tolerance N", node: "PixelArtPalette.bg_tolerance" }, "0 – 128", "16", "<code>--bg-tolerance 24</code>",
+   "How loosely the background color is matched for the cut-out. Raise it if a halo is left."],
+  ["Art mode", [G, C], { gui: "art mode", cli: "--art" }, "on / off; size up to 1024×1024", "off", "<code>--art --out 1024x576</code>",
+   "Full-resolution illustration: no pixel LoRA, no downscale, no palette. The palette node is skipped entirely."],
+  ["Preview", [G, C, N], { gui: "⚙ Advanced › Also save enlarged preview", cli: "--preview · --view-scale N", node: "PixelArtPalette.view_scale" }, "view scale 1 – 32", "off · 8", "<code>--preview --view-scale 6</code>",
+   "Also saves an enlarged nearest-neighbour copy for viewing."],
+ ]},
+ { id: "palette", title: "Palette & cleanup", note: "Post-processing after the model is done, so none of it changes what gets drawn. Runs at the native art grid, in this order: palette → dither → despeckle → outlines → angles.", rows: [
+  ["Palette", [G, C, N], { gui: "Palette + swatches", cli: "--palette NAME", node: "PixelArtPalette.palette" },
+   `none · random · Custom · 55 bundled: <span class="list">${PALETTES}</span>`, "CLI none · GUI EGA (per LoRA)", "<code>--palette GAMEBOY</code>",
+   "Locks every pixel to a real color set. Hardware looks (EGA, CGA, NES, Game Boy) need this; a prompt can't count colors."],
+  ["Custom colors", [G, C, N], { gui: "⚙ Advanced › Custom palette colors", cli: "--custom-hex \"…\"", node: "PixelArtPalette.custom_hex" }, "hex codes, #rgb or #rrggbb", "—", "<code>--palette Custom --custom-hex \"#000 #fff #f0f #0ff\"</code>",
+   "Your own palette."],
+  ["Dither", [G, C, N], { gui: "Dither", cli: "--dither NAME", node: "PixelArtPalette.dithering" },
+   "none · bayer2 · bayer4 · bayer8 · bayer16 · clustered · floyd-steinberg · jarvis · stucki · burkes · sierra · sierra2 · sierra-lite · atkinson", "none", "<code>--dither bayer4</code>",
+   "Mixes palette colors to fake in-between shades. Bayer = the classic cross-hatch; error diffusion = softer noise. Needs a palette."],
+  ["Dither amount", [G, C, N], { gui: "Amount slider", cli: "--dither-amount F", node: "PixelArtPalette.dither_amount" },
+   "0 – 1 (step 0.05). Below 0.15 is invisible.", "CLI 0.75 · GUI 0.5", "<code>--dither-amount 0.4</code>",
+   "Ordered: how wide the threshold spread is. Diffusion: how much error is pushed to neighbours."],
+  ["Despeckle", [G, C, N], { gui: "Despeckle (px)", cli: "--despeckle N", node: "PixelArtPalette.despeckle" },
+   "0 – 64 px (0 = off). Good: 1 – 3", "2", "<code>--despeckle 1</code>",
+   "Recolors stray single-color islands of up to N pixels to their surroundings. Kills random noise; too high eats details."],
+  ["1-px outlines", [G, C, N], { gui: "1-px outlines — thin lines up to…", cli: "--thin-lines N", node: "PixelArtPalette.thin_lines" },
+   "0 – 12 (0 = off). GUI: off, 2, 3, 4, 6, 8. Scenes: 3 – 4 · sprites ≤160 px: 0 – 2", "0", "<code>--thin-lines 4</code>",
+   "Skeletonizes strokes of the darkest color to 1-px lines. The number is the thickest line that still gets thinned, so bigger = more lines thinned. Wider dark areas are kept."],
+  ["Pixel-art angles", [G, C, N], { gui: "Pixel-art angles slider (beta)", cli: "--pixel-angles F", node: "PixelArtPalette.pixel_angles" },
+   "0 – 3 (step 0.25). Good: 1.25 – 2; off for images ≤160 px", "0", "<code>--pixel-angles 1.5</code>",
+   "Redraws region outlines along clean integer-ratio angles (1:1, 2:1, 3:1 …, as in DRAW). Needs a palette lock."],
+  ["Angle grid", [G, C, N], { gui: "Grid", cli: "--angle-grid G", node: "PixelArtPalette.angle_grid" },
+   "pixel (all 11 ratios) · square (0/90°) · diagonal (+45°) · isometric (2:1 + vertical) · hex (flat + 45°) · triangle (flat + 1:2)", "pixel", "<code>--angle-grid isometric</code>",
+   "Which edge angles are allowed when angles are on."],
+ ]},
+ { id: "lab", title: "img2img & LAB (ControlNet)", note: "Start from an existing picture: img2img keeps its composition; ControlNet keeps its shape while the prompt, LoRA and palette restyle it.", rows: [
+  ["Init image", [G, C, N], { gui: "LAB: also start from the image", cli: "--init IMG", node: "LoadImage → VAEEncode → KSampler.latent" },
+   "any image", "—", "<code>--init sketch.png --denoise 0.55</code>", "Starts from this picture instead of noise."],
+  ["Denoise", [G, C, N], { gui: "LAB change slider · evolve change", cli: "--denoise F", node: "KSampler.denoise" },
+   "0 – 1 (LAB slider 0.3 – 0.95). 0.3 subtle · 0.6 restyle · 0.9 loose", "0.6", "<code>--denoise 0.45</code>",
+   "How much the start image may change. 0 = identical, 1 = ignore it."],
+  ["LAB input", [G], { gui: "LAB: upload / import / recent" }, "png, jpg, gif, webp…", "—", "—",
+   "The picture to convert. Kept in the lab-inputs folder."],
+  ["LAB mode", [G, C, N], { gui: "LAB mode", cli: "--control-mode canny|tile", node: "SetUnionControlNetType.type" },
+   "shape (canny) · layout + colors (tile)", "canny", "<code>--control-mode tile</code>",
+   "canny follows the input's outlines (most restyle freedom); tile keeps layout and colors (closest to the input)."],
+  ["Control image", [G, C, N], { gui: "the LAB input", cli: "--control IMG", node: "LoadImage → Canny → ControlNetApplyAdvanced.image" },
+   "any image", "—", "<code>--control dog.jpg</code>", "The image whose shape is kept."],
+  ["Control strength", [G, C, N], { gui: "LAB strength slider", cli: "--control-strength F", node: "ControlNetApplyAdvanced.strength" },
+   "CLI 0 – 2 · GUI 0.2 – 1.3. Good: 0.6 – 1.0", "0.8", "<code>--control-strength 0.9</code>",
+   "How strictly the shape is followed."],
+  ["Control end", [G, C, N], { gui: "⚙ Advanced › Control end", cli: "--control-end F", node: "ControlNetApplyAdvanced.end_percent" }, "0 – 1", "0.8", "<code>--control-end 0.6</code>",
+   "Fraction of the steps the control applies for; the rest are free for style."],
+  ["Canny thresholds", [G, C, N], { gui: "⚙ Advanced › Canny low / high threshold", cli: "--canny-low F · --canny-high F", node: "Canny.low_threshold / high_threshold" },
+   "0.01 – 0.99, low &lt; high", "0.3 / 0.7", "<code>--canny-low 0.2 --canny-high 0.6</code>", "Edge detection for shape mode. Lower = more edges followed (more detail, more noise)."],
+  ["Control model", [G, C, N], { gui: "⚙ Advanced › ControlNet model", cli: "--control-model FILE", node: "ControlNetLoader.control_net_name" }, "file in models/controlnet/", "<code>controlnet-union-sdxl-promax</code>", "—", "The SDXL union ControlNet."],
+  ["LAB width · count", [G], { gui: "LAB width · n" }, "width 16 – 1024 · n 1 – 8", "per input · 1", "<code>320</code> · <code>4</code>", "Output width (height follows the input's aspect) and how many versions."],
+  ["Live preview", [G], { gui: "LAB live" }, "on / off", "off", "—", "Re-renders a quick fast-mode preview as you change settings."],
+  ["Adjust source", [G], { gui: "LAB: Adjust source" },
+   "brightness −60…60 · contrast −60…100 · gamma 0.4…2.5 · saturation 0…250 % · hue −180…180° · clean (JPEG) 0…4 · sharpen 0…4 · posterize 0…7 · gray · invert", "all neutral", "<code>contrast +30, posterize 4</code>",
+   "Fixes the input before conversion (like kaleidotron). Applied to a copy; the original is untouched."],
+  ["Crop", [G], { gui: "LAB crop box" }, "free · 320×200 · 320×168 · 4:3 · 1:1 · 16:9", "whole image", "—", "Converts only part of the input."],
+  ["Edge view", [G], { gui: "LAB edges" }, "on / off", "off", "—", "Shows what canny mode will follow, so you can tune contrast first."],
+ ]},
+ { id: "inpaint", title: "Inpainting (LAB edit)", note: "Redraw only a masked part of an image. Needs an init image.", rows: [
+  ["Mask", [G, C, N], { gui: "LAB: paint the area", cli: "--mask IMG", node: "LoadImage → ImageToMask → GrowMask" },
+   "white = redraw, black = keep", "—", "<code>--init room.png --mask m.png --denoise 1</code>", "Only the white area changes."],
+  ["Edit action", [G], { gui: "LAB edit action" },
+   "change it to… · erase it (fill with…) · add… · subtle tweak", "change it to…", "<code>change it to… a red door</code>",
+   "Picks fill vs blend and a sensible strength for you."],
+  ["Mask mode", [G, C, N], { gui: "⚙ Advanced › Mask mode", cli: "--mask-mode fill|blend", node: "fill: VAEEncodeForInpaint · blend: SetLatentNoiseMask" },
+   "fill · blend", "fill", "<code>--mask-mode blend --denoise 0.5</code>",
+   "fill starts the area blank (new content, use denoise 1); blend starts from what's there (subtle tweaks)."],
+  ["Edit strength", [G, N], { gui: "LAB edit strength", node: "KSampler.denoise" }, "0.3 – 1", "1 (tweak 0.5)", "—", "How much the masked area changes."],
+  ["Mask grow", [G, C, N], { gui: "⚙ Advanced › Mask grow", cli: "--mask-grow N", node: "GrowMask.expand" }, "px at generation size", "6", "<code>--mask-grow 12</code>", "Blend margin around the mask so the seam disappears."],
+  ["Inpaint crop", [G, C], { gui: "⚙ Advanced › Crop around small masks", cli: "--no-inpaint-crop" }, "on / off", "crop on", "<code>--no-inpaint-crop</code>",
+   "By default a small mask is cropped, rendered at full resolution and stitched back for much more detail."],
+  ["Keep outside", [G, C], { gui: "⚙ Advanced › Keep everything outside the mask", cli: "--no-keep-outside" }, "on / off", "keep on", "<code>--no-keep-outside</code>",
+   "By default everything outside the mask is pasted back pixel-exact."],
+  ["Mask tools", [G], { gui: "paint · erase · size · invert · clear" }, "brush 2 – 80 px", "—", "P / E keys", "Hand-paint the mask."],
+  ["Select by words", [G], { gui: "select by words" }, "any short phrase", "—", "<code>the moon</code>", "Auto-masks a thing with CLIPSeg (runs locally on CPU)."],
+ ]},
+ { id: "steer", title: "Steering (IPAdapter)", note: "Push the result toward reference images: their palette, style or composition.", rows: [
+  ["Reference images", [G, C, N], { gui: "Steering tab: pick images, use steering", cli: "--steer DIR|IMG", node: "LoadImage × N → ImageBatch → IPAdapterAdvanced.image" },
+   "a folder or one image", "off", "<code>--steer ~/pixelmon-refs/sierra</code>", "The images to steer toward."],
+  ["Strength", [G, C, N], { gui: "Steering strength", cli: "--steer-strength F", node: "IPAdapterAdvanced.weight" },
+   "GUI 0 – 1.5 (step 0.05). Good: 0.4 – 0.9", "0.7", "<code>--steer-strength 0.5</code>",
+   "How much the refs pull. Too high copies them."],
+  ["Weight type", [G, C, N], { gui: "Weight type", cli: "--steer-weight-type NAME", node: "IPAdapterAdvanced.weight_type" },
+   `GUI: style transfer, strong style transfer, style transfer precise, composition, composition precise, style and composition, linear, ease in, ease out. IPAdapter has 15: <span class="list">${IPA_ALL}</span>`,
+   "style transfer", "<code>--steer-weight-type composition</code>",
+   "What gets borrowed: style = colors and rendering; composition = layout; linear = everything."],
+  ["Combine", [G, C, N], { gui: "Combine", cli: "--steer-combine NAME", node: "IPAdapterAdvanced.combine_embeds" },
+   "concat · average · norm average · add · subtract", "concat", "<code>--steer-combine average</code>", "How several refs are merged."],
+  ["Start / end", [G, C, N], { gui: "Steering start / end sliders", cli: "--steer-start F · --steer-end F", node: "IPAdapterAdvanced.start_at / end_at" },
+   "0 – 1 fraction of steps (start ≤ 0.95, end ≥ 0.05)", "0 / 1", "<code>--steer-end 0.5</code>",
+   "When the refs act. Ending early lets them set palette and composition, then the prompt and LoRA finish alone."],
+  ["Max refs", [C], { cli: "--steer-max N" }, "any", "16", "<code>--steer-max 8</code>", "How many images are taken from a folder."],
+  ["Models", [G, C, N], { gui: "⚙ Advanced › IPAdapter / CLIP-vision model", cli: "--steer-model · --steer-clip", node: "IPAdapterModelLoader · CLIPVisionLoader" }, "files on the server",
+   "<code>ip-adapter-plus_sdxl_vit-h</code> · <code>CLIP-ViT-H-14-laion2B</code>", "—", "IPAdapter and CLIP-vision weights."],
+ ]},
+ { id: "evolve", title: "Evolve", note: "GUI only. Breed variations of a result you like (🧬 on any image). Each child is img2img from the parent plus steering toward it.", rows: [
+  ["Keep composition", [G], { gui: "evolve: keep composition + change slider" }, "on / off · change 0.1 – 0.95", "on · 0.45", "—",
+   "img2img from the parent. Lower change = closer children."],
+  ["Steer toward parent", [G], { gui: "evolve: steer + strength" }, "on / off · 0.1 – 1.5", "on · 0.6", "—", "IPAdapter with the parent as the reference."],
+  ["Steer weight type", [G], { gui: "evolve weight" }, "same list as steering", "style and composition", "—", "What the children borrow from the parent."],
+  ["Steer start / end", [G], { gui: "evolve start / end" }, "0 – 0.95 / 0.05 – 1", "0 / 1", "—", "When the parent's influence applies."],
+  ["Children", [G], { gui: "evolve n" }, "1 – 16", "4", "—", "How many offspring per click."],
+  ["Randomize per child", [G], { gui: "randomize each child" }, "on / off", "off", "—", "Each child gets slightly randomized sliders automatically."],
+  ["More / less similar", [G], { gui: "± pill" }, "—", "—", "—", "One click moves change and strength in opposite directions."],
+ ]},
+ { id: "batch", title: "Batch & sweeps", note: "Many renders at once.", rows: [
+  ["Batch list", [G], { gui: "Batch tab text box" },
+   "one per line: <code>path | style | size | prompt</code>, <code>folder | name | style | size | prompt</code>, <code>name | prompt</code>, or just a prompt", "—",
+   "<code>monsters/rat | darkest | 128 | a dungeon rat</code>", "Queues every line. Rows can be ticked on and off."],
+  ["Size / style source", [G], { gui: "batch size mode · style mode" }, "size: row / form · style: row / row + form / form only", "row", "—", "Whether each row's size and style or the form's are used."],
+  ["Skip existing", [G], { gui: "skip existing" }, "on / off", "on", "—", "Doesn't re-render rows whose output already exists."],
+  ["Batch subjects", [C], { cli: "--batch \"a,b,c\"" }, "comma list", "—", "<code>--batch \"bat,skeleton\" -n 4</code>", "Round-robin subjects, N of each, a folder each."],
+  ["Output folders", [C], { cli: "--output-to DIR · --move-to-dirs · --create-dirs · --no-subdirs · --name" }, "paths", "~/ComfyUI/output/pixelmon/", "<code>--output-to out --create-dirs</code>", "Where files go and how they're named."],
+  ["Sweep", [G], { gui: "sweep: field + values" },
+   "LoRA strength, dither method, dither amount, palette, LoRA, style guides, steps, CFG, despeckle, output size, steering strength, steering end, steering start, pixel-art angles, grid, pixel size, 1-px outlines", "—", "<code>LoRA strength: 0.6, 0.8, 1.0</code>",
+   "Renders the same seed across several values of one setting, side by side."],
+ ]},
+ { id: "anim", title: "Animation", note: "CLI only, experimental. Looping portrait gestures as a GIF.", rows: [
+  ["Gesture", [G, C], { gui: "⚙ Advanced › Gesture", cli: "--animate GESTURE" }, "blink · talk · glow · smoke · breathe, or free text", "—", "<code>--animate \"smoke from cigar\"</code>", "What moves."],
+  ["Region", [G, C], { gui: "⚙ Advanced › Region · Region box", cli: "--anim-region WHAT · --anim-box L,T,R,B" }, "CLIPSeg text · box as fractions 0 – 1", "guessed", "<code>--anim-region \"the eyes\"</code>", "What gets masked and animated."],
+  ["Frames · fps · hold", [G, C], { gui: "⚙ Advanced › Frames · Speed · Hold", cli: "--anim-frames N · --anim-fps F · --anim-hold S" }, "2 (toggle) · 3 – 5 (motion) · fps any · seconds", "preset · 6 · 1.2", "<code>--anim-frames 4 --anim-fps 8</code>", "Motion frames, loop speed, rest time."],
+  ["Change · loop · res", [G, C], { gui: "⚙ Advanced › Change per frame · Loop · Animation resolution", cli: "--anim-denoise D · --anim-loop MODE · --anim-res N" }, "0.3 – 0.9 · pingpong / cycle / once-return · px", "0.65 · pingpong · 768", "<code>--anim-denoise 0.5</code>", "How much the region changes per frame, frame order, base resolution."],
+ ]},
+ { id: "server", title: "Server & app", note: "Where rendering happens and how the apps run.", rows: [
+  ["Render server", [C], { cli: "--server NAMES" }, "servers.json alias, host[:port] or URL; comma list = render farm", "local", "<code>--server rtx</code>", "The GUI always renders on rtx."],
+  ["ComfyUI launch", [N], { node: "~/launch-comfyui.sh on rtx (tmux \"comfy\")" }, "--listen · --lowvram · --cpu · any main.py flag", "--listen 0.0.0.0", "<code>~/launch-comfyui.sh --lowvram</code>", "rtx runs fully loaded on the 3070; add --lowvram if it runs out of memory."],
+  ["GUI server", [G], { gui: "pixelmon-gui --port N --lan --gallery DIR" }, "port any", "8190 · local only · ~/pixelmon-gallery/gui", "<code>pixelmon-gui --lan</code>", "--lan lets other devices on your network use it."],
+  ["Auto-open", [C], { cli: "--no-open" }, "on / off", "opens results", "<code>--no-open</code>", "Stops pixelmon opening each image on screen."],
+  ["Notifications", [G], { gui: "status bar: on · done · errors · sound · per image 🪙" }, "on / off each", "on", "—", "Status-bar messages and sounds when jobs finish or fail."],
+  ["Grid overlay", [G], { gui: "lightbox / peek grid" }, "off · pixels · square · diagonal · isometric · hex · triangle · size 2 – 128", "off", "—", "Viewing aid over the zoomed image; doesn't change the render."],
+  ["Presets", [G], { gui: "Presets tab: save · load · load + render · ⬇ zip · import" }, "—", "63 starters incl. one demo per style", "—", "Full snapshots of the form, steering, evolve and LAB, with a sample image."],
+ ]},
+];
+
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const badge = w => `<span class="badge b-${w}">${w === N ? "Node" : w.toUpperCase()}</span>`;
+function ctlHtml(c) {
+  const out = [];
+  if (c.gui) out.push(`<div><span class="lbl">gui</span>${esc(c.gui)}</div>`);
+  if (c.cli) out.push(`<div><span class="lbl">cli</span><code>${esc(c.cli)}</code></div>`);
+  if (c.node) out.push(`<div><span class="lbl">node</span><code>${esc(c.node)}</code></div>`);
+  return out.join("");
+}
+const main = document.getElementById("main");
+main.innerHTML = S.map(s => `<section id="${s.id}" data-sec>
+  <h2>${esc(s.title)} <small>${s.rows.length} settings</small></h2><p>${esc(s.note)}</p>
+  <div class="tbl"><table><thead><tr><th>Setting</th><th>Where / controls</th><th>Range</th><th>Default</th><th>Example</th><th>What it does</th></tr></thead>
+  <tbody>${s.rows.map(r => `<tr>
+    <td class="name">${esc(r[0])}<div class="where">${r[1].map(badge).join("")}</div></td>
+    <td class="ctl">${ctlHtml(r[2])}</td><td class="rng">${r[3]}</td><td class="def">${r[4]}</td><td class="ex">${r[5]}</td><td>${r[6]}</td>
+  </tr>`).join("")}</tbody></table></div></section>`).join("");
+document.getElementById("chips").innerHTML = S.map(s => `<a href="#${s.id}">${esc(s.title)}</a>`).join("");
+
+// filter
+const rows = [...main.querySelectorAll("tbody tr")];
+rows.forEach(tr => { tr.dataset.text = tr.textContent.toLowerCase(); tr.querySelectorAll("td").forEach(td => td.dataset.html = td.innerHTML); });
+const total = rows.length, q = document.getElementById("q"), count = document.getElementById("count");
+function mark(td, term) {
+  td.innerHTML = td.dataset.html;
+  if (!term) return;
+  const walk = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+  const nodes = []; while (walk.nextNode()) nodes.push(walk.currentNode);
+  nodes.forEach(n => {
+    const i = n.nodeValue.toLowerCase().indexOf(term); if (i < 0) return;
+    const m = document.createElement("mark"); const after = n.splitText(i); after.splitText(term.length);
+    m.textContent = after.nodeValue; after.replaceWith(m);
+  });
+}
+function apply() {
+  const term = q.value.trim().toLowerCase(); let shown = 0;
+  rows.forEach(tr => { const hit = !term || tr.dataset.text.includes(term); tr.hidden = !hit; if (hit) { shown++; tr.querySelectorAll("td").forEach(td => mark(td, term)); } });
+  document.querySelectorAll("[data-sec]").forEach(sec => sec.hidden = !sec.querySelector("tbody tr:not([hidden])"));
+  document.getElementById("empty").hidden = shown > 0;
+  count.textContent = term ? `${shown} of ${total} settings` : `${total} settings`;
+  try { localStorage.setItem("atlas-q", q.value); } catch (e) {}
+}
+try { q.value = localStorage.getItem("atlas-q") || ""; } catch (e) {}
+q.addEventListener("input", apply); apply();
+</script>

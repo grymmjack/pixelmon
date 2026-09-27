@@ -315,6 +315,181 @@ def load_loras():
     return sorted(os.path.basename(p) for p in glob.glob(os.path.join(local, "*.safetensors"))), False
 
 
+_ADV_CACHE = {"t": 0, "v": None}
+FALLBACK_SAMPLERS = ["euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms", "dpmpp_2s_ancestral", "dpmpp_sde",
+                     "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "ddim", "uni_pc", "lcm"]
+FALLBACK_SCHEDULERS = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta"]
+
+
+def _combo(info, node, field):
+    """A COMBO input's options from ComfyUI /object_info (old list form or new {"options": [...]} form)."""
+    try:
+        spec = info[node]["input"]["required"][field]
+    except (KeyError, TypeError):
+        return []
+    if isinstance(spec[0], list):
+        return list(spec[0])
+    if len(spec) > 1 and isinstance(spec[1], dict):
+        return list(spec[1].get("options") or [])
+    return []
+
+
+def load_adv_lists():
+    """Choices for the Advanced tab, read live from the render server's ComfyUI (cached a minute)."""
+    if _ADV_CACHE["v"] is not None and time.time() - _ADV_CACHE["t"] < 60:
+        return _ADV_CACHE["v"]
+    info, url = {}, server_url()
+    if url:
+        for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader"):
+            try:
+                with urllib.request.urlopen(f"{url.rstrip('/')}/object_info/{node}", timeout=4) as r:
+                    info.update(json.load(r))
+            except Exception:
+                pass
+    v = {"samplers": _combo(info, "KSampler", "sampler_name") or FALLBACK_SAMPLERS,
+         "schedulers": _combo(info, "KSampler", "scheduler") or FALLBACK_SCHEDULERS,
+         "checkpoints": [c for c in _combo(info, "CheckpointLoaderSimple", "ckpt_name")
+                         if not re.search(r"audio|ace_step|music|sfx", c, re.I)],
+         "controlnets": _combo(info, "ControlNetLoader", "control_net_name"),
+         "ipadapters": _combo(info, "IPAdapterModelLoader", "ipadapter_file"),
+         "clip_visions": _combo(info, "CLIPVisionLoader", "clip_name"),
+         "live": bool(info)}
+    _ADV_CACHE.update(t=time.time(), v=v)
+    return v
+
+
+def adv_argv(adv, art, has_control, has_mask):
+    """The Advanced tab: extra pixelmon flags. Blank / missing = pixelmon's own default. Validated like the rest."""
+    adv = adv if isinstance(adv, dict) else {}
+    out = []
+
+    def val(key):
+        v = adv.get(key)
+        return None if v in (None, "", False) else v
+
+    def num(key, typ, lo, hi):
+        v = val(key)
+        if v is None:
+            return None
+        v = typ(v)
+        if not lo <= v <= hi:
+            raise ValueError(f"advanced: {key.replace('_', ' ')} must be between {lo:g} and {hi:g}")
+        return v
+
+    def fname(key):
+        v = val(key)
+        if v is None:
+            return None
+        v = str(v)
+        if not re.fullmatch(r"[\w.+\- ()\[\]/]{1,200}", v) or ".." in v:
+            raise ValueError(f"advanced: bad file name for {key.replace('_', ' ')}")
+        return v
+
+    def choice(key, options):
+        v = val(key)
+        if v is None:
+            return None
+        if v not in options:
+            raise ValueError(f"advanced: unknown {key.replace('_', ' ')} {v!r}")
+        return v
+
+    lists = load_adv_lists()
+    for key, flag in (("sampler", "--sampler"), ("scheduler", "--scheduler")):
+        v = choice(key, lists[key + "s"] + (FALLBACK_SAMPLERS if key == "sampler" else FALLBACK_SCHEDULERS))
+        if v:
+            out += [flag, v]
+    for key, flag in (("base", "--base"), ("lcm_lora", "--lcm-lora")):
+        v = fname(key)
+        if v:
+            out += [flag, v]
+    r = num("res", int, 512, 2048)
+    if r is not None:
+        if r % 64:
+            raise ValueError("advanced: generation resolution must be a multiple of 64")
+        out += ["--res", str(r)]
+    sz = val("size")
+    if sz is not None:
+        if not re.fullmatch(r"\d{1,4}(x\d{1,4})?", str(sz).lower()):
+            raise ValueError("advanced: sampling size must be N or WxH")
+        out += ["--size", str(sz).lower()]
+    if not art:
+        v = choice("smooth", ["mode", "median", "none"])
+        if v:
+            out += ["--smooth", v]
+        v = choice("filter", ["nearest", "box"])
+        if v:
+            out += ["--filter", "box (area average)" if v == "box" else v]
+        for key, flag, lo, hi in (("pixel_grid", "--pixel-grid", 32, 1024), ("snap_colors", "--snap-colors", 1, 256),
+                                  ("bg_tolerance", "--bg-tolerance", 0, 128)):
+            v = num(key, int, lo, hi)
+            if v is not None:
+                out += [flag, str(v)]
+        hx = val("custom_hex")
+        if hx is not None:
+            cols = re.findall(r"#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b", str(hx))
+            if not cols or len(cols) > 256:
+                raise ValueError("advanced: custom colors must be 1..256 hex codes like #0000aa")
+            out += ["--custom-hex", " ".join(c if c.startswith("#") else "#" + c for c in cols)]
+        if val("preview"):
+            out.append("--preview")
+            v = num("view_scale", int, 1, 32)
+            if v is not None:
+                out += ["--view-scale", str(v)]
+    if has_control:
+        v = num("control_end", float, 0.05, 1.0)
+        if v is not None:
+            out += ["--control-end", f"{v:g}"]
+        v = fname("control_model")
+        if v:
+            out += ["--control-model", v]
+        lo, hi = num("canny_low", float, 0.01, 0.99), num("canny_high", float, 0.01, 0.99)
+        if lo is not None or hi is not None:
+            lo, hi = (0.3 if lo is None else lo), (0.7 if hi is None else hi)
+            if not lo < hi:
+                raise ValueError("advanced: canny low threshold must be below the high one")
+            out += ["--canny-low", f"{lo:g}", "--canny-high", f"{hi:g}"]
+    if has_mask:
+        v = num("mask_grow", int, 0, 64)
+        if v is not None:
+            out += ["--mask-grow", str(v)]
+        if adv.get("inpaint_crop") is False:
+            out.append("--no-inpaint-crop")
+        if adv.get("keep_outside") is False:
+            out.append("--no-keep-outside")
+    for key, flag in (("steer_model", "--steer-model"), ("steer_clip", "--steer-clip")):
+        v = fname(key)
+        if v:
+            out += [flag, v]
+    g = val("animate")
+    if g is not None:
+        g = str(g).strip()
+        if not 0 < len(g) <= 120:
+            raise ValueError("advanced: animation gesture must be 1..120 characters")
+        out += ["--animate", g]
+        v = val("anim_region")
+        if v is not None:
+            out += ["--anim-region", str(v)[:80]]
+        for key, flag, typ, lo, hi in (("anim_frames", "--anim-frames", int, 2, 8), ("anim_fps", "--anim-fps", float, 1, 30),
+                                       ("anim_hold", "--anim-hold", float, 0, 10), ("anim_denoise", "--anim-denoise", float, 0.1, 1),
+                                       ("anim_res", "--anim-res", int, 512, 1024)):
+            v = num(key, typ, lo, hi)
+            if v is not None:
+                out += [flag, f"{v:g}" if typ is float else str(v)]
+        v = choice("anim_loop", ["pingpong", "cycle", "once-return"])
+        if v:
+            out += ["--anim-loop", v]
+        v = val("anim_box")
+        if v is not None:
+            try:
+                box = [float(x) for x in str(v).split(",")]
+            except ValueError:
+                box = []
+            if len(box) != 4 or not all(0 <= x <= 1 for x in box) or not (box[0] < box[2] and box[1] < box[3]):
+                raise ValueError("advanced: animation box must be left,top,right,bottom fractions 0..1, e.g. 0.25,0.36,0.67,0.49")
+            out += ["--anim-box", ",".join(f"{x:g}" for x in box)]
+    return out
+
+
 def server_up():
     url = server_url()
     if not url:
@@ -475,7 +650,7 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         d = num("evolve_denoise", float, 0.01, 1.0, 0.45)
         argv += ["--init", init, "--denoise", f"{d:g}"]
     if mask and init:
-        mm = str((p.get("inpaint") or {}).get("mode") or "fill")
+        mm = str((p.get("adv") or {}).get("mask_mode") or (p.get("inpaint") or {}).get("mode") or "fill")
         if mm not in ("fill", "blend"):
             raise ValueError(f"unknown mask mode {mm!r}")
         argv += ["--mask", mask, "--mask-mode", mm]
@@ -484,10 +659,16 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         mode = str(c.get("mode") or "canny")
         if mode not in ("canny", "tile"):
             raise ValueError(f"unknown control mode {mode!r}")
-        st, en = float(c.get("strength", 0.8)), float(c.get("end", 0.8))
+        adv = p.get("adv") if isinstance(p.get("adv"), dict) else {}
+        st, en = float(c.get("strength", 0.8)), float(adv.get("control_end") or c.get("end", 0.8))
         if not (0 <= st <= 2 and 0 < en <= 1):
             raise ValueError("control strength must be 0..2 and end in (0, 1]")
         argv += ["--control", control, "--control-mode", mode, "--control-strength", f"{st:g}", "--control-end", f"{en:g}"]
+    extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init))
+    extra = [x for i, x in enumerate(extra) if not (x == "--control-end" or (i and extra[i - 1] == "--control-end"))]
+    if "--custom-hex" in extra and "--palette" in argv:              # custom colors = the Custom palette
+        argv[argv.index("--palette") + 1] = "Custom"
+    argv += extra
     seed = num("seed", int, -1, 2**31 - 1, -1)
     if seed is not None and seed >= 0:
         argv += ["--seed", str(seed)]
@@ -664,7 +845,7 @@ class JobQueue:
             with self.lock:
                 # trust the folder over log parsing (covers moved/renamed files)
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
-                               if not os.path.basename(f).startswith(("parent.", "input", "mask.")))   # kept parent / LAB input aren't output
+                               if not os.path.basename(f).startswith(("parent.", "input", "mask.")) and "_preview_" not in os.path.basename(f))   # kept parent / LAB input aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
@@ -1011,6 +1192,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "style_samples": style_samples(),
                                "presets": load_presets(),
                                "loras": loras, "loras_live": live, "server": RENDER_SERVER,
+                               "adv_lists": load_adv_lists(),
                                "server_up": server_up()})
         if u.path == "/api/jobs":
             return self._json({"jobs": self.jobs.snapshot()})
@@ -1116,6 +1298,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(d)}.zip"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if u.path.startswith("/docs/") and u.path.endswith(".html"):
+            # the settings atlas (also published as an artifact); the file has no page skeleton of its own
+            full = os.path.realpath(os.path.join(REPO, "docs", urllib.parse.unquote(u.path[len("/docs/"):])))
+            if not full.startswith(os.path.realpath(os.path.join(REPO, "docs")) + os.sep) or not os.path.isfile(full):
+                return self._json({"error": "not found"}, 404)
+            with open(full, "rb") as fh:
+                body = fh.read()
+            if not body.lstrip().lower().startswith(b"<!doctype"):
+                body = (b'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                        b'<meta name="viewport" content="width=device-width, initial-scale=1"></head><body>' + body + b"</body></html>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

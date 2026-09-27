@@ -88,6 +88,25 @@ details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-tr
 .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
 a.btn { color: var(--text); text-decoration: none; display: inline-block; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }   /* link-buttons (⬇ zip) look like buttons, not links */
 .btn:hover { border-color: var(--accent); }
+/* ---- Advanced tab ---- */
+#advN { color: var(--accent); font-weight: 600; }
+.advtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; color: var(--dim); font-size: 13px; }
+.advtop a { color: var(--accent); }
+.advgroup { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin-bottom: 12px; min-width: 0; }
+.advgroup legend { padding: 0 6px; color: var(--accent); font-weight: 600; }
+.advgroup > p { margin: 0 0 8px; color: var(--dim); font-size: 12.5px; }
+.advgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 14px; }
+.advf { display: grid; gap: 3px; min-width: 0; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; }
+.advf.set { border-color: var(--accent); background: rgba(85,255,255,.05); }
+.advf label { display: flex; justify-content: space-between; gap: 6px; font-size: 12.5px; }
+.advf label .rs { cursor: pointer; color: var(--dim); background: none; border: 0; padding: 0; font-size: 13px; }
+.advf label .rs:hover { color: var(--accent); }
+.advf label.inline { justify-content: flex-start; }
+.advf input[type=text], .advf input[type=number], .advf select { width: 100%; min-width: 0; }
+.advf .meta { font: 10.5px var(--mono); color: var(--dim); }
+.advf .why { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+.advnot { font-size: 12.5px; color: var(--dim); margin: 0; padding-left: 18px; }
+.advnot code { color: var(--text); }
 .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; flex: 1; }
 .btn.small { padding: 3px 8px; font-size: 12px; }
 .err { color: var(--bad); font-size: 12px; min-height: 16px; margin-top: 4px; }
@@ -522,12 +541,14 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="tab" data-tab="batch">Batch</div>
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
+      <div class="tab" data-tab="adv">⚙ Advanced <span id="advN"></span></div>
       <span style="flex:1"></span>
       <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
       <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
     </div>
     <div class="pane" id="queuePane"><div class="empty">Nothing rendered yet this session.</div></div>
     <div class="pane hidden" id="galleryPane"></div>
+    <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
     <div class="pane hidden" id="labPane">
       <div class="lab">
@@ -764,6 +785,7 @@ function params(f = readForm()) {
     steps: f.steps, cfg: f.cfg, fast: f.fast,
     ...steerParams(),
     ...evoParams(),
+    adv: advParams(),
   };
 }
 function cliFor(p) {
@@ -801,6 +823,7 @@ function cliFor(p) {
            "--steer-weight-type", q(p.steer_weight_type), "--steer-combine", q(p.steer_combine));
     if (+p.steer_start > 0 || +p.steer_end < 1) a.push("--steer-start", p.steer_start, "--steer-end", p.steer_end);
   }
+  a.push(...advCli(p.adv || {}, p.art, q));
   if (+p.seed >= 0) a.push("--seed", p.seed);
   if (+p.n > 1) a.push("-n", p.n);
   if (p.name) a.push("--name", q(p.name));
@@ -1373,6 +1396,171 @@ function initEvo() {
   renderEvo();
 }
 
+// ---------------- advanced tab: every remaining pixelmon setting ----------------
+const ATLAS_URL = "https://claude.ai/artifact/Howqpc3cfKV7Xjt4aAbrSS";
+// k = key sent as params.adv[k]; blank = pixelmon's own default. The server validates and turns these into flags.
+const ADV_GROUPS = [
+  { title: "Sampling", note: "How the model denoises. Blank = pixelmon's default for the current mode (normal or fast).", fields: [
+    { k: "sampler", label: "Sampler", type: "select", list: "samplers", def: "euler · fast: lcm", flag: "--sampler",
+      why: "The denoising algorithm. dpmpp_2m / dpmpp_2m_sde are sharper; euler_ancestral is looser. Keep lcm with fast." },
+    { k: "scheduler", label: "Scheduler", type: "select", list: "schedulers", def: "normal · fast: sgm_uniform", flag: "--scheduler",
+      why: "How noise is spread over the steps. karras is a common upgrade with dpmpp samplers." },
+    { k: "res", label: "Generation resolution", type: "number", min: 512, max: 2048, step: 64, def: "1024", flag: "--res",
+      why: "Long side the model actually draws at, before downscaling. SDXL is trained at ~1024; higher can repeat objects." },
+    { k: "size", label: "Sampling size", type: "text", ph: "e.g. 128 or 32x48", def: "follows output size", flag: "--size",
+      why: "Aspect/detail target for sprites. Normally leave blank and set the output size." },
+    { k: "base", label: "Checkpoint", type: "select", list: "checkpoints", def: "sd_xl_base_1.0", flag: "--base",
+      why: "The base SDXL model. The LoRAs were trained on SDXL base; others (e.g. juggernautXL) change the look a lot." },
+    { k: "lcm_lora", label: "LCM LoRA (fast mode)", type: "select", list: "loras", def: "lcm-lora-sdxl", flag: "--lcm-lora",
+      why: "The speed-up LoRA used only when fast is on." },
+  ]},
+  { title: "Pixel pipeline", note: "The PixelArtPalette node, after the model is done.", fields: [
+    { k: "smooth", label: "Smooth before downscale", type: "select", options: ["mode", "median", "none"], def: "mode", flag: "--smooth",
+      why: "Flattens noise before shrinking. mode = cleanest flat areas; median keeps a little texture; none = raw." },
+    { k: "filter", label: "Downscale filter", type: "select", options: ["nearest", "box"], def: "nearest", flag: "--filter",
+      why: "nearest = crisp hard pixels; box = averaged, softer edges." },
+    { k: "pixel_grid", label: "Pixel grid (long side)", type: "number", min: 32, max: 1024, step: 8, def: "auto", flag: "--pixel-grid",
+      why: "Logical resolution before upscaling. Pick one that divides the output evenly (160 for 320 wide)." },
+    { k: "snap_colors", label: "Snap color cap", type: "number", min: 1, max: 256, step: 1, def: "auto", flag: "--snap-colors",
+      why: "Color limit used by snap pixels." },
+    { k: "bg_tolerance", label: "Background tolerance", type: "number", min: 0, max: 128, step: 1, def: "16", flag: "--bg-tolerance",
+      why: "How loosely the background is matched for transparent bg. Raise it if a halo is left around the sprite." },
+    { k: "custom_hex", label: "Custom palette colors", type: "text", ph: "#000 #fff #0000aa #aa00aa", def: "off", flag: "--custom-hex",
+      why: "Your own palette. When filled, it replaces the Palette setting (palette becomes Custom)." },
+    { k: "preview", label: "Also save enlarged preview", type: "check", def: "off", flag: "--preview",
+      why: "Writes a nearest-neighbour enlargement next to each render (in the job folder, not shown as an output)." },
+    { k: "view_scale", label: "Preview enlargement", type: "number", min: 1, max: 32, step: 1, def: "8", flag: "--view-scale",
+      why: "How many times bigger the saved preview is." },
+  ]},
+  { title: "LAB · ControlNet", note: "Used by LAB conversions.", fields: [
+    { k: "control_end", label: "Control end", type: "number", min: 0.05, max: 1, step: 0.05, def: "0.8", flag: "--control-end",
+      why: "Fraction of the steps the input's shape is enforced; the rest is free for style. Lower = looser, more stylized." },
+    { k: "canny_low", label: "Canny low threshold", type: "number", min: 0.01, max: 0.99, step: 0.01, def: "0.3", flag: "--canny-low",
+      why: "Shape mode edge detection: lower keeps more faint edges (detail and noise)." },
+    { k: "canny_high", label: "Canny high threshold", type: "number", min: 0.01, max: 0.99, step: 0.01, def: "0.7", flag: "--canny-high",
+      why: "Lower = more edges count as strong. Must stay above the low threshold." },
+    { k: "control_model", label: "ControlNet model", type: "select", list: "controlnets", def: "controlnet-union-sdxl-promax", flag: "--control-model",
+      why: "The ControlNet file on the render server." },
+  ]},
+  { title: "LAB edit · inpainting", note: "Used when you paint a mask in LAB edit.", fields: [
+    { k: "mask_mode", label: "Mask mode", type: "select", options: ["fill", "blend"], def: "from the edit action", flag: "--mask-mode",
+      why: "fill starts the area blank (new content); blend starts from what's there (subtle). Normally the edit action picks this." },
+    { k: "mask_grow", label: "Mask grow (px)", type: "number", min: 0, max: 64, step: 1, def: "6", flag: "--mask-grow",
+      why: "Blend margin around the mask so the seam disappears. Raise it if an edge shows." },
+    { k: "inpaint_crop", label: "Crop around small masks", type: "check", def: "on", on: true, flag: "--no-inpaint-crop (when off)",
+      why: "Renders just the area around the mask at full resolution and stitches it back: much more detail for small edits." },
+    { k: "keep_outside", label: "Keep everything outside the mask", type: "check", def: "on", on: true, flag: "--no-keep-outside (when off)",
+      why: "Pastes the untouched area back pixel-exact. Turn off to let the whole picture drift a little." },
+  ]},
+  { title: "Steering models", note: "Used when steering or evolving.", fields: [
+    { k: "steer_model", label: "IPAdapter model", type: "select", list: "ipadapters", def: "ip-adapter-plus_sdxl_vit-h", flag: "--steer-model",
+      why: "The IPAdapter weights on the render server." },
+    { k: "steer_clip", label: "CLIP-vision model", type: "select", list: "clip_visions", def: "CLIP-ViT-H-14-laion2B", flag: "--steer-clip",
+      why: "The image encoder IPAdapter uses. Must match the IPAdapter model." },
+  ]},
+  { title: "Animation (experimental)", note: "Fill in a gesture to turn a render into a looping GIF: a base portrait, then the region re-inpainted per frame. Best for glows, blinks and smoke.", fields: [
+    { k: "animate", label: "Gesture", type: "text", ph: "blink / talk / glow / smoke / breathe or free text", def: "off", flag: "--animate",
+      why: "What moves. Presets set sensible frames, loop and strength; free text like \"smoke rising from cigar\" works too." },
+    { k: "anim_region", label: "Region", type: "text", ph: "the eyes / the cigar", def: "guessed", flag: "--anim-region",
+      why: "What to auto-mask (CLIPSeg words)." },
+    { k: "anim_box", label: "Region box", type: "text", ph: "0.25,0.36,0.67,0.49", def: "auto", flag: "--anim-box",
+      why: "Manual mask as left,top,right,bottom fractions when the auto-mask misses." },
+    { k: "anim_frames", label: "Frames", type: "number", min: 2, max: 8, step: 1, def: "per gesture", flag: "--anim-frames",
+      why: "2 = toggle (blink); 3–5 = motion (smoke)." },
+    { k: "anim_fps", label: "Speed (fps)", type: "number", min: 1, max: 30, step: 1, def: "6", flag: "--anim-fps", why: "Frames per second during the gesture." },
+    { k: "anim_hold", label: "Hold (s)", type: "number", min: 0, max: 10, step: 0.1, def: "1.2", flag: "--anim-hold", why: "How long the resting pose lingers." },
+    { k: "anim_denoise", label: "Change per frame", type: "number", min: 0.1, max: 1, step: 0.05, def: "0.65", flag: "--anim-denoise",
+      why: "0.3 subtle … 0.9 strong." },
+    { k: "anim_loop", label: "Loop", type: "select", options: ["pingpong", "cycle", "once-return"], def: "per gesture", flag: "--anim-loop",
+      why: "Frame order." },
+    { k: "anim_res", label: "Animation resolution", type: "number", min: 512, max: 1024, step: 64, def: "768", flag: "--anim-res",
+      why: "Base/inpaint resolution. Bigger = more region detail, slower." },
+  ]},
+];
+const ADV_KEYS = ADV_GROUPS.flatMap(g => g.fields);
+let ADV = (() => { const a = store.get("adv", {}); return a && typeof a === "object" ? a : {}; })();
+function advIsSet(f, v) { return f.type === "check" ? (f.on ? v === false : v === true) : !(v === undefined || v === null || v === ""); }
+function advParams() {
+  const out = {};
+  for (const f of ADV_KEYS) if (advIsSet(f, ADV[f.k])) out[f.k] = ADV[f.k];
+  return out;
+}
+function setAdv(a) { ADV = { ...(a || {}) }; store.set("adv", ADV); advCount(); if (!$("advPane").classList.contains("hidden")) renderAdv(); }
+function advCount() {
+  const n = Object.keys(advParams()).length;
+  $("advN").textContent = n ? `(${n})` : "";
+  $("advN").title = n ? `${n} advanced override${n > 1 ? "s" : ""} active — they apply to every render` : "";
+}
+function advList(f) {
+  const L = (META && META.adv_lists) || {};
+  if (f.options) return f.options;
+  if (f.list === "loras") return (META && META.loras) || [];
+  return L[f.list] || [];
+}
+function advCli(adv, art, q) {
+  const a = [];
+  const flagOf = k => (ADV_KEYS.find(f => f.k === k) || {}).flag || "";
+  for (const [k, v] of Object.entries(adv)) {
+    const f = ADV_KEYS.find(x => x.k === k); if (!f) continue;
+    if (art && ["smooth", "filter", "pixel_grid", "snap_colors", "bg_tolerance", "custom_hex", "preview", "view_scale"].includes(k)) continue;
+    if (k === "inpaint_crop") { if (v === false) a.push("--no-inpaint-crop"); continue; }
+    if (k === "keep_outside") { if (v === false) a.push("--no-keep-outside"); continue; }
+    if (f.type === "check") { if (v) a.push(flagOf(k)); continue; }
+    a.push(flagOf(k), q(k === "filter" && v === "box" ? "box (area average)" : v));
+  }
+  return a;
+}
+function renderAdv() {
+  const n = Object.keys(advParams()).length;
+  const ctl = f => {
+    const v = ADV[f.k];
+    if (f.type === "select") {
+      const opts = advList(f), cur = v ?? "";
+      const extra = cur && !opts.includes(cur) ? [cur] : [];   // keep a value the server no longer lists visible
+      return `<select data-advk="${f.k}"><option value="">default</option>${[...opts, ...extra].map(o =>
+        `<option value="${esc(o)}" ${o === cur ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    }
+    if (f.type === "check") return `<label class="inline" style="margin:0"><input type="checkbox" data-advk="${f.k}"
+      ${(f.on ? v !== false : v === true) ? "checked" : ""}> ${f.on ? "on" : "enable"}</label>`;
+    return `<input type="${f.type === "number" ? "number" : "text"}" data-advk="${f.k}" value="${esc(v ?? "")}"
+      ${f.type === "number" ? `min="${f.min}" max="${f.max}" step="${f.step}"` : ""} placeholder="${esc(f.ph || "default: " + f.def)}">`;
+  };
+  const range = f => f.type === "number" ? `${f.min} – ${f.max}` : f.type === "check" ? "on / off" : f.type === "select" ? `${advList(f).length} choices` : "text";
+  $("advPane").innerHTML = `<div class="advtop">
+      <span>Every remaining pixelmon setting. <b>Blank = default.</b> Changes apply to every render — normal, LAB, evolve and batch — and are saved with presets.</span>
+      <a href="${ATLAS_URL}" target="_blank" rel="noopener">📖 settings atlas — every setting, ranges &amp; examples ↗</a>
+      <a href="/docs/settings-atlas.html" target="_blank">(local copy)</a>
+      <button type="button" class="btn small" id="advReset" ${n ? "" : "disabled"}>Reset all ${n ? `(${n})` : ""}</button>
+      ${META && META.adv_lists && !META.adv_lists.live ? `<span style="color:var(--warn,#fa5)">render server unreachable — model lists are fallbacks</span>` : ""}
+    </div>` + ADV_GROUPS.map(g => `<fieldset class="advgroup"><legend>${esc(g.title)}</legend><p>${esc(g.note)}</p><div class="advgrid">${
+      g.fields.map(f => `<div class="advf ${advIsSet(f, ADV[f.k]) ? "set" : ""}">
+        <label><span>${esc(f.label)}</span><button type="button" class="rs" data-advreset="${f.k}" title="back to default">↺</button></label>
+        ${ctl(f)}
+        <div class="meta">default ${esc(f.def)} · ${range(f)} · <code>${esc(f.flag)}</code></div>
+        <div class="why">${esc(f.why)}</div></div>`).join("")}</div></fieldset>`).join("") +
+    `<fieldset class="advgroup"><legend>Not here on purpose</legend><ul class="advnot">
+      <li><code>--server</code> — the GUI always renders on the rtx box.</li>
+      <li><code>--steer DIR</code>, <code>--steer-max</code> — pick reference images in the Steering tab instead.</li>
+      <li><code>--batch</code>, <code>--output-to</code>, <code>--move-to-dirs</code>, <code>--create-dirs</code>, <code>--no-subdirs</code> — the Batch tab and gallery folders handle these.</li>
+      <li><code>--init</code>, <code>--control</code>, <code>--mask</code>, <code>--denoise</code> — LAB and evolve set these from the images you pick.</li>
+      <li><code>--no-open</code>, <code>--show-prompt</code> — always on for GUI jobs. <code>--list-palettes</code> / <code>--list-styles</code> — the pickers show them.</li>
+    </ul></fieldset>`;
+  const save = () => { store.set("adv", ADV); advCount(); refresh(); };
+  $("advPane").querySelectorAll("[data-advk]").forEach(el => el.onchange = () => {
+    const f = ADV_KEYS.find(x => x.k === el.dataset.advk);
+    if (f.type === "check") ADV[f.k] = el.checked;
+    else if (f.type === "number") ADV[f.k] = el.value === "" ? "" : +el.value;
+    else ADV[f.k] = el.value.trim();
+    if (!advIsSet(f, ADV[f.k])) delete ADV[f.k];
+    el.closest(".advf").classList.toggle("set", advIsSet(f, ADV[f.k]));
+    save();
+    const n2 = Object.keys(advParams()).length;
+    $("advReset").disabled = !n2; $("advReset").textContent = `Reset all${n2 ? ` (${n2})` : ""}`;
+  });
+  $("advPane").querySelectorAll("[data-advreset]").forEach(b => b.onclick = () => { delete ADV[b.dataset.advreset]; save(); renderAdv(); });
+  $("advReset").onclick = () => { ADV = {}; save(); renderAdv(); };
+}
+
 // ---------------- presets (lab snapshots) ----------------
 let FORM_DEFAULTS = {};   // set in init() once the LoRA list is known
 const STEER_DEFAULTS = { use: false, sel: [], strength: 0.7, weight: "style transfer", combine: "concat", start: 0, end: 1 };
@@ -1383,7 +1571,7 @@ function labSnapshot(active) {
   return { ...l, adj: { ...LABS.adj }, active: !!active };
 }
 function snapshot(fromLab) {
-  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO }, lab: labSnapshot(fromLab) };
+  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams() };
 }
 function snapshotOfJob(job, o) {
   const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
@@ -1396,6 +1584,7 @@ function snapshotOfJob(job, o) {
       init: !!p.lab_init, denoise: p.lab_denoise ?? LABS.denoise, adj: { ...ADJ0, ...(p.lab_adjust || {}) },
       subject: (p.form && p.form.subject) || LABS.subject, w: +(String(p.out || "").split("x")[0]) || LABS.w,
       pseed: o.seed, n: LABS.n } : labSnapshot(false),
+    adv: { ...(p.adv || {}) },
     from: { dir: job.dir, file: o.file, command: job.command } };
 }
 function applySnapshot(snap) {
@@ -1407,7 +1596,9 @@ function applySnapshot(snap) {
   $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
   $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
   renderRefs(); saveSteer();
-  Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo(); refresh();
+  Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo();
+  setAdv(snap.adv || {});                                // advanced overrides: none unless the preset has them
+  refresh();
   if (snap.lab) {
     Object.assign(LABS, snap.lab, { adj: { ...ADJ0, ...(snap.lab.adj || {}) }, group: null, prevJob: null });
     maskCanvas.width = 0;   // rebuilt from LABS.mask when the input image loads
@@ -2724,6 +2915,8 @@ function switchTab(t) {
   $("presetsPane").classList.toggle("hidden", t !== "presets");
   $("batchPane").classList.toggle("hidden", t !== "batch");
   $("labPane").classList.toggle("hidden", t !== "lab");
+  $("advPane").classList.toggle("hidden", t !== "adv");
+  if (t === "adv") renderAdv();
   if (t === "lab") loadLab();
   if (t === "presets") loadPresets();
   if (t === "steer") loadRefs();
@@ -2741,7 +2934,7 @@ async function init() {
     + Object.entries(META.palettes).map(([k, v]) => `<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join("");
   $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
   $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
-  renderStyles();
+  renderStyles(); advCount();
   initHelp();
   initFolds();
   initPeek();
@@ -2797,6 +2990,8 @@ async function init() {
   $("sweepBtn").onclick = sweep;
   $("copyCmd").onclick = e => copyText(cliFor(params()), e.currentTarget);
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+  // open a tab by URL hash (#presets, #lab, #steer, #batch, #gallery, #queue, #adv)
+  if (["presets", "lab", "steer", "batch", "gallery", "queue", "adv"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
   document.addEventListener("click", e => {
     const ev = e.target.closest("[data-evo-job]");
     if (ev) {
