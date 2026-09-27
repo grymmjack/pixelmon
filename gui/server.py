@@ -1302,6 +1302,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if u.path.startswith("/docs/pipeline/") and u.path.lower().endswith((".png", ".jpg")):
+            full = os.path.realpath(os.path.join(REPO, "docs", urllib.parse.unquote(u.path[len("/docs/"):])))
+            if not full.startswith(os.path.realpath(os.path.join(REPO, "docs", "pipeline")) + os.sep) or not os.path.isfile(full):
+                return self._json({"error": "not found"}, 404)
+            return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path.startswith("/docs/") and u.path.endswith(".html"):
             # the settings atlas (also published as an artifact); the file has no page skeleton of its own
             full = os.path.realpath(os.path.join(REPO, "docs", urllib.parse.unquote(u.path[len("/docs/"):])))

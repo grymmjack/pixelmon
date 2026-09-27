@@ -71,6 +71,30 @@ td.ctl code { display: inline-block; margin: 0 0 3px; }
 mark { background: var(--hl); color: inherit; padding: 0 1px; }
 .empty { padding: 40px 0; color: var(--muted); text-align: center; }
 footer { margin-top: 40px; color: var(--muted); font-size: 13px; max-width: 90ch; }
+
+/* ---- pipeline walkthrough ---- */
+.pipe { margin-top: 26px; }
+.pipe h2 { font: 400 40px/1 var(--display); margin: 0 0 6px; }
+.pipe > p { color: var(--muted); max-width: 80ch; margin: 0 0 18px; }
+.layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; counter-reset: layer; }
+.layer { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px 16px; display: grid; gap: 10px; }
+.layer header { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.layer .no { font: 400 30px/1 var(--display); color: var(--accent); min-width: 1.4em; }
+.layer h3 { font: 600 17px/1.3 var(--body); margin: 0; }
+.layer .node { font: 12px var(--mono); color: var(--node); }
+.layer > p { margin: 0; color: var(--muted); max-width: 90ch; }
+.strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.strip.wide { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+figure { margin: 0; display: grid; gap: 5px; align-content: start; }
+figure img { width: 100%; height: auto; display: block; background: var(--surface2); border: 1px solid var(--line); border-radius: 2px; }
+figure img.px { image-rendering: pixelated; }
+figure img.zoom { margin-top: 2px; }
+figure img.checker { background: repeating-conic-gradient(#b9bccb 0 25%, #e6e8f0 0 50%) 0 0 / 12px 12px; }
+figcaption { font-size: 13px; line-height: 1.35; }
+figcaption code { font-size: 11.5px; }
+.sub { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 0 -4px; }
+.optional { margin-top: 26px; }
+.optional h3.opt { font: 400 30px/1 var(--display); margin: 0 0 6px; }
 @media (max-width: 600px) { h1 { font-size: 40px; } section h2 { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 html { scroll-behavior: smooth; }
@@ -95,6 +119,14 @@ html { scroll-behavior: smooth; }
   <nav class="chips" id="chips" aria-label="Sections"></nav>
 </div>
 
+<section class="pipe" id="pipeline">
+  <h2>How a render is built</h2>
+  <p>One prompt and one seed (1000, the <code>ega-sierra-scene</code> preset), changed one layer at a time. Every picture is a real render from the rtx box.</p>
+  <ol class="layers"><li class="layer"><header><span class="no">1</span><h3>Prompt → text encoders</h3><span class="node">CLIPTextEncode</span></header><p>Your words, the LoRA trigger, kind/genre/era tags and style guides become the vectors the model steers by. Weighting changes what the picture is about: same seed, one weight added.</p><div class="strip wide"><figure><img class="px" src="pipeline/m_plain.png" alt="" loading="lazy"><figcaption>plain: <code>a glowing crystal ball on a desk</code></figcaption></figure><figure><img class="px" src="pipeline/m_weighted.png" alt="" loading="lazy"><figcaption>weighted: <code>(glowing crystal ball:1.6)</code></figcaption></figure></div></li><li class="layer"><header><span class="no">2</span><h3>LoRA → the look</h3><span class="node">LoraLoader</span></header><p>The LoRA teaches the model a style. These are the model's raw pictures, before any pixel processing.</p><div class="strip"><figure><img class="" src="pipeline/m_nolora_raw.jpg" alt="" loading="lazy"><figcaption>no LoRA: SDXL base alone</figcaption></figure><figure><img class="" src="pipeline/m_lora04_raw.jpg" alt="" loading="lazy"><figcaption><code>ega-art-v2</code> at 0.4</figcaption></figure><figure><img class="" src="pipeline/m_lora08_raw.jpg" alt="" loading="lazy"><figcaption>at 0.8 (the preset)</figcaption></figure></div></li><li class="layer"><header><span class="no">3</span><h3>Sampling → from noise to picture</h3><span class="node">KSampler</span></header><p>The sampler removes noise in steps; CFG sets how hard each step pulls toward the prompt.</p><div class="strip"><figure><img class="" src="pipeline/m_steps04_raw.jpg" alt="" loading="lazy"><figcaption><code>--steps 4</code>: still mostly noise</figcaption></figure><figure><img class="" src="pipeline/m_steps10_raw.jpg" alt="" loading="lazy"><figcaption><code>--steps 10</code></figcaption></figure><figure><img class="" src="pipeline/m_lora08_raw.jpg" alt="" loading="lazy"><figcaption>25 steps (default)</figcaption></figure><figure><img class="" src="pipeline/m_cfg3_raw.jpg" alt="" loading="lazy"><figcaption><code>--cfg 3</code>: loose, washed out</figcaption></figure><figure><img class="" src="pipeline/m_cfg12_raw.jpg" alt="" loading="lazy"><figcaption><code>--cfg 12</code>: harsh, over-driven</figcaption></figure></div></li><li class="layer"><header><span class="no">4</span><h3>VAE decode → the raw picture</h3><span class="node">VAEDecode</span></header><p>The model's full-resolution image. Everything after this point is post-processing on this one picture, so palette, dither and cleanup never change what was drawn.</p><div class="strip wide"><figure><img class="" src="pipeline/m_lora08_raw.jpg" alt="" loading="lazy"><figcaption>raw model output, 1024 × 640</figcaption></figure><figure><img class="px" src="pipeline/p4_angles.png" alt="" loading="lazy"><figcaption>after the palette node: 320 × 200, 16 EGA colors</figcaption></figure></div></li><li class="layer"><header><span class="no">5</span><h3>Palette node → pixel art, one step at a time</h3><span class="node">PixelArtPalette</span></header><p>Each picture adds one step to the one before it. The zoom below each shows the difference.</p><div class="strip"><figure><img class="px" src="pipeline/p0_downscale.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/p0_downscale_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>downscale to 320 × 200 (<code>--palette none</code>): in-between colors</figcaption></figure><figure><img class="px" src="pipeline/p1_palette.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/p1_palette_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>+ lock to EGA: exact 16 colors, some speckle</figcaption></figure><figure><img class="px" src="pipeline/p2_despeckle.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/p2_despeckle_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>+ <code>--despeckle 2</code>: stray islands gone</figcaption></figure><figure><img class="px" src="pipeline/p3_outlines.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/p3_outlines_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>+ <code>--thin-lines 4</code>: 1-px outlines</figcaption></figure><figure><img class="px" src="pipeline/p4_angles.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/p4_angles_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>+ <code>--pixel-angles 1.5</code>: clean edge angles (the preset)</figcaption></figure></div></li><li class="layer"><header><span class="no">6</span><h3>Palette variations</h3><span class="node">PixelArtPalette</span></header><p>Same raw picture, different finishing.</p><div class="strip"><figure><img class="px" src="pipeline/a_dither.png" alt="" loading="lazy"><img class="px zoom" src="pipeline/a_dither_zoom.png" alt="zoomed detail" loading="lazy"><figcaption>EGA + <code>--dither bayer4</code></figcaption></figure><figure><img class="px" src="pipeline/a_wide.png" alt="" loading="lazy"><figcaption><code>--pixel-size 2x1</code>: wide pixels</figcaption></figure><figure><img class="px" src="pipeline/a_cga.png" alt="" loading="lazy"><figcaption><code>--palette CGA1-HIGH</code></figcaption></figure><figure><img class="px" src="pipeline/a_gameboy.png" alt="" loading="lazy"><figcaption><code>--palette GAMEBOY</code></figcaption></figure></div></li><li class="layer"><header><span class="no">7</span><h3>Transparent background</h3><span class="node">PixelArtPalette · transparent_bg</span></header><p>For sprites: the plain background around one subject is cut away.</p><div class="strip"><figure><img class="px" src="pipeline/s_sprite_opaque.png" alt="" loading="lazy"><figcaption>as rendered</figcaption></figure><figure><img class="px checker" src="pipeline/s_sprite.png" alt="" loading="lazy"><figcaption><code>--transparent</code> (checkerboard = see-through)</figcaption></figure></div></li></ol>
+  <div class="optional"><h3 class="opt">Optional inputs</h3>
+  <p class="dim" style="margin:0 0 14px">These feed extra pictures into sampling (layer 3).</p>
+  <ol class="layers"><li class="layer"><header><span class="no">A</span><h3>img2img → start from a picture</h3><span class="node">LoadImage → VAEEncode → KSampler.denoise</span></header><p>The finished study as the starting point, prompt changed to <code>(dragon's treasure cave:1.5), (piles of gold coins:1.4)</code>. Denoise sets how much may change. Flat pixel-art start images anchor hard, so real changes need 0.85 or more.</p><div class="strip"><figure><img class="px" src="pipeline/p4_angles.png" alt="" loading="lazy"><figcaption>start image</figcaption></figure><figure><img class="px" src="pipeline/i_init50.png" alt="" loading="lazy"><figcaption><code>--denoise 0.5</code>: barely moves</figcaption></figure><figure><img class="px" src="pipeline/i_init75.png" alt="" loading="lazy"><figcaption><code>0.75</code>: details shift</figcaption></figure><figure><img class="px" src="pipeline/i_init95.png" alt="" loading="lazy"><figcaption><code>0.95</code>: gold appears, the room's layout echoes on</figcaption></figure></div></li><li class="layer"><header><span class="no">B</span><h3>LAB → ControlNet keeps the shape</h3><span class="node">Canny → ControlNetApplyAdvanced</span></header><p>The VGA harbor preset converted to EGA. Shape mode follows the edge map; layout + colors mode keeps its colors too.</p><div class="strip"><figure><img class="px" src="pipeline/lab_input.png" alt="" loading="lazy"><figcaption>input: a 256-color VGA render</figcaption></figure><figure><img class="px" src="pipeline/lab_edges.png" alt="" loading="lazy"><figcaption>edge map (what shape mode follows)</figcaption></figure><figure><img class="px" src="pipeline/c_canny.png" alt="" loading="lazy"><figcaption>shape (<code>--control-mode canny</code>)</figcaption></figure><figure><img class="px" src="pipeline/c_tile.png" alt="" loading="lazy"><figcaption>layout + colors (<code>tile</code>)</figcaption></figure></div></li><li class="layer"><header><span class="no">C</span><h3>Steering → borrow a reference's style</h3><span class="node">IPAdapterAdvanced</span></header><p>Same prompt and seed, one reference image, weight type <code>style transfer</code>. A gentle strength borrows its palette and mood; too much tears the picture apart.</p><div class="strip"><figure><img class="px" src="pipeline/steer_ref.png" alt="" loading="lazy"><figcaption>reference</figcaption></figure><figure><img class="px" src="pipeline/p4_angles.png" alt="" loading="lazy"><figcaption>without steering</figcaption></figure><figure><img class="px" src="pipeline/s_steer04.png" alt="" loading="lazy"><figcaption><code>--steer-strength 0.4</code>: borrowed mood</figcaption></figure><figure><img class="px" src="pipeline/s_steer.png" alt="" loading="lazy"><figcaption><code>0.8</code>: too strong for a reference this different</figcaption></figure></div></li><li class="layer"><header><span class="no">D</span><h3>Inpainting → redraw only part</h3><span class="node">VAEEncodeForInpaint · crop-and-stitch</span></header><p>Only the pink area is redrawn; everything outside is pasted back pixel-exact.</p><div class="strip wide"><figure><img class="px" src="pipeline/n_mask.png" alt="" loading="lazy"><figcaption>mask (pink = redraw)</figcaption></figure><figure><img class="px" src="pipeline/n_inpaint.png" alt="" loading="lazy"><figcaption><code>fill</code>: a stained glass window</figcaption></figure></div></li></ol></div>
+</section>
 <main id="main"></main>
 <div class="empty" id="empty" hidden>No setting matches that filter.</div>
 
@@ -153,7 +185,7 @@ const S = [
    "Warns when settings fight each other (a style banning a word in your subject, outlines too thick for a small image, grid without angles…) and offers one-click fixes."],
  ]},
  { id: "model", title: "Model & LoRA", note: "SDXL base model plus one LoRA that teaches the look.", rows: [
-  ["Checkpoint", [G, C, N], { gui: "⚙ Advanced › Checkpoint", cli: "--base FILE", node: "CheckpointLoaderSimple.ckpt_name" },
+  ["Checkpoint", [G, C, N], { gui: "Sampler section · ⚙ Advanced", cli: "--base FILE", node: "CheckpointLoaderSimple.ckpt_name" },
    "any SDXL checkpoint in models/checkpoints/", "<code>sd_xl_base_1.0.safetensors</code>", "<code>--base sd_xl_base_1.0.safetensors</code>",
    "The base model. The LoRAs were trained on SDXL base 1.0; other checkpoints (juggernautXL) change the look a lot."],
   ["LoRA", [G, C, N], { gui: "LoRA", cli: "--lora FILE", node: "LoraLoader.lora_name" },
@@ -177,10 +209,10 @@ const S = [
   ["CFG", [G, C, N], { gui: "CFG (blank = default)", cli: "--cfg F", node: "KSampler.cfg" },
    "0 – 30 (step 0.5). Good: 5 – 9 (fast: 1 – 2)", "7 (fast: 1.5)", "<code>--cfg 6.5</code>",
    "How strictly the picture follows the prompt. Too high = harsh, over-saturated, fried."],
-  ["Sampler", [G, C, N], { gui: "⚙ Advanced › Sampler", cli: "--sampler NAME", node: "KSampler.sampler_name" },
+  ["Sampler", [G, C, N], { gui: "Sampler section · ⚙ Advanced", cli: "--sampler NAME", node: "KSampler.sampler_name" },
    `Any of ComfyUI's 44: <span class="list">${SAMPLERS}</span>`, "euler (fast: lcm)", "<code>--sampler dpmpp_2m</code>",
    "The denoising algorithm. dpmpp_2m / dpmpp_2m_sde are sharper; euler_ancestral is looser. With fast mode keep lcm."],
-  ["Scheduler", [G, C, N], { gui: "⚙ Advanced › Scheduler", cli: "--scheduler NAME", node: "KSampler.scheduler" },
+  ["Scheduler", [G, C, N], { gui: "Sampler section · ⚙ Advanced", cli: "--scheduler NAME", node: "KSampler.scheduler" },
    "ComfyUI offers: simple, sgm_uniform, karras, exponential, ddim_uniform, beta, normal, linear_quadratic, kl_optimal", "normal (fast: sgm_uniform)", "<code>--sampler dpmpp_2m --scheduler karras</code>",
    "How noise is spread over the steps. karras is a common upgrade with the dpmpp samplers."],
   ["Denoise (text-to-image)", [N], { node: "KSampler.denoise (set by pixelmon)" }, "0 – 1", "1.0", "—",
@@ -369,7 +401,7 @@ main.innerHTML = S.map(s => `<section id="${s.id}" data-sec>
     <td class="name">${esc(r[0])}<div class="where">${r[1].map(badge).join("")}</div></td>
     <td class="ctl">${ctlHtml(r[2])}</td><td class="rng">${r[3]}</td><td class="def">${r[4]}</td><td class="ex">${r[5]}</td><td>${r[6]}</td>
   </tr>`).join("")}</tbody></table></div></section>`).join("");
-document.getElementById("chips").innerHTML = S.map(s => `<a href="#${s.id}">${esc(s.title)}</a>`).join("");
+document.getElementById("chips").innerHTML = `<a href="#pipeline">How a render is built</a>` + S.map(s => `<a href="#${s.id}">${esc(s.title)}</a>`).join("");
 
 // filter
 const rows = [...main.querySelectorAll("tbody tr")];
@@ -391,6 +423,7 @@ function apply() {
   rows.forEach(tr => { const hit = !term || tr.dataset.text.includes(term); tr.hidden = !hit; if (hit) { shown++; tr.querySelectorAll("td").forEach(td => mark(td, term)); } });
   document.querySelectorAll("[data-sec]").forEach(sec => sec.hidden = !sec.querySelector("tbody tr:not([hidden])"));
   document.getElementById("empty").hidden = shown > 0;
+  document.getElementById("pipeline").hidden = !!term;
   count.textContent = term ? `${shown} of ${total} settings` : `${total} settings`;
   try { localStorage.setItem("atlas-q", q.value); } catch (e) {}
 }
