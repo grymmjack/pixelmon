@@ -997,23 +997,35 @@ def make_backup(keyword, gallery):
     while os.path.exists(path):
         path, i = os.path.join(BACKUPS, f"{base}-{i}.zip"), i + 1
     roots = [GALLERY_HOME] + ([gallery] if not os.path.realpath(gallery).startswith(os.path.realpath(GALLERY_HOME) + os.sep) else [])
-    n = 0
-    with zipfile.ZipFile(path + ".part", "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for root in roots:
-            top = os.path.basename(os.path.normpath(root))
-            for d, dirs, files in os.walk(root):
-                rel = os.path.relpath(d, root)
-                if rel == ".":
-                    dirs[:] = [x for x in dirs if x not in BACKUP_SKIP]
-                for f in files:
-                    if f.endswith(".part"):
-                        continue
-                    full = os.path.join(d, f)
-                    z.write(full, os.path.normpath(os.path.join(top, rel, f)),
-                            compress_type=zipfile.ZIP_STORED if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".zip")) else zipfile.ZIP_DEFLATED)
-                    n += 1
-    os.replace(path + ".part", path)
-    return path, n, os.path.getsize(path)
+    n = skipped = 0
+    try:
+        with zipfile.ZipFile(path + ".part", "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            for root in roots:
+                top = os.path.basename(os.path.normpath(root))
+                for d, dirs, files in os.walk(root):
+                    rel = os.path.relpath(d, root)
+                    if rel == ".":
+                        dirs[:] = [x for x in dirs if x not in BACKUP_SKIP]
+                    for f in files:
+                        if f.endswith(".part"):
+                            continue
+                        full = os.path.join(d, f)
+                        if not os.path.isfile(full):          # a broken link (e.g. a steering ref since deleted)
+                            skipped += 1
+                            continue
+                        try:
+                            z.write(full, os.path.normpath(os.path.join(top, rel, f)),
+                                    compress_type=zipfile.ZIP_STORED if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".zip"))
+                                    else zipfile.ZIP_DEFLATED)
+                            n += 1
+                        except OSError:                        # unreadable: skip it rather than lose the backup
+                            skipped += 1
+        os.replace(path + ".part", path)
+    except BaseException:
+        if os.path.exists(path + ".part"):
+            os.remove(path + ".part")
+        raise
+    return path, n, os.path.getsize(path), skipped
 
 
 BOARD_LAYOUT = ".layout.json"          # per board: {"order": [file, …], "sizes": {file: [cols, rows]}}
@@ -1254,6 +1266,66 @@ def launch(app, path, cwd=None):
     subprocess.Popen([exe] + args, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      stdin=subprocess.DEVNULL, start_new_session=True)
     return exe
+
+
+def list_backups():
+    if not os.path.isdir(BACKUPS):
+        return []
+    out = []
+    for f in sorted(os.listdir(BACKUPS), key=lambda f: -os.path.getmtime(os.path.join(BACKUPS, f))):
+        full = os.path.join(BACKUPS, f)
+        if f.endswith(".zip") and os.path.isfile(full):
+            try:
+                with zipfile.ZipFile(full) as z:
+                    n = sum(1 for i in z.infolist() if not i.is_dir())
+            except zipfile.BadZipFile:
+                continue
+            out.append({"name": f, "bytes": os.path.getsize(full), "mtime": os.path.getmtime(full), "files": n})
+    return out
+
+
+def restore_backup(name, gallery):
+    """Put back everything from a backup that's missing now. Never overwrites an existing file."""
+    full = os.path.realpath(os.path.join(BACKUPS, os.path.basename(str(name or ""))))
+    if not full.startswith(os.path.realpath(BACKUPS) + os.sep) or not os.path.isfile(full):
+        raise ValueError("no such backup")
+    roots = {os.path.basename(os.path.normpath(GALLERY_HOME)): GALLERY_HOME,
+             os.path.basename(os.path.normpath(gallery)): gallery}    # the gallery, if it lives outside GALLERY_HOME
+    restored = kept = 0
+    with zipfile.ZipFile(full) as z:
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+            top, _, rest = info.filename.partition("/")
+            root = roots.get(top)
+            if not root or not rest:
+                continue
+            dest = os.path.realpath(os.path.join(root, rest))
+            if not dest.startswith(os.path.realpath(root) + os.sep) or os.path.relpath(dest, root).split(os.sep)[0] == "backups":
+                continue                                  # nothing outside the gallery; never into backups/
+            if os.path.exists(dest):
+                kept += 1
+                continue
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with z.open(info) as src, open(dest, "wb") as out:
+                shutil.copyfileobj(src, out)
+            restored += 1
+    return {"restored": restored, "kept": kept}
+
+
+def clear_gallery(gallery):
+    """Delete every render in the gallery folder (job folders). Presets, corkboards, LAB inputs, steering
+    images and backups live elsewhere and are untouched."""
+    gallery = os.path.realpath(gallery)
+    if gallery in (os.path.realpath(os.path.expanduser("~")), os.path.realpath(GALLERY_HOME), "/"):
+        raise ValueError("refusing to clear that folder")
+    n = 0
+    for f in os.listdir(gallery):
+        p = os.path.join(gallery, f)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+            n += 1
+    return n
 
 
 def list_boards():
@@ -1801,6 +1873,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not full.startswith(os.path.realpath(BOARDS) + os.sep) or not full.lower().endswith(IMG_EXT):
                 return self._json({"error": "forbidden"}, 403)
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
+        if u.path == "/api/backups":
+            return self._json({"backups": list_backups(), "folder": BACKUPS})
         if u.path == "/api/backup/download":
             name = os.path.basename(urllib.parse.parse_qs(u.query).get("name", [""])[0])
             full = os.path.realpath(os.path.join(BACKUPS, name))
@@ -2008,9 +2082,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"file": os.path.basename(out), "size": image_size(out)})
             if u.path == "/api/jobs/clear":
                 return self._json(self.jobs.clear(bool(body.get("stop_running"))))
+            if u.path == "/api/backups/restore":
+                r = restore_backup(body.get("name"), self.gallery)
+                return self._json(r)
+            if u.path == "/api/gallery/clear":
+                if any(j["status"] in ("queued", "running") for j in self.jobs.snapshot()):
+                    raise ValueError("renders are still queued or running — wait for them (or ✕ clear queue) first")
+                backup = None
+                if body.get("backup", True):
+                    path, n, size, _ = make_backup(body.get("keyword") or "before-clear", self.gallery)
+                    backup = os.path.basename(path)
+                removed = clear_gallery(self.gallery)
+                self.jobs.clear()
+                return self._json({"removed": removed, "backup": backup})
             if u.path == "/api/backup":
-                path, n, size = make_backup(body.get("keyword"), self.gallery)
-                return self._json({"path": path, "name": os.path.basename(path), "files": n, "bytes": size})
+                path, n, size, skipped = make_backup(body.get("keyword"), self.gallery)
+                return self._json({"path": path, "name": os.path.basename(path), "files": n, "bytes": size, "skipped": skipped})
             if u.path == "/api/boards/move":
                 # move one image from a board to another (the file moves; both layouts are kept tidy)
                 src_d, dst_d = board_dir(body.get("board")), board_dir(body.get("to"))
@@ -2178,6 +2265,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"ok": self.jobs.cancel(u.path.rsplit("/", 1)[1])})
         except ValueError as e:
             return self._json({"error": str(e)}, 400)
+        except Exception as e:                            # never drop the connection: report what went wrong
+            import traceback
+            traceback.print_exc()
+            return self._json({"error": f"server error: {type(e).__name__}: {e}"}, 500)
         return self._json({"error": "not found"}, 404)
 
 
@@ -2223,7 +2314,7 @@ Handler._upload = _upload
 
 
 def main():
-    global REFS, PRESETS, BOARDS, LAB
+    global REFS, PRESETS, BOARDS, LAB, GALLERY_HOME, BACKUPS, SETUP_FILE
     ap = argparse.ArgumentParser(prog="pixelmon-gui", description="Web GUI for pixelmon (renders on the rtx box).")
     ap.add_argument("--port", type=int, default=8190)
     ap.add_argument("--lan", action="store_true", help="listen on all interfaces so other devices on the LAN can use it")
@@ -2239,6 +2330,9 @@ def main():
     PRESETS = os.path.expanduser(args.presets)
     BOARDS = os.path.expanduser(args.boards)
     LAB = os.path.expanduser(args.lab)
+    GALLERY_HOME = os.path.dirname(os.path.normpath(PRESETS))           # backups + setup live beside the presets
+    BACKUPS = os.path.join(GALLERY_HOME, "backups")
+    SETUP_FILE = os.path.join(GALLERY_HOME, "gui-setup.json")
     os.makedirs(os.path.join(REFS, "gui-drops"), exist_ok=True)
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)

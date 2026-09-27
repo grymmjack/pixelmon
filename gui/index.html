@@ -631,7 +631,10 @@ fieldset.closed { padding-bottom: 2px; }
       <div id="queueList"><div class="empty">Nothing rendered yet this session.</div></div></div>
     <div class="pane hidden" id="galleryPane">
       <div class="panebar"><span class="grow" id="backupMsg"></span>
-        <button type="button" class="btn small" id="galleryBackup" title="zip your whole pixelmon gallery (renders, presets, corkboards, LAB inputs) into one backup file">🗄 backup…</button></div>
+        <button type="button" class="btn small" id="galleryBackup" title="zip your whole pixelmon gallery (renders, presets, corkboards, LAB inputs) into one backup file">🗄 backup…</button>
+        <button type="button" class="btn small" id="galleryRestore" title="put back what's missing from a backup (never overwrites)">♻ restore…</button>
+        <button type="button" class="btn small" id="galleryBackups" title="open the backups folder (~/pixelmon-gallery/backups) — right-click for other programs">📂 backups</button>
+        <button type="button" class="btn small" id="galleryClear" title="delete every render in the gallery (a backup is made first)">✕ clear gallery…</button></div>
       <div id="galleryList"></div></div>
     <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="setupPane"></div>
@@ -1870,7 +1873,7 @@ function folderTargetOf(el) {
   const b = el.closest("button, a"); if (!b) return null;
   return ({ openGallery: { folder: "gallery" }, revealPresets: { folder: "presets", arg: PFOLDER !== "*" ? PFOLDER : "" },
             boardReveal: { folder: "board", arg: CORK.board }, batchOpenExport: { folder: "dir", arg: $("batchExport").value.trim() },
-            backupOpen: { folder: "backups" }, revealCol: { folder: "refs", arg: STEER.col },
+            backupOpen: { folder: "backups" }, galleryBackups: { folder: "backups" }, revealCol: { folder: "refs", arg: STEER.col },
             lbReveal: lbItem ? { folder: "job", arg: lbItem.job.dir } : null })[b.id] || null;
 }
 async function openWith(app, target) {
@@ -2038,6 +2041,43 @@ function initDragScroll() {
   });
 }
 
+
+// ---------------- gallery backups: open / restore; clear the gallery ----------------
+const ok = msg => { showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = msg;
+  setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 5000); };
+function initGalleryTools() {
+  $("galleryBackups").onclick = () => reveal("backups");
+  $("galleryRestore").onclick = async e => {
+    const b = e.currentTarget.getBoundingClientRect();        // before any await: currentTarget is gone after it
+    let r; try { r = await api("/api/backups"); } catch (err) { return showErr(err); }
+    if (!r.backups.length) return showErr("No backups yet — make one with 🗄 backup… first.");
+    const items = r.backups.map(x => [`${x.name} · ${(x.bytes / 1048576).toFixed(1)} MB · ${new Date(x.mtime * 1000).toLocaleString()}`, async () => {
+      if (!confirm(`Restore from ${x.name}?\n\nEverything in it that's missing now (renders, presets, corkboards, LAB inputs) is put back.\n`
+                   + "Nothing that exists now is overwritten or deleted.")) return;
+      try {
+        const res = await api("/api/backups/restore", { name: x.name });
+        ok(`restored ${res.restored} file${res.restored === 1 ? "" : "s"} from ${x.name} (${res.kept} already there, left as they are)`);
+      } catch (err) { return showErr(err); }
+      loadGallery(); loadPresets(); loadBoards();
+    }]);
+    openMenu(b.left, b.bottom + 4, null, [["♻ Restore which backup? ▸", items]]);
+    document.querySelector("#openMenu [data-extra]")?.click();   // straight to the list
+  };
+  $("galleryClear").onclick = async () => {
+    const n = GALLERY.length;
+    if (!confirm(`✕ CLEAR THE GALLERY\n\nThis deletes every render in your gallery${n ? ` (${n} job${n > 1 ? "s" : ""})` : ""} and empties the queue list.\n\n`
+      + "A backup of your whole pixelmon gallery is made first, so ♻ restore… can bring it all back.\n"
+      + "Presets, corkboards, LAB inputs, steering images and old backups are not touched.\n\nContinue?")) return;
+    const t = prompt("Type CLEAR to confirm:");
+    if ((t || "").trim().toUpperCase() !== "CLEAR") return showErr("Nothing was cleared.");
+    try {
+      const r = await api("/api/gallery/clear", { backup: true });
+      ok(`cleared ${r.removed} render folder${r.removed === 1 ? "" : "s"} — backup saved as ${r.backup}`);
+    } catch (err) { return showErr(err); }
+    lastJobsJSON = ""; poll(); loadGallery();
+  };
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -2058,7 +2098,8 @@ function initPaneTools() {
     const msg = $("backupMsg"); msg.textContent = "zipping your gallery…";
     try {
       const r = await api("/api/backup", { keyword: kw });
-      msg.innerHTML = `saved <b>${esc(r.name)}</b> · ${r.files} files · ${(r.bytes / 1048576).toFixed(1)} MB — `
+      msg.innerHTML = `saved <b>${esc(r.name)}</b> · ${r.files} files · ${(r.bytes / 1048576).toFixed(1)} MB`
+        + `${r.skipped ? ` · ${r.skipped} broken link${r.skipped > 1 ? "s" : ""} skipped` : ""} — `
         + `<button type="button" class="btn small" id="backupOpen">📂 open folder</button> `
         + `<a class="btn small" href="/api/backup/download?name=${encodeURIComponent(r.name)}" download>⬇ download</a>`;
       $("backupOpen").onclick = () => reveal("backups");
@@ -3696,6 +3737,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initGalleryTools();
   initSetup();
   initOpenWith();
   initDragScroll();

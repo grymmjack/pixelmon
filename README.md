@@ -446,7 +446,9 @@ serves it locally at `/docs/settings-atlas.html`.
 - **Housekeeping:** each tab has its own clear/reset (✕ clear queue, ↺ reset lab, ✕ clear
   steering, ✕ clear batch, ↺ reset defaults in Advanced). **🗄 backup…** in the Gallery zips
   your whole `~/pixelmon-gallery` (renders, presets, corkboards, LAB inputs) into
-  `~/pixelmon-gallery/backups/pixelmon-gallery-<keyword>-<date>.zip`. **⚡** next to reset
+  `~/pixelmon-gallery/backups/pixelmon-gallery-<keyword>-<date>.zip`; **♻ restore…** puts back
+  whatever is missing from a backup (never overwrites), **📂 backups** opens that folder, and
+  **✕ clear gallery…** deletes every render after making a backup first (type CLEAR to confirm). **⚡** next to reset
   puts the entire app back to first-launch state (with a typed confirmation); no files are
   ever deleted by it.
 
