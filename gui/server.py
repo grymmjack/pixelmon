@@ -328,7 +328,7 @@ def server_url(name=None):
 def load_loras():
     """LoRA filenames available on the render server (falls back to local ComfyUI)."""
     url = server_url()
-    if url:
+    if url and server_is_up():
         try:
             with urllib.request.urlopen(url.rstrip("/") + "/models/loras", timeout=4) as r:
                 return sorted(json.load(r)), True
@@ -362,7 +362,7 @@ def load_adv_lists():
     if _ADV_CACHE["v"] is not None and time.time() - _ADV_CACHE["t"] < 60:
         return _ADV_CACHE["v"]
     info, url = {}, server_url()
-    if url:
+    if url and server_is_up():
         for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader", "UNETLoader"):
             try:
                 with urllib.request.urlopen(f"{url.rstrip('/')}/object_info/{node}", timeout=4) as r:
@@ -378,7 +378,8 @@ def load_adv_lists():
          "clip_visions": _combo(info, "CLIPVisionLoader", "clip_name"),
          "inpaint_models": [u for u in _combo(info, "UNETLoader", "unet_name") if "inpaint" in u.lower()],
          "live": bool(info)}
-    _ADV_CACHE.update(t=time.time(), v=v)
+    if info:                                     # don't remember the fallbacks from a server that didn't answer
+        _ADV_CACHE.update(t=time.time(), v=v)
     return v
 
 
@@ -473,10 +474,10 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
                 raise ValueError("advanced: canny low threshold must be below the high one")
             out += ["--canny-low", f"{lo:g}", "--canny-high", f"{hi:g}"]
     if has_mask:
-        # LAB edits that paint something NEW use the SDXL inpainting model when the server has one
-        # ("off" = use the checkpoint like any other render)
+        # the SDXL inpainting model: "auto" = fill edits (painting something new) when the server has one;
+        # picked by name = every LAB edit, blend ones too; "off" = the checkpoint like any other render
         choice_im = str(adv.get("inpaint_model") or "auto")
-        if choice_im != "off" and (adv.get("mask_mode") or mask_mode) == "fill":
+        if choice_im != "off" and (choice_im != "auto" or (adv.get("mask_mode") or mask_mode) == "fill"):
             have = lists.get("inpaint_models") or []
             pick = choice_im if choice_im in have else (have[0] if have else None)
             if pick:
@@ -520,6 +521,27 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
                 raise ValueError("advanced: animation box must be left,top,right,bottom fractions 0..1, e.g. 0.25,0.36,0.67,0.49")
             out += ["--anim-box", ",".join(f"{x:g}" for x in box)]
     return out
+
+
+SERVER_STATE = {"server": None, "url": None, "up": None}
+
+
+def watch_server():
+    """Background check of the render server every few seconds, so pages and polls never wait on a dead one."""
+    while True:
+        name = render_server()
+        up = server_up(name)
+        if up and SERVER_STATE["up"] is False:
+            _ADV_CACHE["v"] = None                  # it came back: read its model lists again
+        SERVER_STATE.update(server=name, url=server_url(name), up=up)
+        time.sleep(4)
+
+
+def server_is_up():
+    """The watcher's last answer for the current render server (asks directly if it hasn't looked yet)."""
+    if SERVER_STATE["server"] == render_server() and SERVER_STATE["up"] is not None:
+        return SERVER_STATE["up"]
+    return server_up()
 
 
 def server_up(name=None):
@@ -1742,6 +1764,15 @@ def gallery_items(gallery, limit=300):
 # ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
+class QuietServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            return                               # the browser left before the answer (reload, closed tab): harmless
+        super().handle_error(request, client_address)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     jobs = None
     gallery = None
@@ -1831,9 +1862,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "presets": load_presets(),
                                "loras": loras, "loras_live": live, "server": render_server(),
                                "adv_lists": load_adv_lists(),
-                               "server_up": server_up()})
+                               "server_up": server_is_up()})
         if u.path == "/api/jobs":
-            return self._json({"jobs": self.jobs.snapshot()})
+            return self._json({"jobs": self.jobs.snapshot(),
+                               "render": {"server": render_server(), "url": server_url(), "up": server_is_up()}})
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
             d, f = q.get("dir", [""])[0], q.get("file", [""])[0]
@@ -2461,13 +2493,14 @@ def main():
     BACKUPS = os.path.join(GALLERY_HOME, "backups")
     SETUP_FILE = os.path.join(GALLERY_HOME, "gui-setup.json")
     SERVER_ARG = re.sub(r"\s+", "", args.server or "")
+    threading.Thread(target=watch_server, daemon=True).start()
     os.makedirs(os.path.join(REFS, "gui-drops"), exist_ok=True)
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)
     Handler.jobs = JobQueue(Handler.gallery)
     host = "0.0.0.0" if args.lan else "127.0.0.1"
     try:
-        srv = http.server.ThreadingHTTPServer((host, args.port), Handler)
+        srv = QuietServer((host, args.port), Handler)
     except OSError as e:
         if e.errno != 98:                        # EADDRINUSE
             raise

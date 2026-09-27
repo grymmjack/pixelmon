@@ -165,6 +165,15 @@ select.advset { border-color: var(--accent); }
 .tab { white-space: nowrap; flex-shrink: 0; padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
 .tab.on { background: var(--panel); border-color: var(--line); color: var(--text); }
 .pane { flex: 1; overflow-y: auto; padding: 14px; }
+.srvdown { position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(0,0,0,.88); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.srvdown .box { max-width: 520px; }
+.srvdown .ico { font-size: 64px; line-height: 1; filter: grayscale(.2); }
+.srvdown h2 { color: var(--bad); margin: 12px 0 6px; font-size: 20px; letter-spacing: .04em; }
+.srvdown p { color: var(--dim); margin: 6px 0; line-height: 1.45; }
+.srvdown code { color: var(--text); }
+.srvdown .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+.srvdown .since { font: 11px var(--mono); color: var(--dim); margin-top: 10px; }
 .hidden { display: none !important; }
 .job { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
 .job-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -415,6 +424,9 @@ fieldset.closed { padding-bottom: 2px; }
 .masktoolset { display: inline-flex; gap: 2px; } .masktoolset .btn { min-width: 30px; padding: 3px 6px; font-size: 14px; }
 .masktoolset .btn.on { border-color: var(--accent); color: var(--accent); }
 .editkeep { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
+.editmodel { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
+.editmodel > span:first-child { color: var(--dim); } .editmodel select { max-width: 100%; flex: 1; min-width: 160px; }
+.editmodel .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editmodel .uses b { color: var(--accent); }
 .editkeep > span { color: var(--dim); } .editkeep label { margin: 0; color: var(--text); }
 .refine-note { border: 1px solid var(--accent); border-radius: 4px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: var(--text); }
 .refine-note .row2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
@@ -673,6 +685,16 @@ fieldset.closed { padding-bottom: 2px; }
       <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
       <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
     </div>
+    <div class="srvdown hidden" id="srvDown" role="alert"><div class="box">
+      <div class="ico">🖥️⚡</div>
+      <h2>RENDER SERVER NOT ANSWERING</h2>
+      <p><b id="srvDownName"></b> <code id="srvDownUrl"></code> isn't responding, so renders will fail until it's back.
+        This clears by itself as soon as it answers again.</p>
+      <p>Is ComfyUI running there? Start it with <code>~/launch-comfyui.sh</code> on that machine, or pick another server in Setup.</p>
+      <div class="row"><button type="button" class="btn" id="srvDownRetry">↻ check now</button>
+        <button type="button" class="btn" id="srvDownSetup">🛠 Render server setup</button>
+        <button type="button" class="btn" id="srvDownHide" title="hide until the server comes back and goes away again">hide</button></div>
+      <div class="since" id="srvDownSince"></div></div></div>
     <div class="pane" id="queuePane">
       <div class="panebar"><span class="grow"></span>
         <button type="button" class="btn small" id="queueClear" title="cancel waiting jobs and clear finished ones from this list (renders stay in the Gallery)">✕ clear queue</button></div>
@@ -772,6 +794,9 @@ fieldset.closed { padding-bottom: 2px; }
                 <input type="checkbox" id="editKeepLight"> light &amp; shadow</label>
               <label class="inline" title="follow the old outlines (ControlNet), so it keeps the same pose and faces the same way">
                 <input type="checkbox" id="editKeepShape"> shape &amp; direction</label></div>
+            <div class="editmodel"><span>model:</span>
+              <select data-advmirror="inpaint_model" title="which model draws the edit — the same setting as ⚙ Advanced › Inpainting model"></select>
+              <span class="uses" id="editUses"></span></div>
             <div class="hint" id="hEdit"></div>
             <div class="refine-note hidden" id="refineNote"></div>
             <button type="button" class="btn primary" id="editGo" style="width:100%">✏️ Apply edit</button>
@@ -1643,8 +1668,8 @@ const ADV_GROUPS = [
   { title: "LAB edit · inpainting", note: "Used when you paint a mask in LAB edit.", fields: [
     { k: "mask_mode", label: "Mask mode", type: "select", options: ["fill", "blend"], def: "from the edit action", flag: "--mask-mode",
       why: "fill starts the area blank (new content); blend starts from what's there (subtle). Normally the edit action picks this." },
-    { k: "inpaint_model", label: "Inpainting model", type: "select", list: "inpaint_models_off", def: "auto (the server's SDXL inpainting model)", flag: "--inpaint-model",
-      why: "Edits that paint something new (change / add / erase) use a dedicated SDXL inpainting model when the render server has one — it blends new things in seamlessly. 'off' uses the checkpoint instead." },
+    { k: "inpaint_model", label: "Inpainting model", type: "select", list: "inpaint_models_off", def: "auto: the inpainting model for fill edits", flag: "--inpaint-model",
+      why: "A dedicated SDXL inpainting model blends new things in seamlessly. auto = use it for fill edits (erase, or change / add without 'keep light & shadow'); pick it by name = use it for every LAB edit, blend ones too; off = always your checkpoint. The LAB edit box shows which model each edit uses." },
     { k: "mask_grow", label: "Mask grow (px)", type: "number", min: 0, max: 64, step: 1, def: "6", flag: "--mask-grow",
       why: "Blend margin around the mask so the seam disappears. Raise it if an edge shows." },
     { k: "inpaint_crop", label: "Crop around small masks", type: "check", def: "on", on: true, flag: "--no-inpaint-crop (when off)",
@@ -1696,6 +1721,7 @@ function syncAdvMirrors() {
       if (sel.value) ADV[f.k] = sel.value; else delete ADV[f.k];
       store.set("adv", ADV); advCount(); syncAdvMirrors(); refresh();
       if (!$("advPane").classList.contains("hidden")) renderAdv();
+      if (LABS.edit) editUses(LABS.edit);
     };
   });
 }
@@ -3499,6 +3525,21 @@ function drawMaskOverlay() {
   g.globalCompositeOperation = "source-over";
   lzMask();
 }
+// which model will draw this edit (mirrors the server's rule in adv_argv)
+function editUses(E) {
+  const el = $("editUses"); if (!el) return;
+  const blend = (ADV.mask_mode || (E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill")) === "blend";
+  const have = (META && META.adv_lists && META.adv_lists.inpaint_models) || [], pick = ADV.inpaint_model || "auto";
+  const ckpt = ADV.base || "the default checkpoint";
+  let im = null, why = "";
+  if (pick === "off") why = "inpainting model is off";
+  else if (!have.length) why = META && !META.server_up ? "the render server isn't answering" : "the render server has no inpainting model (download-models.sh --lab)";
+  else if (pick !== "auto") im = have.includes(pick) ? pick : have[0];
+  else if (blend) why = "auto uses it for fill edits only; this one starts from what's there (keep light & shadow / tweak) — pick the model by name above to use it here too";
+  else im = have[0];
+  el.innerHTML = im ? `this edit uses <b>🧩 ${esc(im.replace(/\.safetensors$/, ""))}</b> (SDXL inpainting)`
+    : `this edit uses <b>${esc(ckpt.replace(/\.safetensors$/, ""))}</b> — ${esc(why)}`;
+}
 function renderEditBox() {
   const has = !!LABS.mask;
   $("editBox").classList.toggle("hidden", !has);
@@ -3519,6 +3560,7 @@ function renderEditBox() {
   $("maskSize").value = LABS.brush || 16; $("maskSizeVal").textContent = LABS.brush || 16;
   if (E.keepLight && E.action !== "tweak" && E.action !== "erase")
     $("hEdit").textContent = `starts from what's there (strength ${Math.min(E.strength, 0.92).toFixed(2)}): keeps the light and shadow while the subject changes — lower = closer to the old pixels`;
+  editUses(E);
   const dropped = (readForm().styles || []).filter(x => EDIT_FRAMING.includes(x));
   if (dropped.length) $("hEdit").textContent += ` · leaves out the framing style${dropped.length > 1 ? "s" : ""} ${dropped.join(", ")} (they'd paint a whole scene into the mask)`;
   const R = LABS.refine, rn = $("refineNote");
@@ -4110,12 +4152,54 @@ async function loadGallery() {
   $("galleryList").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
   fillPalettes($("galleryPane"));
 }
+// ---- render server watch: /api/jobs carries the server's state; a dead server blacks out the center pane ----
+const SRV = { up: null, since: 0, hidden: false };
+function srvState(r) {
+  if (!r || !META) return false;
+  const changed = r.up !== SRV.up || r.server !== META.server;
+  if (r.up !== SRV.up) {
+    if (r.up === false) { SRV.since = Date.now(); SRV.hidden = false; notify("pixelmon", `render server ${r.server} isn't answering`, true); }
+    else if (SRV.up === false) { notify("pixelmon", `render server ${r.server} is back`); srvRefreshLists(); }
+    SRV.up = r.up;
+  }
+  META.server = r.server; META.server_up = r.up; showServer();
+  $("srvDownName").textContent = r.server; $("srvDownUrl").textContent = r.url || "";
+  srvOverlay();
+  return changed;
+}
+async function srvRefreshLists() {            // model menus that came back empty while the server was away
+  try {
+    const m = await api("/api/meta");
+    META.adv_lists = m.adv_lists; META.server_up = m.server_up;
+    syncAdvMirrors(); if (!$("advPane").classList.contains("hidden")) renderAdv();
+    if (LABS.edit) editUses(LABS.edit);
+  } catch {}
+}
+function srvOverlay() {
+  const el = $("srvDown"), tab = document.querySelector(".tab.on")?.dataset.tab;
+  const show = SRV.up === false && !SRV.hidden && tab !== "setup";
+  if (show) {
+    el.style.top = document.querySelector(".main .tabs").offsetHeight + "px";
+    const m = Math.round((Date.now() - SRV.since) / 60000);
+    $("srvDownSince").textContent = m ? `down for ${m} min · checking every few seconds` : "checking every few seconds";
+  }
+  el.classList.toggle("hidden", !show);
+}
+function initSrvDown() {
+  $("srvDownRetry").addEventListener("click", async () => {
+    $("srvDownSince").textContent = "checking…";
+    try { const r = await api("/api/server/check"); srvState(r); } catch (e) { showErr(e); }
+  });
+  $("srvDownSetup").addEventListener("click", () => switchTab("setup"));
+  $("srvDownHide").addEventListener("click", () => { SRV.hidden = true; srvOverlay(); });
+}
 let pollTimer = null;
 async function poll() {
   clearTimeout(pollTimer);
   let busy = false;
   try {
-    const { jobs } = await api("/api/jobs");
+    const { jobs, render } = await api("/api/jobs");
+    if (srvState(render)) lastJobsJSON = "";           // redraw the status bar for the new server state
     const s = JSON.stringify(jobs);
     if (s !== lastJobsJSON) {
       const wasBusy = lastJobsJSON.includes('"running"') || lastJobsJSON.includes('"queued"');
@@ -4195,6 +4279,7 @@ function loadJobSettings(job, seed) {
 // ---------------- tabs & wiring ----------------
 function switchTab(t) {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
+  setTimeout(srvOverlay);
   $("queuePane").classList.toggle("hidden", t !== "queue"); $("galleryPane").classList.toggle("hidden", t !== "gallery");
   $("steerPane").classList.toggle("hidden", t !== "steer");
   $("presetsPane").classList.toggle("hidden", t !== "presets");
@@ -4223,7 +4308,7 @@ async function init() {
   $("outPreset").innerHTML = SIZES.reduce((h, r, i) => h + (r.length === 1 ? `${i ? "</optgroup>" : ""}<optgroup label="${esc(r[0])}">`
     : `<option value="${r[0]}">${r[1]}</option>`), "") + "</optgroup>";
   renderStyles(); advCount(); syncAdvMirrors();
-  initHelp();
+  initHelp(); initSrvDown();
   initFolds();
   initPeek();
   initCork();

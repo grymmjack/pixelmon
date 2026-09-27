@@ -334,9 +334,9 @@ const S = [
    "Hand-paint the mask; the cursor shows the brush. Shapes fill (paint) or cut (erase); polygon closes on double-click, Enter or the first point."],
   ["Keep while editing", [G, C], { gui: "LAB edit: keep ☐ colors · ☐ light &amp; shadow · ☐ shape &amp; direction", cli: "colors → --custom-hex (the image's own colors) · shape → --control" }, "on / off each", "off",
    "—", "Colors locks the edit to the picture's palette (works far better than asking in words); light &amp; shadow adds the tone to the prompt; shape keeps the masked area's outlines with ControlNet."],
-  ["Inpainting model", [G, C, N], { gui: "⚙ Advanced › Inpainting model", cli: "--inpaint-model FILE", node: "UNETLoader → InpaintModelConditioning" },
-   "a UNet in models/unet · off", "auto for fill edits when the server has one", "<code>--inpaint-model sdxl-inpainting-0.1.fp16.safetensors</code>",
-   "SDXL trained for inpainting: blends new things into the surroundings much better. Download with <code>download-models.sh --lab</code>. Only fill-mode edits use it; everything else keeps your checkpoint."],
+  ["Inpainting model", [G, C, N], { gui: "LAB edit › model · ⚙ Advanced › Inpainting model", cli: "--inpaint-model FILE", node: "UNETLoader → InpaintModelConditioning" },
+   "auto · off · a UNet in models/unet", "auto (fill edits only)", "<code>--inpaint-model sdxl-inpainting-0.1.fp16.safetensors</code>",
+   "SDXL trained for inpainting: new things blend into their surroundings. auto = fill edits (erase, or change / add without keep light &amp; shadow); picked by name = every LAB edit; off = your checkpoint. The edit box says which model each edit uses. Download with <code>download-models.sh --lab</code>. Normal renders always use the checkpoint."],
   ["Select by words", [G], { gui: "select by words" }, "any short phrase", "—", "<code>the moon</code>", "Auto-masks a thing with CLIPSeg (runs locally on CPU)."],
  ]},
  { id: "steer", title: "Steering (IPAdapter)", note: "Push the result toward reference images: their palette, style or composition.", rows: [
