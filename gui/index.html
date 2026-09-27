@@ -166,6 +166,48 @@ select.advset { border-color: var(--accent); }
 .tab.on { background: var(--panel); border-color: var(--line); color: var(--text); }
 .pane { flex: 1; overflow-y: auto; padding: 14px; }
 .sweep-pick { margin: 6px 0 2px; }
+/* ---- 🔬 Analyze ---- */
+.ana-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.ana-top select { width: auto; } .ana-top label.inline { margin: 0; }
+.ana-exp { font: 12px var(--mono); display: inline-flex; gap: 5px; align-items: center; }
+.ana-tray { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin-bottom: 12px; scrollbar-width: thin; }
+.ana-tray .empty { flex: 1; }
+.ana-card { flex: 0 0 150px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; background: var(--panel); opacity: .55; }
+.ana-card.on { opacity: 1; } .ana-card.ref { border-color: var(--accent); }
+.ana-card label { display: block; position: relative; margin: 0; cursor: pointer; }
+.ana-card input { position: absolute; left: 4px; top: 4px; margin: 0; }
+.ana-card img { width: 100%; height: 100px; object-fit: contain; image-rendering: pixelated; display: block;
+  background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/12px 12px; }
+.ac-cap { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+.ac-sub { font: 10.5px var(--mono); color: var(--dim); display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ana-ctl { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12px; margin-bottom: 10px; }
+.ana-ctl label { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.ana-ctl input[type=range] { width: 120px; } .ana-ctl input[type=color] { width: 34px; height: 22px; padding: 0; border: 0; background: none; }
+.ana-panes { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.ana-pane { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+.ap-h { font-size: 12px; display: flex; gap: 6px; align-items: center; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-h span:last-child { overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.ap-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; vertical-align: middle; }
+.ap-stage { position: relative; margin: 6px 0; cursor: crosshair; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/12px 12px; }
+.ap-stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.ap-dot2 { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border: 1px solid #fff; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px #000; }
+.ap-s { font-size: 11.5px; color: var(--dim); max-width: 420px; } .ana-compare .warn, .ap-s .warn { color: var(--warn); }
+.ana-loupes { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin: 14px 0; }
+.ana-lp canvas { display: block; border: 1px solid var(--line); image-rendering: pixelated; background: #101014; }
+.lp-c { font: 11px var(--mono); color: var(--dim); margin-top: 3px; display: flex; gap: 5px; align-items: center; }
+.lp-c .sw { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--line); vertical-align: middle; margin-right: 3px; }
+.lp-hint { font-size: 12px; align-self: center; }
+.ana-hists { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 10px 0; }
+.ana-h canvas { width: 100%; height: 110px; display: block; border: 1px solid var(--line); }
+.ah-t { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin-bottom: 3px; }
+.ah-legend { grid-column: 1 / -1; font-size: 12px; }
+.ana-stats { border-collapse: collapse; font: 12px var(--mono); margin: 10px 0; }
+.ana-stats td, .ana-stats th { padding: 4px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.ana-stats th { color: var(--dim); font-weight: 500; }
+.ana-cmp { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); }
+.acm-h { font-size: 12.5px; margin-bottom: 4px; }
+.acl { margin: 6px 0; } .acl-t { font-size: 12px; color: var(--dim); } .acl-t b { color: var(--text); }
+.acl-s { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 3px; } .acl-s span { width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.12); }
 .sweepall .btn { white-space: nowrap; }
 .sweep-pick .sp-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; font-size: 12px; color: var(--dim); }
 .sweep-pick .sp-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 190px; overflow-y: auto; padding: 2px; }
@@ -706,6 +748,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="tab" data-tab="batch">Batch</div>
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
+      <div class="tab" data-tab="analyze" title="compare images side by side — right-click any image → 🔬 Send to Analysis">🔬 Analyze <span id="anaN"></span></div>
       <div class="tab" data-tab="adv">⚙ Advanced <span id="advN"></span></div>
       <div class="tab" data-tab="setup">🛠 Setup</div>
       <span style="flex:1"></span>
@@ -733,6 +776,7 @@ fieldset.closed { padding-bottom: 2px; }
         <button type="button" class="btn small" id="galleryBackups" title="open the backups folder (~/pixelmon-gallery/backups) — right-click for other programs">📂 backups</button>
         <button type="button" class="btn small" id="galleryClear" title="delete every render in the gallery (a backup is made first)">✕ clear gallery…</button></div>
       <div id="galleryList"></div></div>
+    <div class="pane hidden" id="analyzePane"></div>
     <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="setupPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
@@ -2082,6 +2126,9 @@ function imageTargetOf(el) {
   const rf = el.closest(".ref[data-ref]"); if (rf) return { ref: rf.dataset.ref };
   if (el.id === "lbImg" && lbItem) return { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
   if (el.id === "peekImg" || el.closest("#peek")) return peekTarget();
+  const an = el.closest("[data-anafile]"); if (an) return { analysis: an.dataset.anafile };
+  const ap = el.closest(".ana-pane"); if (ap && ANA.work) return { analysis: ANA.work.t[+ap.dataset.i].file };
+  const al = el.closest(".ana-lp canvas"); if (al && ANA.work) return { analysis: ANA.work.t[+al.dataset.i].file };
   return null;
 }
 function peekTarget() {
@@ -2124,7 +2171,8 @@ function openMenu(x, y, target, extras = []) {
     items.push(["os", "System default"]);
   }
   const m = document.createElement("div"); m.id = "openMenu"; m.setAttribute("role", "menu");
-  m.innerHTML = (extras.length ? `<div class="om-h">Arrange</div>` + extras.map(([label], i) =>
+  const sendable = target && !isDir && !target.analysis && !target.analysis_export;
+  m.innerHTML = (sendable ? `<button type="button" role="menuitem" data-send-analysis>🔬 Send to Analysis</button><hr>` : "") + (extras.length ? `<div class="om-h">Arrange</div>` + extras.map(([label], i) =>
         `<button type="button" role="menuitem" data-extra="${i}">${esc(label)}</button>`).join("") + (target ? "<hr>" : "") : "")
     + (target ? `<div class="om-h">${isDir ? "Open folder in" : "Open image in"}</div>`
       + items.map(([k, n]) => `<button type="button" role="menuitem" data-open-app="${esc(k)}">${esc(n)}</button>`).join("")
@@ -2147,6 +2195,7 @@ function openMenu(x, y, target, extras = []) {
       }
       closeOpenMenu(); return act();
     }
+    if (e.target.closest("[data-send-analysis]")) { closeOpenMenu(); return sendToAnalysis(target); }
     const b = e.target.closest("[data-open-app]");
     if (b) { closeOpenMenu(); openWith(b.dataset.openApp, target); }
     if (e.target.closest("[data-open-setup]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("setup"); }
@@ -2175,6 +2224,303 @@ function initOpenWith() {
 }
 
 
+// ---------------- 🔬 Analyze: images sent from anywhere (right-click → Send to Analysis), compared side by side ----------------
+const ANA = { items: [], sel: new Set(store.get("anaSel", [])), ref: store.get("anaRef", ""),
+  color: store.get("anaColor", "#ff00ff"), tol: store.get("anaTol", 0), op: store.get("anaOp", 0.6), zoom: store.get("anaZoom", 4),
+  log: store.get("anaLog", false), fmt: store.get("anaFmt", "psd"), diff: store.get("anaDiff", true),
+  imgs: {}, work: null, pt: null, exported: null, loaded: false };
+const ANA_LINE = ["#e8e8e8", "#55ffff", "#ffd24d", "#7dff7d", "#ff7dd2", "#7da0ff", "#ffa04d", "#c77dff"];
+const ANA_MAX = 2048;          // measure at most this long side (a 4K wallpaper is analysed on a 2048 copy; exports use full size)
+const ANA_LOUPE = 220;
+function anaSave() {
+  store.set("anaSel", [...ANA.sel]); store.set("anaRef", ANA.ref); store.set("anaColor", ANA.color); store.set("anaTol", ANA.tol);
+  store.set("anaOp", ANA.op); store.set("anaZoom", ANA.zoom); store.set("anaLog", ANA.log); store.set("anaFmt", ANA.fmt); store.set("anaDiff", ANA.diff);
+}
+function anaBadge() { $("anaN").textContent = ANA.items.length ? `(${ANA.items.length})` : ""; }
+function note(msg) {
+  showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = msg;
+  setTimeout(() => { if ($("err").textContent === msg) { $("err").textContent = ""; $("err").style.color = ""; } }, 2500);
+}
+// a readable name for whatever image was right-clicked
+function analysisLabel(t) {
+  if (t.src) {
+    const job = Object.values(JOBS).find(j => j.dir === t.src.dir) || GALLERY.find(j => j.dir === t.src.dir);
+    const o = job && job.outputs.find(x => x.file === t.src.file);
+    const what = job ? (job.label || (job.params.form && job.params.form.subject) || job.params.prompt || "") : "";
+    return `${what.slice(0, 50)}${o && o.seed != null ? ` · seed ${o.seed}` : ""}` || t.src.file;
+  }
+  if (t.preset) { const p = presetById(t.preset); return p ? `preset ${p.name}` : t.preset; }
+  return String(t.file || t.lab || t.ref || t.board || "image").split("/").pop().replace(/^\d{8}-\d{6}-[0-9a-f]{4}__/, "").slice(0, 60);
+}
+async function sendToAnalysis(t) {
+  try {
+    const r = await api("/api/analysis/add", { target: t, label: analysisLabel(t) });
+    ANA.items = r.items; ANA.sel.add(r.item.file); if (!ANA.ref || !ANA.sel.has(ANA.ref)) ANA.ref = [...ANA.sel][0];
+    anaSave(); anaBadge(); note(`🔬 sent to Analysis — ${ANA.items.length} image${ANA.items.length > 1 ? "s" : ""} there`);
+    if (!$("analyzePane").classList.contains("hidden")) renderAnalyze();
+  } catch (e) { showErr(e); }
+}
+async function loadAnalysis(render = true) {
+  try { ANA.items = (await api("/api/analysis")).items; } catch (e) { return showErr(e); }
+  const have = new Set(ANA.items.map(i => i.file));
+  ANA.sel = new Set([...ANA.sel].filter(f => have.has(f)));
+  if (!ANA.loaded && !ANA.sel.size) ANA.items.slice(-2).forEach(i => ANA.sel.add(i.file));   // first visit: the two newest
+  if (!ANA.sel.has(ANA.ref)) ANA.ref = [...ANA.sel][0] || "";
+  ANA.loaded = true; anaSave(); anaBadge();
+  if (render) renderAnalyze();
+}
+// the ticked images, reference first
+function anaTicked() {
+  const t = ANA.items.filter(i => ANA.sel.has(i.file));
+  const r = t.find(i => i.file === ANA.ref) || t[0];
+  return r ? [r, ...t.filter(i => i !== r)] : [];
+}
+const anaUrl = f => `/analysis/${encodeURIComponent(f)}`;
+function anaImage(f) {
+  return ANA.imgs[f] || (ANA.imgs[f] = new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("couldn't load " + f)); i.src = anaUrl(f); }));
+}
+
+function renderAnalyze() {
+  const pane = $("analyzePane"), t = anaTicked();
+  const fmtOpts = [["psd", "PSD — Photoshop · GIMP · Krita · DRAW"], ["xcf", "XCF — GIMP"], ["draw", "DRAW (.draw)"], ["ora", "ORA — Krita · GIMP · MyPaint"]];
+  pane.innerHTML = `
+    <div class="ana-top">
+      <b>${ANA.items.length} image${ANA.items.length === 1 ? "" : "s"}</b>
+      <button type="button" class="btn small" data-ana="all">tick all</button><button type="button" class="btn small" data-ana="none">none</button>
+      <button type="button" class="btn small" data-ana="remove" ${ANA.sel.size ? "" : "disabled"}>✕ remove ticked</button>
+      <button type="button" class="btn small" data-ana="clear" ${ANA.items.length ? "" : "disabled"}>clear analysis</button>
+      <button type="button" class="btn small" data-ana="folder" title="open the analysis folder">📂</button>
+      <span style="flex:1"></span>
+      <select id="anaFmt" title="export the ticked images as layers of one file">${fmtOpts.map(([v, l]) => `<option value="${v}" ${v === ANA.fmt ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <label class="inline" title="adds a layer per image marking where it differs from the reference (same color, tolerance and opacity as here)">
+        <input type="checkbox" id="anaDiff" ${ANA.diff ? "checked" : ""}> Include difference layer</label>
+      <button type="button" class="btn small primary-ish" data-ana="export" ${t.length ? "" : "disabled"}>⬇ Export ${t.length ? `(${t.length})` : ""}</button>
+      ${ANA.exported ? `<span class="ana-exp">✓ <b>${esc(ANA.exported.file)}</b>
+        <button type="button" class="btn small" data-ana="exp-open">Open in…</button><button type="button" class="btn small" data-ana="exp-folder">📂</button></span>` : ""}
+    </div>
+    <div class="ana-tray">${ANA.items.length ? ANA.items.map(i => `
+      <div class="ana-card ${ANA.sel.has(i.file) ? "on" : ""} ${i.file === (t[0] && t[0].file) ? "ref" : ""}" data-anafile="${esc(i.file)}" title="${esc(i.label)}">
+        <label><input type="checkbox" ${ANA.sel.has(i.file) ? "checked" : ""}> <img src="${anaUrl(i.file)}" alt="" loading="lazy" data-anafile="${esc(i.file)}"></label>
+        <div class="ac-cap">${i.file === (t[0] && t[0].file) ? "<b>★ reference</b> · " : ""}${esc(i.label)}</div>
+        <div class="ac-sub">${i.w}×${i.h} ${ANA.sel.has(i.file) && i.file !== (t[0] && t[0].file) ? `<button type="button" class="btn small" data-ana-ref="${esc(i.file)}" title="compare everything against this one">★ make reference</button>` : ""}</div>
+      </div>`).join("") : `<div class="empty">Right-click any image — gallery, queue, lightbox, corkboard, presets, LAB, steering —
+        and pick <b>🔬 Send to Analysis</b>. Tick two or more here to compare them.</div>`}</div>
+    <div id="anaCompare">${t.length ? `<div class="empty">measuring…</div>` : ""}</div>`;
+  if (t.length) anaCompare(t).catch(e => { $("anaCompare").innerHTML = `<div class="err">${esc(e.message)}</div>`; });
+}
+
+// pixel data for every ticked image on the reference's grid, plus stats, histograms and difference masks
+async function anaCompare(t) {
+  const imgs = await Promise.all(t.map(i => anaImage(i.file)));
+  const r0 = imgs[0], k = Math.min(1, ANA_MAX / Math.max(r0.naturalWidth, r0.naturalHeight));
+  const W = Math.max(1, Math.round(r0.naturalWidth * k)), H = Math.max(1, Math.round(r0.naturalHeight * k));
+  const layers = imgs.map(im => {
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingEnabled = false; g.drawImage(im, 0, 0, W, H);
+    return { canvas: c, px: g.getImageData(0, 0, W, H).data };
+  });
+  const stats = layers.map(l => anaStats(l.px));
+  const masks = layers.map((l, i) => i ? anaMask(layers[0].px, l.px, W, H) : null);
+  ANA.work = { t, W, H, k, layers, stats, masks, scaled: t.map((it, i) => it.w !== t[0].w || it.h !== t[0].h) };
+  anaRenderCompare();
+}
+function anaStats(px) {
+  const n = px.length / 4, hist = [0, 1, 2, 3].map(() => new Float64Array(256)), keys = new Uint32Array(n);
+  let sl = 0, sl2 = 0, ss = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = px[p], g = px[p + 1], b = px[p + 2], l = (r * 299 + g * 587 + b * 114) / 1000 | 0;
+    hist[0][r]++; hist[1][g]++; hist[2][b]++; hist[3][l]++;
+    sl += l; sl2 += l * l;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b); ss += mx ? (mx - mn) / mx : 0;
+    keys[i] = (r << 16) | (g << 8) | b;
+  }
+  keys.sort();
+  const colors = new Map();
+  let uniq = 0;
+  for (let i = 0; i < n;) { let j = i; while (j < n && keys[j] === keys[i]) j++; uniq++; colors.set(keys[i], j - i); i = j; }
+  const mean = sl / n;
+  return { n, hist, uniq, colors, mean, contrast: Math.sqrt(Math.max(0, sl2 / n - mean * mean)), sat: ss / n };
+}
+// Kaleidotron's rule: a pixel differs when any channel (RGBA) is more than the tolerance apart
+function anaMask(a, b, W, H) {
+  const tol = ANA.tol, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"), m = g.createImageData(W, H), d = m.data;
+  const col = /^#([0-9a-f]{6})$/i.test(ANA.color) ? parseInt(ANA.color.slice(1), 16) : 0xff00ff;
+  const cr = col >> 16 & 255, cg = col >> 8 & 255, cb = col & 255;
+  let count = 0, sad = 0, sq = 0;
+  for (let p = 0; p < d.length; p += 4) {
+    const dr = Math.abs(a[p] - b[p]), dg = Math.abs(a[p + 1] - b[p + 1]), db = Math.abs(a[p + 2] - b[p + 2]), da = Math.abs(a[p + 3] - b[p + 3]);
+    sad += dr + dg + db; sq += dr * dr + dg * dg + db * db;
+    if (dr > tol || dg > tol || db > tol || da > tol) { d[p] = cr; d[p + 1] = cg; d[p + 2] = cb; d[p + 3] = 255; count++; }
+  }
+  g.putImageData(m, 0, 0);
+  const n = W * H, mse = sq / (3 * n);
+  return { canvas: c, count, pct: 100 * count / n, mad: sad / (3 * n), psnr: mse ? 10 * Math.log10(255 * 255 / mse) : Infinity };
+}
+
+function anaRenderCompare() {
+  const w = ANA.work; if (!w) return;
+  const { t, W, H, stats, masks } = w;
+  const hexOf = k => "#" + k.toString(16).padStart(6, "0");
+  const pv = Math.min(420, Math.max(220, Math.floor(($("analyzePane").clientWidth - 40) / Math.min(t.length, 3)) - 16));
+  const scale = Math.min(pv / W, 360 / H);
+  $("anaCompare").innerHTML = `
+    <div class="ana-ctl">
+      <label>difference <input type="color" id="anaColor" value="${esc(ANA.color)}"></label>
+      <label>tolerance <b id="anaTolV">${ANA.tol}</b> <input type="range" id="anaTol" min="0" max="64" step="1" value="${ANA.tol}"></label>
+      <label>opacity <b id="anaOpV">${(+ANA.op).toFixed(2)}</b> <input type="range" id="anaOp" min="0" max="1" step="0.05" value="${ANA.op}"></label>
+      <label>loupe <select id="anaZoom">${[2, 4, 8, 16].map(z => `<option value="${z}" ${z == ANA.zoom ? "selected" : ""}>${z}×</option>`).join("")}</select></label>
+      <label class="inline"><input type="checkbox" id="anaLog" ${ANA.log ? "checked" : ""}> log histograms</label>
+      ${w.k < 1 ? `<span class="dim">measured at ${W}×${H} (exports use full size)</span>` : ""}
+    </div>
+    <div class="ana-panes">${t.map((it, i) => `
+      <div class="ana-pane" data-i="${i}">
+        <div class="ap-h"><span class="ap-dot" style="background:${ANA_LINE[i % ANA_LINE.length]}"></span>
+          ${i ? `<b>${i + 1}</b>` : "<b>★ 1 reference</b>"} <span title="${esc(it.label)}">${esc(it.label)}</span></div>
+        <div class="ap-stage" style="width:${Math.round(W * scale)}px;height:${Math.round(H * scale)}px">
+          <canvas class="ap-img" width="${W}" height="${H}"></canvas>${i ? `<canvas class="ap-mask" width="${W}" height="${H}" style="opacity:${ANA.op}"></canvas>` : ""}
+          <div class="ap-dot2"></div></div>
+        <div class="ap-s">${i ? `<b style="color:var(--accent)">${masks[i].count.toLocaleString()} px differ (${masks[i].pct.toFixed(2)}%)</b>
+          · mean diff ${masks[i].mad.toFixed(1)} · PSNR ${isFinite(masks[i].psnr) ? masks[i].psnr.toFixed(1) + " dB" : "∞ (identical)"}`
+          : "the one everything is compared against"}${w.scaled[i] ? `<br><span class="warn">different size (${it.w}×${it.h}) — stretched to match</span>` : ""}</div>
+      </div>`).join("")}</div>
+    <div class="ana-loupes">${t.map((it, i) => `<div class="ana-lp"><canvas width="${ANA_LOUPE}" height="${ANA_LOUPE}" data-i="${i}"></canvas>
+      <div class="lp-c"><span class="ap-dot" style="background:${ANA_LINE[i % ANA_LINE.length]}"></span>${i ? i + 1 : "★ 1"} <span class="lp-px" data-i="${i}"></span></div></div>`).join("")}
+      <div class="dim lp-hint">hover any picture above: every loupe shows the same spot</div></div>
+    <div class="ana-hists">${["red", "green", "blue", "brightness"].map((n, c) => `<div class="ana-h"><div class="ah-t">${n}</div><canvas width="512" height="110" data-c="${c}"></canvas></div>`).join("")}
+      <div class="dim ah-legend">${t.map((it, i) => `<span><span class="ap-dot" style="background:${ANA_LINE[i % ANA_LINE.length]}"></span>${i ? i + 1 : "★ 1"}</span>`).join(" ")}
+        · shaded in the difference color = where each picture's tones differ from the reference</div></div>
+    <table class="ana-stats"><tr><th></th><th>size</th><th>unique colors</th><th>brightness</th><th>contrast</th><th>saturation</th><th>vs reference</th></tr>
+      ${t.map((it, i) => `<tr><td><span class="ap-dot" style="background:${ANA_LINE[i % ANA_LINE.length]}"></span>${i ? i + 1 : "★ 1"}</td>
+        <td>${it.w}×${it.h}</td><td>${stats[i].uniq.toLocaleString()}</td><td>${stats[i].mean.toFixed(1)}</td><td>${stats[i].contrast.toFixed(1)}</td>
+        <td>${(stats[i].sat * 100).toFixed(1)}%</td><td>${i ? `${masks[i].pct.toFixed(2)}% differ` : "—"}</td></tr>`).join("")}</table>
+    <div class="ana-colors">${t.slice(1).map((it, j) => anaColorsHtml(stats[0], stats[j + 1], j + 2, hexOf)).join("")}</div>`;
+  $("anaCompare").querySelectorAll(".ana-pane").forEach(p => {
+    const i = +p.dataset.i, g = p.querySelector(".ap-img").getContext("2d");
+    g.drawImage(w.layers[i].canvas, 0, 0);
+    if (i) p.querySelector(".ap-mask").getContext("2d").drawImage(masks[i].canvas, 0, 0);
+  });
+  anaHists(); anaLoupes();
+}
+// what's unique: colors only in the reference, only in the other picture, and shared (grouped when there are thousands)
+function anaColorsHtml(A, B, no, hexOf) {
+  const coarse = A.uniq > 4096 || B.uniq > 4096, q = k => coarse ? ((k >> 19 & 31) << 19 | (k >> 11 & 31) << 11 | (k >> 3 & 31) << 3) : k;
+  const group = s => { const m = new Map(); s.colors.forEach((n, k) => m.set(q(k), (m.get(q(k)) || 0) + n)); return m; };
+  const a = group(A), b = group(B), onlyA = [], onlyB = [], both = [];
+  a.forEach((n, k) => (b.has(k) ? both : onlyA).push([k, n, A.n]));
+  b.forEach((n, k) => { if (!a.has(k)) onlyB.push([k, n, B.n]); });
+  const strip = (list, what) => { list.sort((x, y) => y[1] - x[1]);
+    const cov = list.reduce((s, x) => s + x[1], 0) / (list[0] ? list[0][2] : 1) * 100;
+    return `<div class="acl"><div class="acl-t">${what} <b>${list.length.toLocaleString()}</b> ${coarse ? "color group" : "color"}${list.length === 1 ? "" : "s"} · ${cov.toFixed(1)}% of the picture</div>
+      <div class="acl-s">${list.slice(0, 64).map(([k, n, tot]) => `<span style="background:${hexOf(k)}" title="${hexOf(k)} · ${(100 * n / tot).toFixed(2)}%"></span>`).join("") || `<i class="dim">none</i>`}</div></div>`; };
+  return `<div class="ana-cmp"><div class="acm-h">★ 1 reference vs <b>${no}</b>${coarse ? ` <span class="dim">(thousands of colors: grouped 32 levels per channel)</span>` : ""}</div>
+    ${strip(onlyB, `only in ${no}:`)}${strip(onlyA, "only in the reference:")}${strip(both, "shared:")}</div>`;
+}
+function anaHists() {
+  const w = ANA.work; if (!w) return;
+  $("anaCompare").querySelectorAll(".ana-h canvas").forEach(cv => {
+    const c = +cv.dataset.c, g = cv.getContext("2d"), Wd = cv.width, Hd = cv.height;
+    const vals = w.stats.map(s => Array.from(s.hist[c], v => ANA.log ? Math.log1p(v) : v / s.n));
+    const max = Math.max(1e-9, ...vals.map(v => Math.max(...v)));
+    const y = v => Hd - 2 - (v / max) * (Hd - 6), x = i => (i + 0.5) * Wd / 256;
+    g.clearRect(0, 0, Wd, Hd); g.fillStyle = "#15151c"; g.fillRect(0, 0, Wd, Hd);
+    g.globalAlpha = ANA.op; g.fillStyle = ANA.color;                    // the difference between each picture and the reference
+    vals.slice(1).forEach(v => { for (let i = 0; i < 256; i++) { const a = y(vals[0][i]), b = y(v[i]); g.fillRect(x(i) - Wd / 512, Math.min(a, b), Wd / 256, Math.abs(a - b)); } });
+    g.globalAlpha = 1;
+    vals.forEach((v, j) => {
+      g.beginPath(); v.forEach((vv, i) => (i ? g.lineTo(x(i), y(vv)) : g.moveTo(x(i), y(vv))));
+      g.strokeStyle = ANA_LINE[j % ANA_LINE.length]; g.lineWidth = j ? 1.25 : 2; g.stroke();
+    });
+  });
+}
+function anaLoupes() {
+  const w = ANA.work; if (!w) return;
+  const pt = ANA.pt || { fx: 0.5, fy: 0.5 }, z = +ANA.zoom, cw = ANA_LOUPE / z;
+  const sx = Math.round(pt.fx * w.W - cw / 2), sy = Math.round(pt.fy * w.H - cw / 2);
+  const px = Math.min(w.W - 1, Math.max(0, Math.floor(pt.fx * w.W))), py = Math.min(w.H - 1, Math.max(0, Math.floor(pt.fy * w.H)));
+  $("anaCompare").querySelectorAll(".ana-lp canvas").forEach(cv => {
+    const i = +cv.dataset.i, g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false; g.fillStyle = "#101014"; g.fillRect(0, 0, ANA_LOUPE, ANA_LOUPE);
+    g.drawImage(w.layers[i].canvas, sx, sy, cw, cw, 0, 0, ANA_LOUPE, ANA_LOUPE);
+    if (i && w.masks[i]) { g.globalAlpha = ANA.op; g.drawImage(w.masks[i].canvas, sx, sy, cw, cw, 0, 0, ANA_LOUPE, ANA_LOUPE); g.globalAlpha = 1; }
+    const c0 = (px - sx) * z, r0 = (py - sy) * z;                       // the exact pixel under the pointer
+    g.strokeStyle = "rgba(255,255,255,.9)"; g.lineWidth = 1; g.strokeRect(c0 + .5, r0 + .5, z - 1, z - 1);
+    const p = (py * w.W + px) * 4, d = w.layers[i].px, hex = "#" + [d[p], d[p + 1], d[p + 2]].map(v => v.toString(16).padStart(2, "0")).join("");
+    const lab = $("anaCompare").querySelector(`.lp-px[data-i="${i}"]`);
+    if (lab) lab.innerHTML = `<span class="sw" style="background:${hex}"></span>${hex} · ${px},${py}`;
+  });
+  $("anaCompare").querySelectorAll(".ap-dot2").forEach(d => { d.style.left = pt.fx * 100 + "%"; d.style.top = pt.fy * 100 + "%"; d.hidden = !ANA.pt; });
+}
+
+async function anaExport() {
+  const t = anaTicked(); if (!t.length) return;
+  try {
+    const r = await api("/api/analysis/export", { files: t.map(i => i.file), format: ANA.fmt, diff: ANA.diff, tol: ANA.tol, color: ANA.color, opacity: ANA.op });
+    ANA.exported = r; renderAnalyze(); note(`exported ${r.layers.length} layers → ${r.file}`);
+  } catch (e) { showErr(e); }
+}
+function initAnalyze() {
+  const pane = $("analyzePane");
+  pane.addEventListener("click", async e => {
+    const refB = e.target.closest("[data-ana-ref]");
+    if (refB) { ANA.ref = refB.dataset.anaRef; anaSave(); return renderAnalyze(); }
+    const b = e.target.closest("[data-ana]"); if (!b) return;
+    const a = b.dataset.ana;
+    if (a === "all") { ANA.items.forEach(i => ANA.sel.add(i.file)); }
+    else if (a === "none") { ANA.sel.clear(); }
+    else if (a === "remove") {
+      if (!confirm(`Remove ${ANA.sel.size} image${ANA.sel.size > 1 ? "s" : ""} from Analysis?\n(only the copies made for analysis — the originals stay where they are)`)) return;
+      try { ANA.items = (await api("/api/analysis/remove", { files: [...ANA.sel] })).items; ANA.sel.clear(); } catch (err) { return showErr(err); }
+    }
+    else if (a === "clear") {
+      if (!confirm("Clear the Analysis tab?\n(removes the copies made for analysis; the originals and your exports stay)")) return;
+      try { await api("/api/analysis/clear", {}); ANA.items = []; ANA.sel.clear(); ANA.imgs = {}; ANA.work = null; } catch (err) { return showErr(err); }
+    }
+    else if (a === "folder") return reveal("analysis", "");
+    else if (a === "exp-folder") return reveal("analysis", "exports");
+    else if (a === "exp-open") { const r = b.getBoundingClientRect(); return openMenu(r.left, r.bottom + 4, { analysis_export: ANA.exported.file }); }
+    else if (a === "export") return anaExport();
+    if (!ANA.sel.has(ANA.ref)) ANA.ref = [...ANA.sel][0] || "";
+    anaSave(); anaBadge(); renderAnalyze();
+  });
+  pane.addEventListener("change", e => {
+    const card = e.target.closest(".ana-card");
+    if (card && e.target.type === "checkbox") {
+      e.target.checked ? ANA.sel.add(card.dataset.anafile) : ANA.sel.delete(card.dataset.anafile);
+      if (!ANA.sel.has(ANA.ref)) ANA.ref = anaTicked()[0] ? anaTicked()[0].file : "";
+      anaSave(); return renderAnalyze();
+    }
+    const id = e.target.id;
+    if (id === "anaFmt") { ANA.fmt = e.target.value; ANA.exported = null; anaSave(); return renderAnalyze(); }
+    if (id === "anaDiff") { ANA.diff = e.target.checked; return anaSave(); }
+    if (id === "anaZoom") { ANA.zoom = +e.target.value; anaSave(); return anaLoupes(); }
+    if (id === "anaLog") { ANA.log = e.target.checked; anaSave(); return anaHists(); }
+    if (id === "anaColor" || id === "anaTol") anaRecomputeMasks();
+  });
+  pane.addEventListener("input", e => {
+    const id = e.target.id;
+    if (id === "anaOp") {
+      ANA.op = +e.target.value; $("anaOpV").textContent = ANA.op.toFixed(2);
+      pane.querySelectorAll(".ap-mask").forEach(m => (m.style.opacity = ANA.op)); anaHists(); anaLoupes(); anaSave();
+    }
+    if (id === "anaTol") { ANA.tol = +e.target.value; $("anaTolV").textContent = ANA.tol; }
+    if (id === "anaColor") ANA.color = e.target.value;
+  });
+  pane.addEventListener("pointermove", e => {
+    const st = e.target.closest(".ap-stage"); if (!st || !ANA.work) return;
+    const r = st.getBoundingClientRect();
+    ANA.pt = { fx: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), fy: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+    anaLoupes();
+  });
+}
+function anaRecomputeMasks() {
+  const w = ANA.work; if (!w) return;
+  anaSave();
+  w.masks = w.layers.map((l, i) => i ? anaMask(w.layers[0].px, l.px, w.W, w.H) : null);
+  anaRenderCompare();
+}
+
+
 // ---------------- move to top / bottom (presets, corkboard) + auto-scroll while dragging ----------------
 function arrangeActions(el) {
   if (!el || !el.closest) return [];
@@ -2188,6 +2534,13 @@ function arrangeActions(el) {
     return [["✎ Rename…", () => presetRename(p.id)], ["📝 Edit note…", () => presetEditNote(p.id)],
             [`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")],
             ["📁 Move to folder… ▸", folders]];
+  }
+  const ac = el.closest(".ana-card[data-anafile]");
+  if (ac) {
+    const f = ac.dataset.anafile;
+    return [["★ Make reference", () => { ANA.sel.add(f); ANA.ref = f; anaSave(); renderAnalyze(); }],
+            ["✕ Remove from Analysis", async () => { try { ANA.items = (await api("/api/analysis/remove", { files: [f] })).items; ANA.sel.delete(f);
+               if (ANA.ref === f) ANA.ref = [...ANA.sel][0] || ""; anaSave(); anaBadge(); renderAnalyze(); } catch (e) { showErr(e); } }]];
   }
   const ci = el.closest(".cork-item");
   if (ci) {
@@ -4339,8 +4692,8 @@ async function srvRefreshLists() {            // model menus that came back empt
   } catch {}
 }
 function srvOverlay() {
-  const el = $("srvDown"), tab = document.querySelector(".tab.on")?.dataset.tab;
-  const show = SRV.up === false && !SRV.local && !SRV.hidden && tab !== "setup";
+  const el = $("srvDown"), tab = document.querySelector(".main .tabs .tab.on")?.dataset.tab;
+  const show = SRV.up === false && !SRV.local && !SRV.hidden && tab !== "setup" && tab !== "analyze";   // analyzing needs no server
   if (show) {
     el.style.top = document.querySelector(".main .tabs").offsetHeight + "px";
     const m = Math.round((Date.now() - SRV.since) / 60000);
@@ -4451,6 +4804,8 @@ function switchTab(t) {
   $("batchPane").classList.toggle("hidden", t !== "batch");
   $("labPane").classList.toggle("hidden", t !== "lab");
   $("advPane").classList.toggle("hidden", t !== "adv");
+  $("analyzePane").classList.toggle("hidden", t !== "analyze");
+  if (t === "analyze") loadAnalysis();
   $("setupPane").classList.toggle("hidden", t !== "setup");
   if (t === "setup") loadSetup(true);
   if (t === "adv") renderAdv();
@@ -4548,7 +4903,7 @@ async function init() {
   $("copyCmd").onclick = e => copyText(cliFor(params()), e.currentTarget);
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
   // open a tab by URL hash (#presets, #lab, #steer, #batch, #gallery, #queue, #adv)
-  if (["presets", "lab", "steer", "batch", "gallery", "queue", "adv", "setup"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
+  if (["presets", "lab", "steer", "batch", "gallery", "queue", "analyze", "adv", "setup"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
   document.addEventListener("click", e => {
     const rf = e.target.closest("[data-refine-job]");
     if (rf) {
@@ -4603,7 +4958,8 @@ async function init() {
   $("lbCopy").onclick = e => copyText($("lbCmd").textContent, e.currentTarget);
 
   const hashTab = location.hash.slice(1);   // /#batch, /#presets, … open straight to a tab
-  switchTab(["queue", "gallery", "steer", "presets", "batch", "lab"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
+  switchTab(["queue", "gallery", "steer", "presets", "batch", "lab", "analyze"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
+  initAnalyze(); loadAnalysis(false);
   poll(); loadGallery();
 }
 init().catch(e => showErr("Couldn't load: " + e.message));

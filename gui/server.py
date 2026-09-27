@@ -24,6 +24,7 @@ import os
 import queue
 import random
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -957,6 +958,98 @@ class JobQueue:
             self._save(job)
 
 
+# ---------------- Analyze tab: images sent for comparison (copies, so the originals can come and go) ----------------
+def analysis_dir():
+    return os.path.join(GALLERY_HOME, "analysis")
+
+
+def analysis_path(name, exports=False):
+    base = os.path.join(analysis_dir(), "exports") if exports else analysis_dir()
+    full = os.path.realpath(os.path.join(base, os.path.basename(str(name or ""))))
+    if not full.startswith(os.path.realpath(base) + os.sep) or not os.path.isfile(full):
+        raise ValueError("that analysis image is gone")
+    return full
+
+
+def analysis_items():
+    items = _read_json(os.path.join(analysis_dir(), "items.json"), [])
+    return [it for it in items if isinstance(it, dict) and os.path.isfile(os.path.join(analysis_dir(), it.get("file", "")))]
+
+
+def _analysis_save(items):
+    os.makedirs(analysis_dir(), exist_ok=True)
+    _write_json(os.path.join(analysis_dir(), "items.json"), items)
+
+
+def analysis_add(src, label, origin):
+    ext = os.path.splitext(src)[1].lower() if src.lower().endswith(IMG_EXT) else ".png"
+    stem = safe_name(os.path.splitext(os.path.basename(src))[0], 60)
+    name = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}__{stem}{ext}"
+    os.makedirs(analysis_dir(), exist_ok=True)
+    shutil.copy2(src, os.path.join(analysis_dir(), name))
+    w, h = image_size(os.path.join(analysis_dir(), name)) or (0, 0)
+    items = analysis_items()
+    it = {"file": name, "label": str(label or stem)[:120], "from": origin, "added": time.time(), "w": w, "h": h}
+    items.append(it)
+    _analysis_save(items)
+    return it
+
+
+def analysis_remove(files):
+    files = set(files or [])
+    keep, n = [], 0
+    for it in analysis_items():
+        if it["file"] in files:
+            try:
+                os.remove(os.path.join(analysis_dir(), it["file"]))          # our own copy; the original is untouched
+            except OSError:
+                pass
+            n += 1
+        else:
+            keep.append(it)
+    _analysis_save(keep)
+    return n
+
+
+def _diff_mask(a, b, tol):
+    """1 where any channel (RGBA) of a and b differs by more than tol — the same rule as Kaleidotron's compare."""
+    from PIL import ImageChops
+    m = None
+    for ca, cb in zip(a.split(), b.split()):
+        d = ImageChops.difference(ca, cb).point(lambda v: 255 if v > tol else 0)
+        m = d if m is None else ImageChops.lighter(m, d)
+    return m
+
+
+def analysis_export(files, fmt, diff=True, tol=0, color="#ff00ff", opacity=0.6):
+    """The ticked analysis images as layers of one PSD / XCF / ORA / DRAW file (+ a difference layer per image)."""
+    import layered
+    from PIL import Image
+    items = {it["file"]: it for it in analysis_items()}
+    files = [f for f in (files or []) if f in items]
+    if not files:
+        raise ValueError("tick at least one image to export")
+    imgs = [Image.open(analysis_path(f)).convert("RGBA") for f in files]
+    size = imgs[0].size
+    imgs = [im if im.size == size else im.resize(size, Image.NEAREST) for im in imgs]      # everything on the reference's grid
+    short = lambda i: f"{i + 1}" + (" ref" if i == 0 else "")
+    layers = [{"name": f"{short(i)} {items[f]['label']}"[:60], "img": im} for i, (f, im) in enumerate(zip(files, imgs))]
+    if diff and len(imgs) > 1:
+        c = str(color or "#ff00ff").lstrip("#")
+        rgb = tuple(int(c[k:k + 2], 16) for k in (0, 2, 4)) if re.fullmatch(r"[0-9a-fA-F]{6}", c) else (255, 0, 255)
+        for i, im in enumerate(imgs[1:], 1):
+            m = _diff_mask(imgs[0], im, max(0, min(255, int(tol or 0))))
+            d = Image.new("RGBA", size, rgb + (0,))
+            d.putalpha(m)
+            layers.append({"name": f"diff 1-{i + 1}", "img": d, "opacity": max(0.0, min(1.0, float(opacity)))})
+    out_dir = os.path.join(analysis_dir(), "exports")
+    os.makedirs(out_dir, exist_ok=True)
+    name = f"analysis-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}.{fmt}"
+    with open(os.path.join(out_dir, name), "wb") as fh:
+        fh.write(layered.write_layered(fmt, layers))
+    return {"file": name, "path": os.path.join(out_dir, name), "layers": [l["name"] for l in layers]}
+
+
 def lab_path(name):
     full = os.path.realpath(os.path.join(LAB, os.path.basename(str(name or ""))))
     if not full.startswith(os.path.realpath(LAB) + os.sep) or not os.path.isfile(full):
@@ -1835,6 +1928,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return lab_path(t["lab"])
         if t.get("ref"):
             return ref_path(t["ref"])
+        if t.get("analysis"):
+            return analysis_path(t["analysis"])
+        if t.get("analysis_export"):
+            return analysis_path(t["analysis_export"], exports=True)
         raise ValueError("nothing to open")
 
     def _resolve_folder(self, kind, arg=""):
@@ -1853,6 +1950,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             target = BACKUPS
         elif kind == "lab":
             target = LAB
+        elif kind == "analysis":
+            target = os.path.join(analysis_dir(), "exports") if arg == "exports" else analysis_dir()
+            os.makedirs(target, exist_ok=True)
         elif kind == "dir":
             target = home_path(arg)
         else:
@@ -1987,6 +2087,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 return self._json({"error": "not found"}, 404)
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
+        if u.path.startswith("/analysis/"):
+            rel = urllib.parse.unquote(u.path[len("/analysis/"):])
+            try:
+                full = analysis_path(rel[len("exports/"):], exports=True) if rel.startswith("exports/") else analysis_path(rel)
+            except ValueError:
+                return self._json({"error": "not found"}, 404)
+            return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
+        if u.path == "/api/analysis":
+            return self._json({"items": analysis_items(), "dir": analysis_dir()})
         if u.path == "/api/boards":
             return self._json({"root": BOARDS, "boards": list_boards()})
         if u.path.startswith("/boards/"):
@@ -2253,6 +2362,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/boards/layout":
                 save_board_layout(body.get("board"), body.get("order"), body.get("sizes"))
                 return self._json({"ok": True})
+            if u.path == "/api/analysis/add":
+                src = self._resolve_image(body.get("target") or {})
+                if not src.lower().endswith(IMG_EXT):
+                    raise ValueError("that isn't a picture")
+                it = analysis_add(src, body.get("label"), body.get("target"))
+                return self._json({"item": it, "items": analysis_items()})
+            if u.path == "/api/analysis/remove":
+                n = analysis_remove(body.get("files") or [])
+                return self._json({"removed": n, "items": analysis_items()})
+            if u.path == "/api/analysis/clear":
+                n = analysis_remove([it["file"] for it in analysis_items()])
+                return self._json({"removed": n, "items": []})
+            if u.path == "/api/analysis/export":
+                fmt = str(body.get("format") or "psd").lower()
+                r = analysis_export(body.get("files"), fmt, bool(body.get("diff", True)), body.get("tol", 0),
+                                    body.get("color"), body.get("opacity", 0.6))
+                return self._json(r)
             if u.path == "/api/lab/remove":
                 # take LAB input images off the recents strip (the files are moved to lab-inputs/.removed, not deleted)
                 files = body.get("files") or ([body["file"]] if body.get("file") else [])

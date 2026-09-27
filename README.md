@@ -503,6 +503,13 @@ serves it locally at `/docs/settings-atlas.html`.
   **use as thumbnail** picks the saved preset's picture.
 - **Steering:** push renders toward reference images (IPAdapter), with strength, weight
   type and a start/end window.
+- **🔬 Analyze:** right-click any image anywhere → **Send to Analysis**, tick two or more and
+  compare them against a ★ reference: a difference mask (color / tolerance / opacity, as in
+  Kaleidotron) with the % of pixels that differ, a loupe that shows the same spot in every
+  picture, R/G/B/brightness histograms with the differences shaded, the colors unique to each
+  picture, and brightness / contrast / saturation stats. **Export** the ticked pictures as layers
+  of a PSD, XCF, DRAW or ORA file, with ☐ **Include difference layer**, and open it in GIMP,
+  Photoshop, Krita or DRAW.
 - **Batch:** a list of prompts (`path | style | size | prompt`) queued in one go.
 - **Gallery / Queue:** every render with its settings and CLI command; hover for a
   blown-up preview, 🧬 to **evolve** variations of any result, reload or re-run a seed.
@@ -744,7 +751,8 @@ pixelmon/
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
 ├── bin/pixelmon-gui           launches the web GUI (gui/server.py)
 ├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets),
-│                              make_starter_presets.py (builds the factory presets)
+│                              make_starter_presets.py (builds the factory presets), presets_sync.py (tuned
+│                              presets ↔ repo), layered.py (reads/writes layered PSD · XCF · ORA · DRAW files)
 ├── docs/                      settings-atlas.html (every setting + how a render is built) and its pipeline/ images
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/

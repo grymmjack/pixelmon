@@ -410,6 +410,10 @@ const S = [
   ["Grid overlay", [G], { gui: "lightbox / peek grid" }, "off · pixels · square · diagonal · isometric · hex · triangle · size 2 – 128", "off", "—", "Viewing aid over the zoomed image; doesn't change the render."],
   ["Sliders &amp; text boxes", [G], { gui: "every slider · prompt / text boxes" }, "—", "—", "—",
    "Sliders: mouse wheel to nudge, click the number to type one, middle-click to reset. Text boxes: drag the corner to grow; the size is remembered."],
+  ["Analyze", [G], { gui: "🔬 Analyze tab · right-click any image → 🔬 Send to Analysis" }, "any number of images; tick 2+ to compare", "—", "—",
+   "Compares pictures against a ★ reference: a difference mask (color, tolerance 0–64, opacity; a pixel differs when any channel is more than the tolerance apart — Kaleidotron's rule), px-differ %, mean difference, PSNR, a loupe (2–16×) that shows the same spot in every picture with its pixel color, R/G/B/brightness histograms with the differences shaded, colors only in one picture vs shared, and brightness / contrast / saturation / unique-color stats. Pictures are copied into ~/pixelmon-gallery/analysis/, so the originals can change or go."],
+  ["Analysis export", [G], { gui: "🔬 Analyze › format + ☐ Include difference layer + ⬇ Export" }, "PSD · XCF · DRAW · ORA", "PSD, difference layer on", "—",
+   "The ticked pictures as layers of one file (reference at the bottom), plus a difference layer per picture at the chosen opacity, for a closer look in GIMP, Photoshop, Krita or DRAW. Saved in analysis/exports/; Open in… sends it to any program from 🛠 Setup."],
   ["Presets", [G], { gui: "Presets tab: save · load · load + render · ⬇ zip · import" }, "—", "63 starters incl. one demo per style", "—", "Full snapshots of the form, steering, evolve and LAB, with a sample image."],
  ]},
 ];
