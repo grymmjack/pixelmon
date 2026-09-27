@@ -255,6 +255,11 @@ fieldset.closed { padding-bottom: 2px; }
   box-shadow: 0 6px 24px rgba(0,0,0,.6); }
 #helpTip ul { margin: 4px 0 0; padding-left: 16px; } #helpTip li { margin: 2px 0; }
 #helpTip .tipk { color: var(--accent); font-weight: 600; }
+#helpTip code { font: 11.5px var(--mono); color: var(--accent); background: var(--panel2); padding: 0 3px; border-radius: 2px; }
+#helpTip:has(table.wtip) { max-width: 480px; }
+#helpTip table.wtip { border-collapse: collapse; margin: 4px 0 6px; }
+#helpTip table.wtip td { padding: 1px 8px 1px 0; vertical-align: top; }
+#helpTip table.wtip td:first-child { white-space: nowrap; }
 .steer-hints { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 2px 18px;
   margin: -4px 0 12px; padding: 0 4px; }
 
@@ -1053,11 +1058,25 @@ const HINT = {
     "subtract": "first reference minus the rest — experimental",
   })[c] || "",
 };
+// prompt weighting cheat-sheet — shared by the Prompt and Negative prompt tips (ComfyUI's syntax)
+const WEIGHT_TIP = `<div style="margin-top:7px"><b>Weighting</b> — make a word count more or less:</div>
+    <table class="wtip">
+    <tr><td><code>(castle)</code></td><td>a bit stronger — ×1.1</td></tr>
+    <tr><td><code>((castle))</code></td><td>stronger — ×1.21 (each extra pair multiplies by 1.1 again)</td></tr>
+    <tr><td><code>(((castle)))</code></td><td>×1.33 — the most you'd stack</td></tr>
+    <tr><td><code>(castle:1.3)</code></td><td>exact weight — clearer than stacking; <b>1.1–1.4</b> is the useful range</td></tr>
+    <tr><td><code>(castle:0.7)</code></td><td>below 1 = weaker: keep it, but let it matter less</td></tr>
+    <tr><td><code>(red cape, gold crown:1.2)</code></td><td>one weight for a whole group</td></tr>
+    <tr><td><code>\\(1987\\)</code></td><td>real brackets in the text — put a <code>\\</code> before each one</td></tr>
+    </table>
+    Above ~<b>1.5</b> the picture starts to break (noise, melted shapes, repeated objects).
+    <code>[castle]</code> does <b>not</b> weaken here (that's another program's syntax) — use <code>(castle:0.9)</code>.
+    Order matters too: words near the start count a little more.`;
 const HELP = {
   prompt: `<span class="tipk">Prompt</span>: describe what you want to see, in short phrases separated by commas —
     <i>"a castle on a cliff, night, full moon, winding road"</i>. Put the most important thing first.
     Don't write "no …" here (the model ignores "no" and adds the thing) — unwanted things go in the negative prompt.
-    🎲 invents a prompt for you; 🕘 brings back ones you used before.`,
+    🎲 invents a prompt for you; 🕘 brings back ones you used before.` + WEIGHT_TIP,
   lora: `<span class="tipk">LoRA</span>: a small add-on that teaches the model a look. <b>EGA art</b> = 16-color 1980s PC
     games, <b>DOS VGA art</b> = 256-color 1990s games, <b>Pixel Art XL</b> = modern pixel art. The number next to it is how
     strongly it's applied: <b>0.8</b> is a good start; lower = weaker look, higher (above ~1.1) starts to warp things.`,
@@ -1071,7 +1090,9 @@ const HELP = {
     combine freely. Hover a chip to see an example and what it adds. Some are only for certain things (e.g.
     "painterlyscene" is for empty landscapes) — the yellow warning box tells you if one fights your picture.`,
   negative: `<span class="tipk">Negative prompt</span>: things you DON'T want — <i>"thick outlines, blurry, text"</i>.
-    It starts with good defaults; add to them rather than replacing them. Plain words, no "no" needed.`,
+    It starts with good defaults; add to them rather than replacing them. Plain words, no "no" needed.
+    Weights work here too: <code>(text:1.4)</code> pushes harder <i>away</i> from text — handy when something keeps
+    sneaking in.` + WEIGHT_TIP,
   canvas: `<span class="tipk">Canvas</span>: the final picture size, and how its pixels are made.`,
   outsize: `<span class="tipk">Output size</span>: the exact width × height of the finished image, in pixels.
     320×200 is a classic DOS game screen; 128×128 suits a character or item.`,
@@ -1240,7 +1261,7 @@ function initHelp() {
     const r = h.getBoundingClientRect();
     tip.classList.remove("hidden");
     tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, r.left - 20)) + "px";
-    tip.style.top = (r.bottom + 8 + tip.offsetHeight > window.innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
+    tip.style.top = Math.max(8, r.bottom + 8 + tip.offsetHeight > window.innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
   });
   document.addEventListener("mouseout", e => { if (e.target.closest("[data-help]")) tip.classList.add("hidden"); });
   // an ⓘ inside a <label>/<summary> must not tick the checkbox or fold the section
