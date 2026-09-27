@@ -91,6 +91,19 @@ They land in `~/pixelmon-gallery/gui-presets/FACTORY/` (not in the repo); the us
 
 ---
 
+### Ship the user's tuned presets
+
+Always, every release: copy the user's own preset folders (every folder except FACTORY — e.g. TUNED FACTORY) from the gallery into the repo, **with the images they use**:
+
+```bash
+cd ~/pixelmon && python3 gui/presets_sync.py export
+git status --short presets/          # review what changed; it's committed with the release
+```
+
+It prints each folder's preset and image counts and flags anything it couldn't bundle (a missing steering ref or LAB input). `install.sh` installs them on new machines (`presets_sync.py install`, never overwriting).
+
+---
+
 ## Step 6 — Verify
 
 **Before touching the rtx box, check nobody is rendering** (the user's GUI queue, and rtx's ComfyUI queue):

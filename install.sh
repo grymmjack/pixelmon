@@ -95,13 +95,8 @@ IPADIR="$COMFY/custom_nodes/ComfyUI_IPAdapter_plus"
 link "$REPO/bin/pixelmon"                  "$HOME/.local/bin/pixelmon"
 link "$REPO/bin/pixelmon-gui"              "$HOME/.local/bin/pixelmon-gui"
 link "$REPO/launch-comfyui.sh"             "$HOME/launch-comfyui.sh"
-# curated preset folders (presets/<folder>/) -> the GUI's presets, only where they're missing
-mkdir -p "$HOME/pixelmon-gallery/gui-presets"
-for d in "$REPO"/presets/*/; do
-  [ -d "$d" ] || continue
-  dest="$HOME/pixelmon-gallery/gui-presets/$(basename "$d")"
-  [ -e "$dest" ] || cp -r "$d" "$dest"
-done
+# curated preset folders (presets/<folder>/ + the images they use) -> the GUI; never overwrites
+python3 "$REPO/gui/presets_sync.py" install || true
 # (animate.py lives next to pixelmon.py in this repo and is imported by path —
 #  no symlink needed; the realpath of the linked pixelmon.py points back here.)
 

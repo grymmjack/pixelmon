@@ -1,21 +1,27 @@
 # Curated presets
 
-Preset folders that ship with pixelmon, in the same layout pixelmon-gui uses in
-`~/pixelmon-gallery/gui-presets/`: each preset is `<name>.json` (every setting) plus
-`<name>.png` (its sample picture); `.order.json` keeps the folder's order.
+Preset folders that ship with pixelmon — complete, with every image they use — in the
+layout pixelmon-gui uses in `~/pixelmon-gallery/gui-presets/`:
+
+```
+presets/<FOLDER>/
+  <name>.json          every setting of the preset
+  <name>.png           its sample picture
+  .order.json          the folder's order
+  _assets/steering/<collection>/<file>   steering references it uses   (-> ~/pixelmon-refs/)
+  _assets/lab-input/<file>               LAB input images it uses      (-> ~/pixelmon-gallery/lab-inputs/)
+```
 
 - **TUNED FACTORY/** — hand-tuned presets.
 
-`install.sh` copies these folders into `~/pixelmon-gallery/gui-presets/` when they aren't
-there yet (it never overwrites). To add them by hand:
+`install.sh` runs `python3 gui/presets_sync.py install`, which puts every preset and image
+where pixelmon looks — only what's missing, never overwriting.
+
+To update this folder from your own tuning (the release skill does this before every release):
 
 ```bash
-cp -rn presets/* ~/pixelmon-gallery/gui-presets/
+python3 gui/presets_sync.py export                  # every folder except FACTORY
+python3 gui/presets_sync.py export "TUNED FACTORY"  # just one
 ```
 
-The **FACTORY** folder isn't stored here — it's rebuilt by `gui/make_starter_presets.py`.
-
-Some presets point at images that aren't in the repo: steering references (in
-`~/pixelmon-refs/`) and LAB inputs (in `~/pixelmon-gallery/lab-inputs/`). They load fine
-without them; add your own references or input, or deselect steering, before rendering.
-To move a preset *with* every image it uses, export it from the Presets tab as a `.zip`.
+The **FACTORY** folder isn't stored here — `gui/make_starter_presets.py` rebuilds it.
