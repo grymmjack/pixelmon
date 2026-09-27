@@ -258,6 +258,11 @@ select.advset { border-color: var(--accent); }
 .pal .sw { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--line); line-height: 0; }
 .pal .sw i { width: 7px; height: 9px; display: inline-block; }
 .pal.big .sw i { width: 12px; height: 12px; }
+/* the preview's palette is one fixed-height line (extra colors are counted, not wrapped), so the preview's size is
+   known before it's placed — it appears once, in its final spot, like a tooltip */
+#peekPal { height: 20px; flex-wrap: nowrap; overflow: hidden; }
+#peekPal .sw { flex-wrap: nowrap; overflow: hidden; min-width: 0; flex: 0 1 auto; }
+#peekPal > span:not(.sw), #peekPal .gpl { flex-shrink: 0; }
 .pal .gpl { font: 600 9.5px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px;
   color: var(--accent); text-decoration: none; text-transform: uppercase; }
 .pal .gpl:hover { border-color: var(--accent); }
@@ -2524,6 +2529,9 @@ function showPeek(el) {
   document.querySelectorAll(".peeking").forEach(x => x.classList.remove("peeking"));
   if (el) (el.matches("img") ? el : el.querySelector("img") || el).classList.add("peeking");
   const pk = $("peek"), img = $("peekImg");
+  // like a tooltip: stay invisible until the new picture is loaded, measured and placed — never show it somewhere stale
+  pk.style.visibility = "hidden";
+  img.onerror = () => { pk.style.visibility = ""; hidePeek(); };
   img.onload = () => {
     const iw = img.naturalWidth, ih = img.naturalHeight; if (!iw || !ih) return;
     $("peekCap").textContent = `${it.src ? it.cap || it.cork : job.label || `seed ${o.seed ?? "?"}`}${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
