@@ -127,6 +127,7 @@ a.btn { color: var(--text); text-decoration: none; display: inline-block; text-t
   border-radius: 4px; cursor: pointer; font-size: 13px; text-transform: none; letter-spacing: 0; }
 #openMenu button:hover, #openMenu button:focus-visible { background: var(--panel2); color: var(--accent); outline: none; }
 #openMenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.readout { cursor: text; border-bottom: 1px dotted var(--dim); } .readout:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .panebar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; min-height: 28px; }
 .panebar .grow { flex: 1; min-width: 0; color: var(--dim); font-size: 12.5px; }
 .panebar .grow a, .panebar .grow button.linkish { color: var(--accent); }
@@ -2081,6 +2082,59 @@ function initGalleryTools() {
   };
 }
 
+
+// ---------------- every slider: mouse wheel steps it, click its readout to type a value, middle-click resets ----------------
+const READOUTS = { amtVal: "#dither_amount", paVal: "#pixel_angles", maskSizeVal: "#maskSize", evoDenVal: "#evoDenoise",
+  evoStVal: "#evoSteer", evoStartVal: "#evoStart", evoEndVal: "#evoEnd", labStrVal: "#labStrength", labDenVal: "#labDenoise",
+  editStrVal: "#editStrength", steerStrVal: "#steerStrength", steerStartVal: "#steerStart", steerEndVal: "#steerEnd" };
+const readoutSlider = el => {
+  if (!el || !el.id) return null;
+  if (READOUTS[el.id]) return document.querySelector(READOUTS[el.id]);
+  if (/^v[a-z]+$/.test(el.id)) return document.querySelector(`input[type=range][data-adj="${el.id.slice(1)}"]`);
+  return null;
+};
+function sliderDefault(r) {
+  if (r.dataset.adj) return ADJ0[r.dataset.adj];
+  const id = r.id, L = LAB_DEFAULTS();
+  const map = { dither_amount: FORM_DEFAULTS.dither_amount, pixel_angles: FORM_DEFAULTS.pixel_angles, maskSize: 16,
+    evoDenoise: EVO_DEFAULTS.denoise, evoSteer: EVO_DEFAULTS.steer, evoStart: EVO_DEFAULTS.start, evoEnd: EVO_DEFAULTS.end,
+    labStrength: L.strength, labDenoise: L.denoise, editStrength: 1,
+    steerStrength: STEER_DEFAULTS.strength, steerStart: STEER_DEFAULTS.start, steerEnd: STEER_DEFAULTS.end };
+  return id in map ? map[id] : r.defaultValue;
+}
+function setSlider(r, v) {
+  const min = +r.min, max = +r.max, step = +r.step || 1;
+  v = Math.min(max, Math.max(min, Math.round((+v - min) / step) * step + min));
+  r.value = +v.toFixed(6);
+  r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true }));
+}
+function initSliders() {
+  document.addEventListener("wheel", e => {
+    const r = e.target.closest && e.target.closest("input[type=range]"); if (!r || r.disabled) return;
+    e.preventDefault();
+    const step = (+r.step || 1) * (e.shiftKey ? 5 : 1);                 // shift = 5 steps at a time
+    setSlider(r, +r.value + (e.deltaY < 0 || e.deltaX < 0 ? step : -step));
+  }, { passive: false });
+  document.addEventListener("auxclick", e => {                          // middle click = back to its default
+    if (e.button !== 1) return;
+    const r = (e.target.closest && e.target.closest("input[type=range]")) || readoutSlider(e.target.closest && e.target.closest("b, span"));
+    if (!r) return;
+    e.preventDefault(); setSlider(r, sliderDefault(r));
+  });
+  document.addEventListener("mousedown", e => {                         // no autoscroll blob on middle-click
+    if (e.button === 1 && e.target.closest && (e.target.closest("input[type=range]") || readoutSlider(e.target.closest("b, span")))) e.preventDefault();
+  });
+  document.addEventListener("click", e => {                             // click a readout = type a value
+    const b = e.target.closest && e.target.closest("b, span"), r = readoutSlider(b); if (!r) return;
+    e.preventDefault(); e.stopPropagation();
+    const v = prompt(`Value (${r.min} – ${r.max}, default ${sliderDefault(r)}):`, r.value);
+    if (v !== null && v.trim() !== "" && !isNaN(+v)) setSlider(r, +v);
+  }, true);
+  const tip = "wheel: adjust (shift = faster) · click the number to type one · middle-click: reset to default";
+  document.querySelectorAll("input[type=range]").forEach(r => { r.title = r.title ? `${r.title} — ${tip}` : tip; });
+  Object.keys(READOUTS).concat(Object.keys(ADJ0).map(k => "v" + k)).forEach(id => { const el = $(id); if (el) { el.classList.add("readout"); el.title = tip; } });
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -3745,6 +3799,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initSliders();
   initGalleryTools();
   initSetup();
   initOpenWith();
