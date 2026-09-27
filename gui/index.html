@@ -217,12 +217,14 @@ select.advset { border-color: var(--accent); }
 
 /* ---- LAB ---- */
 .lab { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
-.labzoom { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px 10px; }
+/* docked loupe: pinned to the bottom of the LAB while the rest scrolls; grip on its top edge */
+.labzoom { position: sticky; bottom: 0; z-index: 6; margin: 14px -14px -14px; padding: 12px 14px 12px;
+  background: var(--panel); border-top: 1px solid var(--accent); box-shadow: 0 -8px 22px rgba(0,0,0,.55); }
 .labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
 .lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr); margin-top: 8px;
   height: var(--lz-h, 420px); overflow: hidden; }
 .lz-div { cursor: col-resize; } .lz-div:hover, .lz-div.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
-.lz-grip { height: 9px; margin-top: 4px; cursor: row-resize; border-radius: 4px;
+.lz-grip { position: absolute; left: 0; right: 0; top: -5px; height: 10px; cursor: row-resize;
   background: repeating-linear-gradient(90deg, var(--line) 0 18px, transparent 18px 24px) center / 60px 3px no-repeat; }
 .lz-grip:hover, .lz-grip.drag { background-color: rgba(85,255,255,.15); }
 .lz-stage { position: relative; } .lz-stage img { width: 100%; }
@@ -767,7 +769,7 @@ fieldset.closed { padding-bottom: 2px; }
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
       </div>
       <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50%
-          <span class="dim">(follows your pointer over the input · scroll or drag a view and the others follow · drag the bars to resize)</span></summary>
+          <span class="dim">(follows your pointer over the input · scroll or drag a view and the others follow · drag the top edge or the dividers to resize)</span></summary>
         <div class="lz-views" id="lzViews">
           <div class="lz-view" data-z="3"><div class="lz-cap">300%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
           <div class="lz-div" data-div="0" title="drag to resize the views · double-click to reset"></div>
@@ -2227,12 +2229,12 @@ function initLabZoomFollow() {
   const grip = $("lzGrip");
   grip.addEventListener("pointerdown", e => {
     e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
-    const h0 = views.offsetHeight, y0 = e.clientY;
-    const mv = ev => views.style.setProperty("--lz-h", Math.max(140, Math.min(2000, h0 + ev.clientY - y0)) + "px");
+    const h0 = views.offsetHeight, y0 = e.clientY;          // grip on top: drag up = taller
+    const mv = ev => views.style.setProperty("--lz-h", Math.max(120, Math.min(innerHeight - 160, h0 - (ev.clientY - y0))) + "px");
     const up = () => { grip.classList.remove("drag"); grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); store.set("lzH", views.offsetHeight); };
     grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up);
   });
-  grip.addEventListener("dblclick", () => { views.style.setProperty("--lz-h", "420px"); store.set("lzH", 420); });
+  grip.addEventListener("dblclick", () => { views.style.setProperty("--lz-h", "300px"); store.set("lzH", 300); });
   const setCols = c => c.forEach((v, i) => views.style.setProperty(`--lz-c${i}`, v + "fr"));
   let cols = store.get("lzCols", [3, 2, 1]); setCols(cols);
   views.querySelectorAll(".lz-div").forEach(d => {
@@ -2258,7 +2260,7 @@ function labZoomUpdate() {
 }
 function initLabZoom() {
   const box = $("lzViews"), scrolls = [...box.querySelectorAll(".lz-scroll")];
-  box.style.setProperty("--lz-h", (store.get("lzH", 420)) + "px");
+  box.style.setProperty("--lz-h", Math.min(store.get("lzH", 300), innerHeight - 160) + "px");
   $("labZoom").open = store.get("lzOpen", true);
   $("labZoom").addEventListener("toggle", () => store.set("lzOpen", $("labZoom").open));
   let syncing = false;
