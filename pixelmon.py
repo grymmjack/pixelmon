@@ -558,6 +558,11 @@ def prepare_inpaint_crop(a, r64):
     ci, cm = os.path.join(td, "init-crop.png"), os.path.join(td, "mask-crop.png")
     full.crop((x0, y0, x0 + cw, y0 + ch)).save(ci)
     m.crop((x0, y0, x0 + cw, y0 + ch)).save(cm)
+    if getattr(a, "control", None):              # a ControlNet guide (e.g. the old shapes) must cover the same area
+        cc = os.path.join(td, "control-crop.png")
+        Image.open(os.path.expanduser(a.control)).convert("RGB").resize(full.size, Image.LANCZOS) \
+            .crop((x0, y0, x0 + cw, y0 + ch)).save(cc)
+        a.control = cc
     info = {"init": a.init, "mask": a.mask, "box": (x0, y0, cw, ch), "src": (fw, fh), "out": (a.ow, a.oh)}
     sx, sy = a.ow / fw, a.oh / fh               # init pixels -> output pixels
     a.init, a.mask = ci, cm

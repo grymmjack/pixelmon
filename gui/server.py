@@ -741,6 +741,9 @@ class JobQueue:
             if params.get("lab_init"):
                 init = kept
                 params["evolve_denoise"] = params.get("lab_denoise", 0.7)
+            if (params.get("inpaint") or {}).get("keep_colors"):
+                # lock the edit to the picture's own colors (outside the mask is pasted back anyway)
+                params["adv"] = dict(params.get("adv") or {}, custom_hex=" ".join(picture_palette(kept)))
             if params.get("inpaint"):                # the painted mask, as sent (white = redraw)
                 data = str(params["inpaint"].get("mask") or "")
                 raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
@@ -1263,6 +1266,18 @@ def image_gpl(path):
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(gpl_text(stem, colors))
     return out
+
+
+def picture_palette(path, cap=32):
+    """The colors a picture uses: all of them when it has few (pixel art), else its `cap` main colors."""
+    n, colors = image_colors(path)
+    if n != ">255" and colors and len(colors) <= 64:
+        return colors
+    from PIL import Image
+    q = Image.open(path).convert("RGB").quantize(colors=cap, method=Image.Quantize.MEDIANCUT)
+    pal = q.getpalette()[: cap * 3]
+    used = sorted({c for _, c in (q.getcolors(cap) or [])})
+    return ["#%02x%02x%02x" % tuple(pal[i * 3: i * 3 + 3]) for i in used]
 
 
 def os_opener(is_dir):
