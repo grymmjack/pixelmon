@@ -1016,10 +1016,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json({"jobs": self.jobs.snapshot()})
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
-            try:
-                path = self.jobs.gallery_path({"dir": q.get("dir", [""])[0], "file": q.get("file", [""])[0]})
-            except ValueError as e:
-                return self._json({"error": str(e)}, 404)
+            d, f = q.get("dir", [""])[0], q.get("file", [""])[0]
+            if d == "@presets":                     # a preset's sample picture (preset cards)
+                path = os.path.realpath(os.path.join(PRESETS, f))
+                if not path.startswith(os.path.realpath(PRESETS) + os.sep) or not os.path.isfile(path):
+                    return self._json({"error": "preset image not found"}, 404)
+            else:
+                try:
+                    path = self.jobs.gallery_path({"dir": d, "file": f})
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 404)
             n, colors = image_colors(path)
             if n is None:
                 return self._json({"error": "palette readout needs Pillow — run pixelmon-gui with ComfyUI's venv"}, 501)

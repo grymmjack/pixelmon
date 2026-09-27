@@ -86,6 +86,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 4px 0; }
 .actions { position: sticky; bottom: -90px; z-index: 2; background: var(--panel); padding: 10px 0 0; display: flex; gap: 8px; }
 .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+a.btn { color: var(--text); text-decoration: none; display: inline-block; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }   /* link-buttons (⬇ zip) look like buttons, not links */
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; flex: 1; }
 .btn.small { padding: 3px 8px; font-size: 12px; }
@@ -1419,12 +1420,14 @@ async function loadPresets(select) {
     return `<div class="pcard">${p.image ? `<img src="/preset-img/${encodeURIComponent(p.image)}" alt="">` : `<div class="noimg">no picture</div>`}
       <div class="body"><h4>${esc(p.name)}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
+        ${p.image ? `<div class="pal" data-pdir="@presets" data-pfile="${esc(p.image)}"></div>` : ""}
         <div class="acts"><button class="btn small" data-pload="${esc(p.name)}">Load</button>
           <button class="btn small" data-prender="${esc(p.name)}">Load + render</button>
           <a class="btn small" href="/api/presets/export?name=${encodeURIComponent(p.name)}" download
              title="download this preset + all its images as a .zip">⬇ zip</a>
           <button class="btn small" data-pdel="${esc(p.name)}">Delete</button></div></div></div>`;
   }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`);
+  fillPalettes($("presetsPane"));
 }
 function latestOutput() {
   if (EVO.parent) return { dir: EVO.parent.dir, file: EVO.parent.file };
