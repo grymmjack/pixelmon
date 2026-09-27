@@ -2522,20 +2522,41 @@ function showPeek(el) {
   if (el) (el.matches("img") ? el : el.querySelector("img") || el).classList.add("peeking");
   const pk = $("peek"), img = $("peekImg");
   img.onload = () => {
-    // requested zoom, or the largest whole-number zoom that fits the viewport
-    const room = Math.max(1, Math.floor(Math.min((innerWidth - 60) / img.naturalWidth, (innerHeight - 110) / img.naturalHeight)));
-    const k = PEEK.zoom === "fit" ? room : Math.min(PEEK.zoom, room);
-    img.style.width = img.naturalWidth * k + "px";
-    drawGrid($("peekGrid"), img, k);
-    $("peek").style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
-    $("peekCap").textContent = `${it.src ? it.cap || it.cork : job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
+    const iw = img.naturalWidth, ih = img.naturalHeight; if (!iw || !ih) return;
+    $("peekCap").textContent = `${it.src ? it.cap || it.cork : job.label || `seed ${o.seed ?? "?"}`}${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
     $("peekZooms").innerHTML = ["fit", 2, 3, 4].map(z => `<button class="btn small ${z == PEEK.zoom ? "on" : ""}" data-peekzoom="${z}">${z === "fit" ? "fit" : z + "×"}</button>`).join("");
-    pk.classList.remove("hidden");
-    // beside the thumbnail, on whichever side has more room, clamped to the viewport
-    const r = (el || document.body).getBoundingClientRect(), w = pk.offsetWidth, h = pk.offsetHeight;
-    const left = Math.max(8, r.left + r.width / 2 < innerWidth / 2 ? Math.min(innerWidth - w - 8, r.right + 12) : r.left - w - 12);
-    pk.style.left = left + "px";
-    pk.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2)) + "px";
+    pk.style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
+    // measure the peek's frame (padding, caption, palette, formula) around a 1× image, invisibly
+    pk.style.visibility = "hidden"; pk.classList.remove("hidden"); img.style.width = iw + "px";
+    const frameW = pk.offsetWidth - iw, frameH = pk.offsetHeight - img.offsetHeight, minW = pk.offsetWidth - frameW;
+    // Collision detection: never cover the thumbnail being hovered (that made it close and reopen forever).
+    // Try each side of it; each side allows the largest whole zoom that fits there; take the biggest.
+    const live = el && el.isConnected ? el.getBoundingClientRect() : null;
+    const r = live && live.width ? (PEEK.rect = live) : (PEEK.rect || { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2, width: 0, height: 0 });
+    const M = 8, G = 12, want = PEEK.zoom === "fit" ? Infinity : PEEK.zoom;
+    const sides = [
+      { s: "right", w: innerWidth - M - (r.right + G), h: innerHeight - 2 * M },
+      { s: "left",  w: r.left - G - M,                 h: innerHeight - 2 * M },
+      { s: "below", w: innerWidth - 2 * M,             h: innerHeight - M - (r.bottom + G) },
+      { s: "above", w: innerWidth - 2 * M,             h: r.top - G - M }];
+    for (const c of sides) {
+      c.k = Math.floor(Math.min((c.w - frameW) / iw, (c.h - frameH) / ih));
+      if (Math.max(minW, iw) + frameW > c.w) c.k = Math.min(c.k, 0);   // the frame itself doesn't fit there
+    }
+    const best = sides.reduce((a, b) => (Math.min(b.k, want) > Math.min(a.k, want) ? b : a));
+    let k = Math.max(1, Math.min(want, best.k));
+    img.style.width = iw * k + "px";
+    drawGrid($("peekGrid"), img, k);
+    $("peekCap").textContent += ` · ${k}×`;
+    const w = pk.offsetWidth, h = pk.offsetHeight, cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const clampX = x => Math.max(M, Math.min(innerWidth - w - M, x)), clampY = y => Math.max(M, Math.min(innerHeight - h - M, y));
+    let left, top;
+    if (best.k < 1) { left = cx < innerWidth / 2 ? innerWidth - w - M : M; top = clampY(cy - h / 2); }   // tiny window: far side
+    else if (best.s === "right") { left = r.right + G; top = clampY(cy - h / 2); }
+    else if (best.s === "left") { left = r.left - G - w; top = clampY(cy - h / 2); }
+    else if (best.s === "below") { top = r.bottom + G; left = clampX(cx - w / 2); }
+    else { top = r.top - G - h; left = clampX(cx - w / 2); }
+    pk.style.left = left + "px"; pk.style.top = top + "px"; pk.style.visibility = "";
   };
   $("peekFormula").hidden = !!it.src;          // a plain image (not one of our renders) has no formula
   if (it.src) {
@@ -2560,14 +2581,19 @@ function showPeek(el) {
   img.src = fileUrl(job, o);
   if (img.complete && img.naturalWidth) img.onload();
 }
+function peekKey(el) {   // what a hovered element shows, so re-hovering the same image doesn't restart the preview
+  return el.dataset.job ? `${el.dataset.job}|${el.dataset.file}` : el.dataset.cork || el.dataset.ref
+    || (el.parentElement && el.parentElement.dataset.pid) || "";
+}
 function hidePeek() {
-  clearTimeout(PEEK.timer); $("peek").classList.add("hidden"); PEEK.el = null;
+  clearTimeout(PEEK.timer); $("peek").classList.add("hidden"); PEEK.el = null; PEEK.key = null;
   document.querySelectorAll(".peeking").forEach(x => x.classList.remove("peeking"));
 }
 function peekStep(d) {
   if (PEEK.stack.length < 2) return;
   PEEK.idx = (PEEK.idx + d + PEEK.stack.length) % PEEK.stack.length;
   PEEK.el = peekFind(PEEK.stack[PEEK.idx]) || PEEK.el;
+  PEEK.key = PEEK.el ? peekKey(PEEK.el) : null;
   showPeek(PEEK.el);
 }
 function initPeek() {
@@ -2577,8 +2603,11 @@ function initPeek() {
     if (!$("lb").classList.contains("hidden")) return;
     if (e.target.closest("#peek")) { clearTimeout(PEEK.hideTimer); return; }
     const th = e.target.closest(PEEK_SEL);
-    if (!th || e.target.closest(".evo-btn, [data-cork-x]")) return;
-    clearTimeout(PEEK.hideTimer); clearTimeout(PEEK.timer);
+    if (!th || e.target.closest(".evo-btn, [data-cork-x], [data-cork-rs]")) return;
+    clearTimeout(PEEK.hideTimer);
+    // the same image again (e.g. the queue re-rendered it under the pointer): keep the open preview as it is
+    if (!$("peek").classList.contains("hidden") && peekKey(th) === PEEK.key) { PEEK.el = th; return; }
+    clearTimeout(PEEK.timer);
     PEEK.timer = setTimeout(() => {
       PEEK.el = th;
       if (th.matches(".cork-item")) {
@@ -2591,6 +2620,7 @@ function initPeek() {
         PEEK.stack = stackOf(th);
         PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.job === th.dataset.job && x.file === th.dataset.file));
       }
+      PEEK.key = peekKey(th);
       showPeek(th);
     }, 280);
   });
