@@ -2293,13 +2293,20 @@ function lzMask() {
     c.width = ov.width; c.height = ov.height; c.getContext("2d").drawImage(ov, 0, 0);
   });
 }
+// Scrolls we cause ourselves must not echo back as "the user scrolled this view": views synced to each other
+// would keep re-syncing every frame and, with rounding and clamping at the edges, creep off on their own.
+const LZ = { driver: null, until: 0 };
+const lzCenter = (sc, fx, fy) => { const st = sc.querySelector(".lz-stage");
+  sc.scrollLeft = fx * st.offsetWidth - sc.clientWidth / 2; sc.scrollTop = fy * st.offsetHeight - sc.clientHeight / 2; };
+const lzSpot = sc => { const st = sc.querySelector(".lz-stage");
+  return [(sc.scrollLeft + sc.clientWidth / 2) / Math.max(1, st.offsetWidth), (sc.scrollTop + sc.clientHeight / 2) / Math.max(1, st.offsetHeight)]; };
 // center every zoom view on a spot of the input (fractions 0..1)
 function lzFocus(fx, fy) {
+  LZ.driver = null; LZ.until = performance.now() + 120;       // none of the scrolls this causes count as the user's
   document.querySelectorAll("#lzViews .lz-view").forEach(v => {
-    const sc = v.querySelector(".lz-scroll"), st = v.querySelector(".lz-stage"), dot = v.querySelector(".lz-dot");
+    const dot = v.querySelector(".lz-dot");
     dot.style.left = fx * 100 + "%"; dot.style.top = fy * 100 + "%";
-    sc.dataset.follow = "1";
-    sc.scrollLeft = fx * st.offsetWidth - sc.clientWidth / 2; sc.scrollTop = fy * st.offsetHeight - sc.clientHeight / 2;
+    lzCenter(v.querySelector(".lz-scroll"), fx, fy);
   });
 }
 function initLabZoomFollow() {
@@ -2352,16 +2359,13 @@ function initLabZoom() {
   box.style.setProperty("--lz-h", Math.min(store.get("lzH", 300), innerHeight - 160) + "px");
   $("labZoom").open = store.get("lzOpen", true);
   $("labZoom").addEventListener("toggle", () => store.set("lzOpen", $("labZoom").open));
-  let syncing = false;
   const sync = from => {                       // same spot (as a fraction of the picture) in every view
-    if (syncing) return; syncing = true;
-    const fx = (from.scrollLeft + from.clientWidth / 2) / Math.max(1, from.scrollWidth),
-          fy = (from.scrollTop + from.clientHeight / 2) / Math.max(1, from.scrollHeight);
-    for (const s of scrolls) if (s !== from) { s.scrollLeft = fx * s.scrollWidth - s.clientWidth / 2; s.scrollTop = fy * s.scrollHeight - s.clientHeight / 2; }
-    requestAnimationFrame(() => (syncing = false));
+    const [fx, fy] = lzSpot(from);
+    LZ.driver = from; LZ.until = performance.now() + 120;       // the others' scroll events are ours, not the user's
+    for (const s of scrolls) if (s !== from) lzCenter(s, fx, fy);
   };
   scrolls.forEach(s => {
-    s.addEventListener("scroll", () => { if (s.dataset.follow) { delete s.dataset.follow; return; } sync(s); });
+    s.addEventListener("scroll", () => { if (performance.now() < LZ.until && s !== LZ.driver) return; sync(s); });
     s.addEventListener("pointerdown", e => {   // drag to pan
       if (e.button !== 0) return; e.preventDefault(); s.classList.add("drag"); s.setPointerCapture(e.pointerId);
       const x0 = e.clientX, y0 = e.clientY, l0 = s.scrollLeft, t0 = s.scrollTop;
