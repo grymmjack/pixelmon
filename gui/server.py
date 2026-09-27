@@ -2,11 +2,14 @@
 """pixelmon-gui — a local web front end for the pixelmon CLI.
 
 Serves a single-page UI, queues render jobs, and runs them one at a time by
-shelling out to bin/pixelmon (always --server rtx --no-open). Each job renders
+shelling out to bin/pixelmon (--server <render server> --no-open). Each job renders
 into its own folder under the gallery dir with a job.json recording the exact
 settings and command, so the gallery can reload / re-run anything.
 
-Standard library only. usage: pixelmon-gui [--port 8190] [--lan] [--gallery DIR]
+The render server is a servers.json alias, host[:port] or URL: --server NAME, else $PIXELMON_SERVER,
+else the one picked in the Setup tab, else "local" (ComfyUI on this machine, port 8188).
+
+Standard library only. usage: pixelmon-gui [--port 8190] [--lan] [--server NAME] [--gallery DIR]
 """
 import argparse
 import ast
@@ -37,7 +40,7 @@ from zlib import error as zlib_error
 HERE = os.path.dirname(os.path.realpath(__file__))
 REPO = os.path.dirname(HERE)
 PIXELMON = os.path.join(REPO, "bin", "pixelmon")
-RENDER_SERVER = "rtx"
+SERVER_ARG = ""          # --server / $PIXELMON_SERVER: overrides the Setup tab's choice
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DONE_LINE = re.compile(r"✅.*?seed=(\d+)\s+->\s+(\S.*)$")
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
@@ -296,12 +299,30 @@ CHARACTER_WORDS = {"knight", "wizard", "warrior", "goblin", "orc", "dwarf", "elf
                    "sorceress", "paladin", "thief", "ranger", "captain", "cyborg", "alien", "beast", "golem", "mage"}
 
 
-def server_url():
+def known_servers():
+    """servers.json aliases (keys starting with _ are comments) plus the built-in 'local'."""
     try:
         with open(os.path.join(REPO, "servers.json"), encoding="utf-8") as f:
-            return json.load(f).get(RENDER_SERVER)
+            out = {k: v for k, v in json.load(f).items() if not k.startswith("_") and isinstance(v, str)}
     except Exception:
-        return None
+        out = {}
+    out.setdefault("local", "http://127.0.0.1:8188")
+    return out
+
+
+def render_server():
+    """Where renders go: --server / $PIXELMON_SERVER, else the Setup tab's pick, else 'local'."""
+    return SERVER_ARG or load_setup().get("server") or "local"
+
+
+def server_url(name=None):
+    """The URL of a render server name, resolved the way pixelmon does (a farm list -> its first server)."""
+    name = (name or render_server()).split(",")[0].strip()
+    url = known_servers().get(name, name)
+    if "://" not in url:
+        url = "http://" + url
+    p = urllib.parse.urlparse(url)
+    return f"{p.scheme}://{p.hostname}:{p.port or 8188}" if p.hostname else None
 
 
 def load_loras():
@@ -501,8 +522,8 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
     return out
 
 
-def server_up():
-    url = server_url()
+def server_up(name=None):
+    url = server_url(name)
     if not url:
         return False
     try:
@@ -577,7 +598,7 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     prompt = str(p.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is empty")
-    argv = [PIXELMON, prompt, "--server", RENDER_SERVER, "--no-open", "--show-prompt"]
+    argv = [PIXELMON, prompt, "--server", render_server(), "--no-open", "--show-prompt"]
     art = bool(p.get("art"))
     if art:
         argv.append("--art")
@@ -1100,6 +1121,7 @@ def load_setup():
     s.setdefault("folder_apps", [])
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
     s.setdefault("draw_palette", True)     # Open in DRAW also loads the image's colors as a .gpl (--palette)
+    s.setdefault("server", "")            # render server (servers.json alias / host / URL); "" = local
     return s
 
 
@@ -1119,6 +1141,9 @@ def save_setup(body):
         s["draw_palette"] = bool(body["draw_palette"])
     if "folder_default" in body:
         s["folder_default"] = str(body["folder_default"] or "os")[:20]
+    if "server" in body:
+        s["server"] = re.sub(r"\s+", "", str(body["server"] or ""))[:300]
+        _ADV_CACHE["v"] = None                 # model lists come from the render server
     os.makedirs(os.path.dirname(SETUP_FILE), exist_ok=True)
     _write_json(SETUP_FILE, s)
     return s
@@ -1804,7 +1829,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "steer_weight_types": STEER_WEIGHT_TYPES, "steer_combine": STEER_COMBINE,
                                "style_samples": style_samples(),
                                "presets": load_presets(),
-                               "loras": loras, "loras_live": live, "server": RENDER_SERVER,
+                               "loras": loras, "loras_live": live, "server": render_server(),
                                "adv_lists": load_adv_lists(),
                                "server_up": server_up()})
         if u.path == "/api/jobs":
@@ -1852,7 +1877,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             img, fold = detect_programs()
             return self._json({"setup": load_setup(), "detected": {"draw": detect_draw(), "kaleidotron": detect_kaleidotron(),
                                                                     "image_apps": img, "folder_apps": fold},
-                               "os": "windows" if IS_WIN else "macos" if IS_MAC else "linux"})
+                               "os": "windows" if IS_WIN else "macos" if IS_MAC else "linux",
+                               "servers": known_servers(), "server": render_server(), "server_locked": SERVER_ARG})
+        if u.path == "/api/server/check":
+            name = (urllib.parse.parse_qs(u.query).get("s") or [""])[0].strip() or render_server()
+            return self._json({"server": name, "url": server_url(name), "up": server_up(name)})
         if u.path.startswith("/setup-img/"):
             full = os.path.realpath(os.path.join(HERE, "img", os.path.basename(u.path)))
             if not os.path.isfile(full):
@@ -2409,9 +2438,12 @@ Handler._upload_layered = _upload_layered
 
 
 def main():
-    global REFS, PRESETS, BOARDS, LAB, GALLERY_HOME, BACKUPS, SETUP_FILE
-    ap = argparse.ArgumentParser(prog="pixelmon-gui", description="Web GUI for pixelmon (renders on the rtx box).")
+    global REFS, PRESETS, BOARDS, LAB, GALLERY_HOME, BACKUPS, SETUP_FILE, SERVER_ARG
+    ap = argparse.ArgumentParser(prog="pixelmon-gui", description="Web GUI for pixelmon.")
     ap.add_argument("--port", type=int, default=8190)
+    ap.add_argument("--server", default=os.environ.get("PIXELMON_SERVER", ""),
+                    help="render server: a servers.json alias, host[:port] or URL (default: $PIXELMON_SERVER, "
+                         "else the Setup tab's choice, else 'local')")
     ap.add_argument("--lan", action="store_true", help="listen on all interfaces so other devices on the LAN can use it")
     ap.add_argument("--refs", default=REFS, help="steering image library, one folder per collection "
                                                   "(default ~/pixelmon-refs)")
@@ -2428,6 +2460,7 @@ def main():
     GALLERY_HOME = os.path.dirname(os.path.normpath(PRESETS))           # backups + setup live beside the presets
     BACKUPS = os.path.join(GALLERY_HOME, "backups")
     SETUP_FILE = os.path.join(GALLERY_HOME, "gui-setup.json")
+    SERVER_ARG = re.sub(r"\s+", "", args.server or "")
     os.makedirs(os.path.join(REFS, "gui-drops"), exist_ok=True)
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)
@@ -2446,7 +2479,7 @@ def main():
         except (OSError, ValueError):
             sys.exit(f"port {args.port} is in use by another program; try  pixelmon-gui --port {args.port + 1}")
     print(f"pixelmon-gui on http://{'<this-ip>' if args.lan else '127.0.0.1'}:{args.port}  "
-          f"(renders on '{RENDER_SERVER}', gallery {args.gallery})  Ctrl-C to quit")
+          f"(renders on '{render_server()}' {server_url() or ''}, gallery {args.gallery})  Ctrl-C to quit")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

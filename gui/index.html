@@ -985,7 +985,7 @@ function cliFor(p) {
     if (!s.includes("'")) return `'${s}'`;
     if (!/[$`"\\!]/.test(s)) return `"${s}"`;
     return "'" + s.replace(/'/g, "'\\''") + "'"; };
-  const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "rtx", "--no-open", "--show-prompt"];
+  const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "local", "--no-open", "--show-prompt"];
   if (p.art) a.push("--art");
   if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
   if (p.negative) a.push("--negative", q(p.negative));
@@ -1754,7 +1754,7 @@ function renderAdv() {
         <div class="meta">default ${esc(f.def)} · ${range(f)} · <code>${esc(f.flag)}</code></div>
         <div class="why">${esc(f.why)}</div></div>`).join("")}</div></fieldset>`).join("") +
     `<fieldset class="advgroup"><legend>Not here on purpose</legend><ul class="advnot">
-      <li><code>--server</code> — the GUI always renders on the rtx box.</li>
+      <li><code>--server</code> — pick the render server in the 🛠 Setup tab (or start the GUI with <code>pixelmon-gui --server NAME</code>).</li>
       <li><code>--steer DIR</code>, <code>--steer-max</code> — pick reference images in the Steering tab instead.</li>
       <li><code>--batch</code>, <code>--output-to</code>, <code>--move-to-dirs</code>, <code>--create-dirs</code>, <code>--no-subdirs</code> — the Batch tab and gallery folders handle these.</li>
       <li><code>--init</code>, <code>--control</code>, <code>--mask</code>, <code>--denoise</code> — LAB and evolve set these from the images you pick.</li>
@@ -1865,6 +1865,20 @@ function saveSetup() {
 }
 const drawPath = () => SETUP && (SETUP.setup.draw || SETUP.detected.draw);
 const ktPath = () => SETUP && (SETUP.setup.kaleidotron || SETUP.detected.kaleidotron);
+async function checkServer() {
+  const el = $("setupServerState"), inp = $("setupServer");
+  if (!el || !inp) return;
+  el.textContent = "checking…"; el.className = "dim";
+  try {
+    const r = await api("/api/server/check?s=" + encodeURIComponent(inp.value.trim() || "local"));
+    el.textContent = `${r.up ? "✓ reachable" : "✗ can't reach"} ${r.url || ""}`; el.className = r.up ? "okmark ok" : "okmark bad";
+    const m = await api("/api/meta"); META.server = m.server; META.server_up = m.server_up; showServer();
+  } catch (e) { el.textContent = "✗ " + e.message; el.className = "okmark bad"; }
+}
+function showServer() {
+  $("srv").innerHTML = `on <b class="${META.server_up ? "" : "down"}">${esc(META.server)}</b>${META.server_up ? "" : " ✗"}`;
+  $("srv").title = `renders on ${META.server}${META.server_up ? "" : " (unreachable: 🛠 Setup › Render server)"}`;
+}
 function renderSetup() {
   if (!SETUP) return;
   const S = SETUP.setup, D = SETUP.detected, osName = { linux: "Linux", windows: "Windows", macos: "macOS" }[SETUP.os] || SETUP.os;
@@ -1884,10 +1898,21 @@ function renderSetup() {
       ${found.length ? `<optgroup label="found on this ${osName} machine">${found.map((a, i) => `<option value="${i}">${esc(a.name)}</option>`).join("")}</optgroup>` : ""}
       <option value="custom">custom program…</option></select>
       <span class="dim">${found.length} more found on ${osName}</span></div>`; };
-  const fd = S.folder_default || "os";
+  const fd = S.folder_default || "os", SV = SETUP.servers || {}, cur = SETUP.server_locked || S.server || "local";
+  const srvSect = `<fieldset class="setup-sect"><legend>Render server</legend>
+      <p>The ComfyUI that renders everything. <b>local</b> = ComfyUI on this machine (start it with <code>~/launch-comfyui.sh</code>).
+        For another box, name it in <code>servers.json</code> in the pixelmon folder (copy <code>servers.example.json</code>),
+        or type its address. A comma list (<code>gpubox,local</code>) spreads batches across several.</p>
+      <div class="addrow"><input type="text" id="setupServer" list="setupServers" value="${esc(cur)}" ${SETUP.server_locked ? "disabled" : ""}
+          placeholder="local" style="width:260px" title="a servers.json name, host, host:port or http://…">
+        <datalist id="setupServers">${Object.entries(SV).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</datalist>
+        <button type="button" class="btn small" id="setupServerTest">test</button>
+        <span id="setupServerState" class="dim"></span></div>
+      ${SETUP.server_locked ? `<p class="dim">Set by <code>--server</code> / <code>PIXELMON_SERVER</code> when pixelmon-gui started.</p>` : ""}</fieldset>`;
   $("setupPane").innerHTML = `<p class="setup-intro">The programs pixelmon hands your images and folders to. <b>Right-click any image</b>
       (gallery, queue, lightbox, corkboard, presets, LAB, steering) or <b>any 📂 folder button</b> for <b>Open in…</b>.
       Saved in <code>~/pixelmon-gallery/gui-setup.json</code>.</p>
+    ${srvSect}
     <div class="setup-apps">
       ${card("draw", "DRAW", "draw.png", "https://github.com/grymmjack/DRAW",
         "grymmjack's pixel-art editor, made in QB64-PE: layers with blend modes, pixel-perfect brushes, symmetry, palettes, " +
@@ -1911,6 +1936,7 @@ function renderSetup() {
           <option value="kaleidotron" ${fd === "kaleidotron" ? "selected" : ""}>Kaleidotron</option>
           ${(S.folder_apps || []).map((a, i) => `<option value="dir:${i}" ${fd === `dir:${i}` ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
         </select></label></div></fieldset>`;
+  checkServer();
 }
 function initSetup() {
   const pane = $("setupPane");
@@ -1922,6 +1948,7 @@ function initSetup() {
   });
   pane.addEventListener("change", e => {
     if (e.target.dataset.setupPath) return renderSetup();
+    if (e.target.id === "setupServer") { SETUP.setup.server = e.target.value.replace(/\s+/g, ""); saveSetup(); return setTimeout(checkServer, 700); }
     if (e.target.id === "folderDefault") { SETUP.setup.folder_default = e.target.value; return saveSetup(); }
     if (e.target.id === "drawPalette") { SETUP.setup.draw_palette = e.target.checked; return saveSetup(); }
     const kind = e.target.dataset.add; if (!kind || !e.target.value) return;
@@ -1931,6 +1958,7 @@ function initSetup() {
     renderSetup(); saveSetup();
   });
   pane.addEventListener("click", e => {
+    if (e.target.id === "setupServerTest") return checkServer();
     const use = e.target.dataset.setupUse;
     if (use) { SETUP.setup[use] = SETUP.detected[use]; renderSetup(); return saveSetup(); }
     if (e.target.closest("[data-app-del]")) {
@@ -3191,7 +3219,7 @@ function statusUpdate(jobs) {
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
   $("sbStatus").innerHTML = run
     ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
-    : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? `<span class="err">● rtx unreachable</span>` : "● idle";
+    : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? `<span class="err">● ${esc(META.server)} unreachable</span>` : "● idle";
   // 🪙 per image: a coin for every newly finished image (previews excluded), staggered if several land at once
   const outs = Object.fromEntries(jobs.map(j => [j.id, j.outputs.length]));
   if (prevOutputs && NF.coin) {
@@ -4184,8 +4212,7 @@ function switchTab(t) {
 }
 async function init() {
   META = await api("/api/meta");
-  $("srv").innerHTML = `on <b class="${META.server_up ? "" : "down"}">${META.server}</b>${META.server_up ? "" : " ✗"}`;
-  $("srv").title = `renders on ${META.server}${META.server_up ? "" : " (unreachable)"}`;
+  showServer();
   const loras = [...new Set([...META.loras, ...Object.keys(META.presets).filter(k => !META.loras_live)])];
   const ordered = [...Object.keys(META.presets).filter(k => loras.includes(k)), ...loras.filter(k => !META.presets[k])];
   $("lora").innerHTML = ordered.map(k => `<option value="${esc(k)}">${esc(META.presets[k] ? META.presets[k].label : k.replace(".safetensors", ""))}</option>`).join("")

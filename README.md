@@ -244,13 +244,14 @@ The GUI only offers what the render server actually has: LoRAs, checkpoints, Con
 IPAdapter and inpainting models are read live from ComfyUI, so a missing group just means that
 feature's menu is empty.
 
-**3. Render**
+**3. Start ComfyUI, then render**
 ```bash
+~/launch-comfyui.sh                      # the render engine; leave it running (or in tmux)
 pixelmon "a fierce dragon" --no-open     # the CLI
 pixelmon-gui                             # the web GUI → http://127.0.0.1:8190
 ```
-`pixelmon` starts ComfyUI for you if it isn't running. On **AMD/ROCm**, log out and back in once
-first (so the `render` group sticks).
+Both render on `local` (this machine's ComfyUI, port 8188) unless told otherwise. On
+**AMD/ROCm**, log out and back in once first (so the `render` group sticks).
 
 **4. Your own LoRAs (optional)**
 The `ega-art-v2` and `dosart-vga` LoRAs in the GUI's LoRA list were trained on a private art
@@ -259,10 +260,14 @@ collection and aren't downloadable. Any SDXL LoRA works: drop the `.safetensors`
 trigger word, default strength and palette in the GUI, add it to `gui/presets.json`.
 
 **5. A separate render server (optional)**
-Run steps 1–2 on the GPU box, start ComfyUI there with `~/launch-comfyui.sh` (it listens on the
-network), and on your desk machine copy `servers.example.json` to `servers.json` with the box's
-address. Then `pixelmon … --server <name>` renders there, and `pixelmon-gui` uses it for every
-render. Details: [render farm guide](README-RENDER-FARM.md).
+Run steps 1–2 on the GPU box and start ComfyUI there with `~/launch-comfyui.sh` (it listens on the
+network). On your desk machine, copy `servers.example.json` to `servers.json` and name the box:
+```json
+{ "local": "http://127.0.0.1:8188", "gpubox": "http://192.168.1.50:8188" }
+```
+Then `pixelmon … --server gpubox` renders there. For the GUI, pick `gpubox` in 🛠 Setup ›
+**Render server** (the default is `local`). Model files live on the render server, so run
+`download-models.sh` there. Details: [render farm guide](README-RENDER-FARM.md).
 
 > **GPU auto-detection.** `install.sh` and `launch-comfyui.sh` detect your card —
 > **NVIDIA (CUDA)**, **AMD (ROCm)**, or **CPU** — and configure the matching
@@ -418,13 +423,18 @@ specific colors.
 
 ## GUI (`pixelmon-gui`)
 
-A local web front end for everything above. Renders always go to the `rtx`
-server from `servers.json`.
+A local web front end for everything above.
 
 ```bash
-pixelmon-gui            # http://127.0.0.1:8190
-pixelmon-gui --lan      # also reachable from other devices on your LAN
+pixelmon-gui                 # http://127.0.0.1:8190
+pixelmon-gui --lan           # also reachable from other devices on your LAN
+pixelmon-gui --server gpubox # render somewhere else for this run
 ```
+
+**Where it renders:** 🛠 Setup › **Render server**. The default is `local` (ComfyUI on this
+machine, port 8188). Type a `servers.json` name, `host`, `host:port` or URL, and **test** shows
+whether it answers. A comma list (`gpubox,local`) spreads batches across several. The choice is
+saved in `gui-setup.json`; `--server` or `PIXELMON_SERVER` override it for one run.
 
 **📖 DOCS** (top of the form) opens the [settings atlas](docs/settings-atlas.html):
 every GUI control, CLI flag and ComfyUI node input with its range, default and an

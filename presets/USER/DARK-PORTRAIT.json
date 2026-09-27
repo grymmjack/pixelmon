@@ -1,0 +1,104 @@
+{
+ "name": "DARK-PORTRAIT",
+ "saved": 1790536178.5170844,
+ "note": "A descendent of painterly portrait mixed with r3tro with dark palette",
+ "snapshot": {
+  "form": {
+   "subject": "a (spaceship battle:1.3) above a (ringed planet:1.2), lasers, explosions",
+   "lora": "retro-game-art.safetensors",
+   "lora_strength": "0.9",
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": "256",
+   "outH": "224",
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "dither": "none",
+   "dither_amount": "0.5",
+   "despeckle": "2",
+   "pixel_angles": "0",
+   "angle_grid": "pixel",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": "",
+   "seedLock": false,
+   "n": "1",
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "r3tr0",
+    "scene"
+   ]
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": "20260927-143742-8880__the_subject_320x320_none_s868164777_sprite_00001_.png",
+   "size": [
+    320,
+    320
+   ],
+   "subject": "",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": true,
+   "denoise": 0.75,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "mask": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAFACAYAAADNkKWqAAASXklEQVR4Xu3daaydY/cH4Ju2ahaEiKFiKCKRxpDUkGiCiimmKCKmCIL6wAcl5nmoJj6ghn4gRCQi5inUFB9IzILQhKBmqTmmFO//Pnnl/xJtz2n3Ons9+7520rxv2Hs9a13r9kvPOfvsZ7lSyp//98eDAAECzQksJwCb27mBCRD4r4AAdBQIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u3qDEyAgAJ0BAgSaFRCAza7e4AQICEBngACBZgUEYLOrNzgBAgLQGSBAoFkBAdjs6g1OgIAAdAYIEGhWQAA2u/puDb7KKquUc845p0yfPr18/fXX5eOPP17kn88++6z88ccf3RpQt30REIB9YXfR4Qost9xy5dhjjy2XX355WW+99Yb1st9//73UEFxcSH7yySdl4cKFw6rnSYMrIAAHd7edn2znnXcus2fPLpMmTer5LPVviF9++eViQ3L+/Pnlt99+6/m1FcwjIADz7EIn/xXYeOONy8yZM8uhhx7ad5MFCxb8LSQfffTRcv/99/e9Lw30RkAA9sZRlR4I/PV9vtNPP72suOKKPajY+xJ//vlnmTFjRpk1a1bvi6s46gICcNTJXfCfAkvzfb5+K95www3llFNO6Xcbrr+MAgJwGQG9fNkEIr/Pt2ydLfnV9UvhQw45xA9TlkyV9hkCMO1qBrux+n2+q6++ukybNq3Tgz777LNlv/32Kz/++GOn52i1eQHY6ub7PPfkyZPLM888k/Z7fSPheeutt8ruu+9evvjii5G8zHMTCAjABEtotYUaGo899lgZO3Zs5wnqew7rPPPmzev8LC0NIABb2nbCWQ844IByzz33lOWXXz5hdyNr6bvvvit77bVXeeGFF0b2Qs/um4AA7Bu9C/8lcOSRR5bbbrut1J8Gd/3x66+/lgMPPHDob7Ye+QUEYP4dNdHh8ccfX+bMmTMQs9bfMqnz3HLLLQMxzyAPIQAHebsdm+28884rF198cce6XnS7l112WTn33HMHZp5BHEQADuJWOzzTtddeW0499dQOT/D31u+4445y9NFH+3SapBsVgEkX03Jb9fuBRx111MAQzJ07t+y///7l559/HpiZBmUQATgomxygOeoPQ+pPhusPEwbl8dprr5XddtutfPPNN4My0kDMIQAHYo2DN8SYMWOGfpK6xx57DMxw77333lAIfvTRRwMzU9cHEYBd3+AA9z9+/Pih3xbZcccdB2bKr776qkydOrW8/vrrAzNTlwcRgF3eXgO914/Iqr9vu/322w/MtD/99NPQ9wSffPLJgZmpq4MIwK5urqG+11prraG/MW244YYDNfUxxxwz9AZwj/4JCMD+2bvyMAU23XTT8s4775Rx48YN8xXdedrZZ59drrjiiu40PGCdCsABW+ggjvPEE08M1A9D/rkjH67av1MrAPtn78rDEKiftffggw8O45l5n/Lyyy8v8XuY9957bzn44IPzDjGgnQnAAV3soIz14YcflgkTJnR2nPoDj80337xMnDixPPTQQ2W11VZb5CzPP//8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",
+   "edit": {
+    "action": "change",
+    "strength": 1,
+    "what": "SKULL partially in shadow same colors as what we are editing and facing the same direction - facing right",
+    "keepColors": true,
+    "keepLight": true,
+    "keepShape": true
+   },
+   "active": true
+  },
+  "adv": {}
+ },
+ "image": "DARK-PORTRAIT.png"
+}

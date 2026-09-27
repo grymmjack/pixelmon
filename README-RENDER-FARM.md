@@ -69,6 +69,10 @@ PIXELMON_FARM=rtx,local ./somescript.sh        # subset via env, in scripts
 Down boxes are skipped automatically. Watch any box live in a browser at
 `http://<box-ip>:8188`.
 
+**In the GUI:** 🛠 Setup › **Render server** takes the same values: one name (`rtx`), a comma
+list (`rtx,local`), a host or a URL. **test** checks it answers. Or start it with
+`pixelmon-gui --server rtx,local`.
+
 ---
 
 ## Keeping the servers running (persistence)
