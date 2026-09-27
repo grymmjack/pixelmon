@@ -325,10 +325,16 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
     }
     if a.art:
-        # Digital-art mode: save VAEDecode (node 8) straight to disk. No downscale,
-        # no palette lock — SDXL's full-resolution image IS the output.
+        # Digital-art mode: no pixelation, no palette lock. SDXL draws at its own resolution; a smaller
+        # output is a smooth (lanczos) resize of that picture, never a tiny generation.
+        art_img = ["8", 0]
+        if (a.gen_w, a.gen_h) != (a.sw, a.sh):
+            g["17"] = {"class_type": "ImageScale",
+                       "inputs": {"image": ["8", 0], "upscale_method": "lanczos",
+                                  "width": a.sw, "height": a.sh, "crop": "center"}}
+            art_img = ["17", 0]
         g["11"] = {"class_type": "SaveImage",
-                   "inputs": {"filename_prefix": prefix + "_art", "images": ["8", 0]}}
+                   "inputs": {"filename_prefix": prefix + "_art", "images": art_img}}
     else:
         g["10"] = {"class_type": "PixelArtPalette",
                    "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
@@ -1186,9 +1192,10 @@ def main():
     a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
     a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
 
-    if a.art:
-        # No downscale in art mode: the generated image IS the output, so --size
-        # sets the SDXL resolution directly (rounded to a /64 multiple SDXL likes).
+    if a.art and max(a.sw, a.sh) > a.res:
+        # Art mode bigger than --res: generate at that size directly (rounded to the /64 SDXL likes).
+        # Anything smaller keeps the --res generation above and is resized to exactly W x H afterwards:
+        # SDXL can't draw at 256 px (it makes abstract blobs), so a small picture must be a shrunk big one.
         a.gen_w, a.gen_h = _r64(a.sw), _r64(a.sh)
         a.sw, a.sh = a.gen_w, a.gen_h   # filename/labels reflect the true output size
 
