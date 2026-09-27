@@ -90,6 +90,7 @@ a.btn { color: var(--text); text-decoration: none; display: inline-block; text-t
 .btn:hover { border-color: var(--accent); }
 /* ---- Advanced tab ---- */
 #advN { color: var(--accent); font-weight: 600; }
+select.advset { border-color: var(--accent); }
 .advtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; color: var(--dim); font-size: 13px; }
 .advtop a { color: var(--accent); }
 .advgroup { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin-bottom: 12px; min-width: 0; }
@@ -506,6 +507,12 @@ fieldset.closed { padding-bottom: 2px; }
           <div><label>Steps<i class="help" data-help="steps">i</i></label><input type="number" id="steps" min="1" max="150" placeholder="25"></div>
           <div><label>CFG<i class="help" data-help="cfg">i</i></label><input type="number" id="cfg" step="0.5" min="0" max="30" placeholder="7"></div>
           <div><label>&nbsp;</label><label class="inline" style="margin:6px 0;color:var(--text)"><input type="checkbox" id="fast"> fast (LCM)<i class="help" data-help="fast">i</i></label></div>
+        </div>
+        <!-- same settings as the ⚙ Advanced tab (kept in sync) -->
+        <div class="row3">
+          <div><label>Sampler<i class="help" data-help="sampler">i</i></label><select data-advmirror="sampler"></select></div>
+          <div><label>Scheduler<i class="help" data-help="scheduler">i</i></label><select data-advmirror="scheduler"></select></div>
+          <div><label>Checkpoint<i class="help" data-help="checkpoint">i</i></label><select data-advmirror="base"></select></div>
         </div>
       </details>
       <details id="sweepBox"><summary>Sweep (same seed, vary one setting)<i class="help" data-help="sweep">i</i></summary>
@@ -1096,6 +1103,12 @@ const WEIGHT_TIP = `<div style="margin-top:7px"><b>Weighting</b> — make a word
     <code>[castle]</code> does <b>not</b> weaken here (that's another program's syntax) — use <code>(castle:0.9)</code>.
     Order matters too: words near the start count a little more.`;
 const HELP = {
+  sampler: `<span class="tipk">Sampler</span>: the denoising algorithm. <b>default</b> = euler (lcm in fast mode).
+    dpmpp_2m / dpmpp_2m_sde are sharper, euler_ancestral looser. Keep lcm with fast. Same setting as ⚙ Advanced.`,
+  scheduler: `<span class="tipk">Scheduler</span>: how the noise is spread over the steps. <b>default</b> = normal
+    (sgm_uniform in fast mode). <b>karras</b> is a common upgrade with the dpmpp samplers. Same setting as ⚙ Advanced.`,
+  checkpoint: `<span class="tipk">Checkpoint</span>: the base SDXL model the LoRA sits on. <b>default</b> = SDXL base 1.0,
+    which every LoRA here was trained on; other checkpoints (juggernautXL) change the look a lot. Same setting as ⚙ Advanced.`,
   prompt: `<span class="tipk">Prompt</span>: describe what you want to see, in short phrases separated by commas —
     <i>"a castle on a cliff, night, full moon, winding road"</i>. Put the most important thing first.
     Don't write "no …" here (the model ignores "no" and adds the thing) — unwanted things go in the negative prompt.
@@ -1485,7 +1498,21 @@ function advParams() {
   for (const f of ADV_KEYS) if (advIsSet(f, ADV[f.k])) out[f.k] = ADV[f.k];
   return out;
 }
-function setAdv(a) { ADV = { ...(a || {}) }; store.set("adv", ADV); advCount(); if (!$("advPane").classList.contains("hidden")) renderAdv(); }
+function syncAdvMirrors() {
+  document.querySelectorAll("[data-advmirror]").forEach(sel => {
+    const f = ADV_KEYS.find(x => x.k === sel.dataset.advmirror), cur = ADV[f.k] ?? "", opts = advList(f);
+    const extra = cur && !opts.includes(cur) ? [cur] : [];
+    sel.innerHTML = `<option value="">default (${esc(f.def)})</option>` +
+      [...opts, ...extra].map(o => `<option value="${esc(o)}" ${o === cur ? "selected" : ""}>${esc(o)}</option>`).join("");
+    sel.classList.toggle("advset", !!cur);
+    sel.onchange = () => {
+      if (sel.value) ADV[f.k] = sel.value; else delete ADV[f.k];
+      store.set("adv", ADV); advCount(); syncAdvMirrors(); refresh();
+      if (!$("advPane").classList.contains("hidden")) renderAdv();
+    };
+  });
+}
+function setAdv(a) { ADV = { ...(a || {}) }; store.set("adv", ADV); advCount(); syncAdvMirrors(); if (!$("advPane").classList.contains("hidden")) renderAdv(); }
 function advCount() {
   const n = Object.keys(advParams()).length;
   $("advN").textContent = n ? `(${n})` : "";
@@ -1545,7 +1572,7 @@ function renderAdv() {
       <li><code>--init</code>, <code>--control</code>, <code>--mask</code>, <code>--denoise</code> — LAB and evolve set these from the images you pick.</li>
       <li><code>--no-open</code>, <code>--show-prompt</code> — always on for GUI jobs. <code>--list-palettes</code> / <code>--list-styles</code> — the pickers show them.</li>
     </ul></fieldset>`;
-  const save = () => { store.set("adv", ADV); advCount(); refresh(); };
+  const save = () => { store.set("adv", ADV); advCount(); syncAdvMirrors(); refresh(); };
   $("advPane").querySelectorAll("[data-advk]").forEach(el => el.onchange = () => {
     const f = ADV_KEYS.find(x => x.k === el.dataset.advk);
     if (f.type === "check") ADV[f.k] = el.checked;
@@ -2934,7 +2961,7 @@ async function init() {
     + Object.entries(META.palettes).map(([k, v]) => `<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join("");
   $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
   $("outPreset").innerHTML = SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
-  renderStyles(); advCount();
+  renderStyles(); advCount(); syncAdvMirrors();
   initHelp();
   initFolds();
   initPeek();

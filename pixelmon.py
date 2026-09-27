@@ -624,6 +624,12 @@ def _render_error(entry):
     return "the render failed on the server"
 
 
+def _transient(err):
+    """A server error worth one automatic retry: ComfyUI's model manager occasionally trips over its own
+    loaded-model list (IndexError) or runs short of VRAM while swapping models between different jobs."""
+    return bool(err) and (("Loader" in err.split(" (node")[0] and "IndexError" in err) or "out of memory" in err.lower())
+
+
 def _queued(pid, server):
     """True while the prompt is still waiting in the server's queue (not started yet)."""
     try:
@@ -634,9 +640,10 @@ def _queued(pid, server):
         return False
 
 
-def wait(pid, server=None, timeout=600):
+def wait(pid, server=None, timeout=600, resubmit=None):
     """Wait for a prompt's outputs. timeout = seconds of actual rendering; time spent queued behind
-    other jobs doesn't count. A server-side error stops at once with the node's message."""
+    other jobs doesn't count. A server-side error stops at once with the node's message — except a
+    transient model-loading hiccup, which is resubmitted once when resubmit() is given."""
     server = server or SERVER
     waited = 0
     while waited < timeout:
@@ -644,6 +651,10 @@ def wait(pid, server=None, timeout=600):
             hist = json.loads(r.read())
         if pid in hist:
             err = _render_error(hist[pid])
+            if err and resubmit and _transient(err):
+                print(f"   ↻ server hiccup ({err.split(': ', 1)[-1][:60]}) — retrying once")
+                pid, resubmit, waited = resubmit(), None, 0
+                continue
             if err:
                 sys.exit(f"Render failed on the server — {err}")
             if hist[pid].get("outputs"):
@@ -708,6 +719,7 @@ def run_farm(a, work):
     inflight = {}               # server -> (subject, seed, palette, dest, pid)
     total = len(work)
     done = failed = 0
+    retried = set()             # jobs already requeued once after a transient server error
 
     def launch(srv):
         """Submit the next pending job to srv. False = server unusable (drop it)."""
@@ -732,6 +744,14 @@ def run_farm(a, work):
             try:
                 outs = poll(pid, srv)
             except RuntimeError as e:          # the render itself failed: report it, don't retry it forever
+                if _transient(str(e)) and (subj, seed, pal, d) not in retried:
+                    print(f"   ↻ {_short(srv)}: server hiccup — requeueing once")
+                    retried.add((subj, seed, pal, d))
+                    pending.append((subj, seed, pal, d))
+                    del inflight[srv]
+                    advanced = True
+                    launch(srv)
+                    continue
                 print(f"   ✗ {_short(srv)}: render failed — {e}")
                 failed += 1
                 del inflight[srv]
@@ -1191,12 +1211,12 @@ def main():
         run_farm(a, work)
     else:
         # Single server: queue everything up front; ComfyUI runs them one at a time.
-        jobs = [(subj, seed, pal, d, submit(build_graph(a, seed, pal, subject=subj, server=SERVER)))
-                for (subj, seed, pal, d) in work]
+        graphs = [build_graph(a, seed, pal, subject=subj, server=SERVER) for (subj, seed, pal, d) in work]
+        jobs = [(subj, seed, pal, d, submit(g), g) for (subj, seed, pal, d), g in zip(work, graphs)]
         if total > 1:
             print(f"   queued {total} jobs; generating...")
-        for i, (subj, seed, pal, d, pid) in enumerate(jobs, 1):
-            outs = wait(pid)
+        for i, (subj, seed, pal, d, pid, g) in enumerate(jobs, 1):
+            outs = wait(pid, resubmit=lambda g=g: submit(g))
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             if REMOTE:
                 # Files live on the remote server's disk — download them here over HTTP.
