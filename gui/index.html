@@ -1851,6 +1851,7 @@ function imageTargetOf(el) {
 function peekTarget() {
   const it = PEEK.stack[PEEK.idx]; if (!it) return null;
   if (it.ref) return { ref: it.ref };
+  if (it.preset) return { preset: it.preset };
   if (it.src) return { board: it.board, file: it.cork };
   const job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
   return job ? { src: { dir: job.dir, file: it.file } } : null;
@@ -2373,10 +2374,11 @@ function initGridOverlay() {
 
 // ---------------- hover peek: blown-up preview of a thumbnail ----------------
 let PEEK = { el: null, stack: [], idx: 0, zoom: 3, timer: null, hideTimer: null };
-const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item, .ref[data-ref]";
+const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item, .ref[data-ref], .pcard[data-pid] > img";
 function peekFind(item) {   // the on-screen thumbnail for a stack item
   if (item.cork) return [...document.querySelectorAll(".cork-item")].find(x => x.dataset.cork === item.cork);
   if (item.ref) return [...document.querySelectorAll(".ref[data-ref]")].find(x => x.dataset.ref === item.ref);
+  if (item.preset) return [...document.querySelectorAll(".pcard[data-pid] > img")].find(x => x.parentElement.dataset.pid === item.preset);
   return [...document.querySelectorAll(".thumb[data-file], .bthumb")]
     .find(x => x.dataset.job === item.job && x.dataset.file === item.file);
 }
@@ -2385,6 +2387,11 @@ function corkStack() {   // the current board: renders keep their full preview; 
   return b.items.map(f => { const hit = boardJobOf(f);
     return hit ? { ...hit, cork: f } : { cork: f, board: b.name, src: `/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}`,
                                           cap: f, pdir: "@board:" + b.name, pfile: f }; });
+}
+function presetStack() {   // the preset cards on screen (the folder being viewed), as plain pictures
+  return [...document.querySelectorAll(".pcard[data-pid] > img")].map(img => { const p = presetById(img.parentElement.dataset.pid);
+    return p && { preset: p.id, src: presetImg(p), cap: p.folder ? `${p.folder} / ${p.name}` : p.name, pdir: "@presets",
+                  pfile: (p.folder ? p.folder + "/" : "") + p.image }; }).filter(Boolean);
 }
 function refStack() {   // the steering collection on screen, as plain pictures
   return [...document.querySelectorAll("#refGrid .ref[data-ref]")].map(el => { const ref = el.dataset.ref;
@@ -2459,6 +2466,8 @@ function initPeek() {
       PEEK.el = th;
       if (th.matches(".cork-item")) {
         PEEK.stack = corkStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.cork === th.dataset.cork));
+      } else if (th.matches(".pcard[data-pid] > img")) {
+        PEEK.stack = presetStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.preset === th.parentElement.dataset.pid));
       } else if (th.matches(".ref[data-ref]")) {
         PEEK.stack = refStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.ref === th.dataset.ref));
       } else {
@@ -2496,6 +2505,7 @@ function initPeek() {
       store.set("peekZoom", PEEK.zoom); showPeek(PEEK.el);
     }
   });
+  document.addEventListener("dragstart", () => hidePeek());     // dragging a card / thumbnail: get out of the way
   // clicking a thumbnail opens the lightbox — drop the peek first
   document.addEventListener("click", e => { if (e.target.closest(PEEK_SEL)) hidePeek(); }, true);
 }
