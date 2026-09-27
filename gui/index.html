@@ -1798,7 +1798,9 @@ function renderSetup() {
       ${card("draw", "DRAW", "draw.png", "https://github.com/grymmjack/DRAW",
         "grymmjack's pixel-art editor, made in QB64-PE: layers with blend modes, pixel-perfect brushes, symmetry, palettes, " +
         "dithering and grids — the same pixel-art angles pixelmon's angle snap borrows.",
-        "<b>Open in DRAW</b> sits on every image: the lightbox, the hover preview, and every right-click menu.")}
+        "<b>Open in DRAW</b> sits on every image: the lightbox, the hover preview, and every right-click menu." +
+        `<label class="inline" style="margin-top:6px"><input type="checkbox" id="drawPalette" ${S.draw_palette !== false ? "checked" : ""}>
+          also load the image's colors as DRAW's palette (<code>--palette image.gpl</code>)</label>`)}
       ${card("kaleidotron", "Kaleidotron", "kaleidotron.jpg", "https://github.com/grymmjack/kaleidotron",
         "grymmjack's fast art browser for pixel art, ANSI and retro formats: a zoomable thumbnail grid, palettes, recolor, " +
         "a pixel-perfect viewer and much more.",
@@ -1827,6 +1829,7 @@ function initSetup() {
   pane.addEventListener("change", e => {
     if (e.target.dataset.setupPath) return renderSetup();
     if (e.target.id === "folderDefault") { SETUP.setup.folder_default = e.target.value; return saveSetup(); }
+    if (e.target.id === "drawPalette") { SETUP.setup.draw_palette = e.target.checked; return saveSetup(); }
     const kind = e.target.dataset.add; if (!kind || !e.target.value) return;
     const found = (SETUP.detected[kind] || []).filter(a => !new Set((SETUP.setup[kind] || []).map(x => x.exec + " " + x.args)).has(a.exec + " " + a.args));
     const a = e.target.value === "custom" ? { name: "My program", exec: "", args: "{}" } : { ...found[+e.target.value] };

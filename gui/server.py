@@ -1085,6 +1085,7 @@ def load_setup():
     s.setdefault("image_apps", [])        # [{name, exec, args}] — args: "{}" = the file, else appended
     s.setdefault("folder_apps", [])
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
+    s.setdefault("draw_palette", True)     # Open in DRAW also loads the image's colors as a .gpl (--palette)
     return s
 
 
@@ -1100,6 +1101,8 @@ def save_setup(body):
     for k in ("image_apps", "folder_apps"):
         if isinstance(body.get(k), list):
             s[k] = [_clean_app(a) for a in body[k][:40] if isinstance(a, dict) and (a.get("exec") or "").strip()]
+    if "draw_palette" in body:
+        s["draw_palette"] = bool(body["draw_palette"])
     if "folder_default" in body:
         s["folder_default"] = str(body["folder_default"] or "os")[:20]
     os.makedirs(os.path.dirname(SETUP_FILE), exist_ok=True)
@@ -1241,6 +1244,25 @@ def detect_draw():
 def detect_kaleidotron():
     return shutil.which("kaleidotron") or next((f for f in (os.path.expanduser(p) for p in (
         "~/git/kaleidotron/target/release/kaleidotron" + (".exe" if IS_WIN else ""), "~/.cargo/bin/kaleidotron")) if os.path.isfile(f)), "")
+
+
+PALETTE_CACHE = os.path.expanduser("~/.cache/pixelmon/palettes")
+
+
+def image_gpl(path):
+    """The image's own colors as a GIMP palette in the cache, or None (> 255 colors / unreadable)."""
+    try:
+        n, colors = image_colors(path)
+    except OSError:
+        return None
+    if not colors or n == ">255":
+        return None
+    stem = safe_name(os.path.splitext(os.path.basename(path))[0], 120) or "palette"
+    os.makedirs(PALETTE_CACHE, exist_ok=True)
+    out = os.path.join(PALETTE_CACHE, stem + ".gpl")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(gpl_text(stem, colors))
+    return out
 
 
 def os_opener(is_dir):
@@ -2023,6 +2045,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if not exe:
                         raise ValueError("DRAW isn't set up — add its path in the Setup tab")
                     app, cwd = {"name": "DRAW", "exec": exe, "args": "{}"}, os.path.dirname(os.path.expanduser(exe))
+                    gpl = image_gpl(path) if setup.get("draw_palette", True) else None
+                    if gpl:                                  # DRAW.run art.png --palette art.gpl
+                        app["args"] = "{} --palette " + shlex.quote(gpl)
+                        app["name"] = "DRAW (+ its palette)"
                 elif key == "kaleidotron":
                     exe = setup["kaleidotron"] or detect_kaleidotron()
                     if not exe:
