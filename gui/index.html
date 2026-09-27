@@ -3542,13 +3542,18 @@ function thumbHtml(job, o, scale, caption) {
 // placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
 function tileSize(job) {
   const m = /^(\d+)x(\d+)$/.exec(job.params.out || "") || [0, 128, 128];
-  const w = +m[1], h = +m[2], k = Math.max(1, Math.floor(180 / h));
-  return [w * k, h * k];
+  const w = +m[1], h = +m[2], k = Math.max(1, Math.floor(180 / h)), cap = Math.min(1, THUMB_MAX / Math.max(w * k, h * k));
+  return [Math.round(w * k * cap), Math.round(h * k * cap)];
 }
 // queue thumbnails: whole-number upscale to ~180px tall so small sprites stay crisp and readable
+// big renders (art mode, 640×480…) are capped at THUMB_MAX on the long side, so the hover preview still adds something
+const THUMB_MAX = 512;
 function fitThumb(img) {
   if (img.closest(".grid")) return;
-  img.style.width = img.naturalWidth * Math.max(1, Math.floor(180 / img.naturalHeight)) + "px";
+  const w = img.naturalWidth, h = img.naturalHeight, k = Math.max(1, Math.floor(180 / h));
+  const cap = Math.min(1, THUMB_MAX / Math.max(w * k, h * k));
+  img.style.width = Math.round(w * k * cap) + "px";
+  img.style.imageRendering = cap < 1 ? "auto" : "";          // shrinking: smooth; enlarging sprites: crisp pixels
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let JOBS = {}, GALLERY = [];

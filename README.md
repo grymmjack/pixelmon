@@ -417,7 +417,8 @@ serves it locally at `/docs/settings-atlas.html`.
 - **Presets:** full snapshots of the form, steering, evolve, LAB and Advanced settings, each
   with a sample picture and its palette, organized in **folders** (FACTORY, TUNED FACTORY,
   USER… create/rename/delete your own). Drag cards to reorder them or onto a folder to move
-  them; drag folders to reorder. 65 factory presets ship: scenes, sprites, hardware looks
+  them; drag folders to reorder. Right-click a card to **rename** it, edit its note, or move it
+  to the top / bottom / another folder; hover its picture for the zoomed preview. 65 factory presets ship: scenes, sprites, hardware looks
   (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**. A preset or a
   whole folder exports/imports as a `.zip`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
@@ -433,15 +434,18 @@ serves it locally at `/docs/settings-atlas.html`.
   models, animation). Blank = default; the tab shows how many overrides are active.
 - **📌 Corkboard:** collect images from anywhere into boards and lay them out like a mood
   board: drag an image onto another to move it, drag its corner to make it span more or
-  fewer grid cells (↺ layout resets). Drag the board's edge to resize it, hover to preview,
-  rename or delete boards, zip a board or send it to steering.
+  fewer grid cells (↺ layout resets); right-click an image to move it to the top, the bottom
+  or another board. Hover to preview, rename or delete boards, zip a board or send it to steering.
+- **Layout:** drag the edge of the settings pane or the corkboard to make it wider or narrower
+  (double-click the edge to reset); dragging near the top or bottom of a list scrolls it.
 - **🛠 Setup:** where pixelmon hands your images and folders to other programs. It finds
   [DRAW](https://github.com/grymmjack/DRAW) and [Kaleidotron](https://github.com/grymmjack/kaleidotron)
   (or set their paths), and **➕ add program** lists what's installed on your OS: image editors
   and viewers (GIMP, Aseprite, Krita, Inkscape… / Photoshop, Illustrator, Paint / Preview, Pixelmator)
   and file managers (Dolphin, Files, Thunar… / Explorer / Finder). **Right-click any image** for
   *Open in DRAW / Kaleidotron / …*, and **right-click any 📂 button** for *Open folder in …*; the
-  lightbox and hover preview have ✎ DRAW and *Open in…* buttons too. Pick what 📂 buttons open
+  lightbox and hover preview have ✎ DRAW and *Open in…* buttons too. Open in DRAW also loads the
+  image's own colors as DRAW's palette (`DRAW.run art.png --palette art.gpl`). Pick what 📂 buttons open
   by default (e.g. Kaleidotron). Saved in `~/pixelmon-gallery/gui-setup.json`.
 - **Housekeeping:** each tab has its own clear/reset (✕ clear queue, ↺ reset lab, ✕ clear
   steering, ✕ clear batch, ↺ reset defaults in Advanced). **🗄 backup…** in the Gallery zips
