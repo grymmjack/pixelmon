@@ -2983,7 +2983,9 @@ async function labConvert() {
 }
 function initLab() {
   const drop = $("labDrop");
-  drop.onclick = e => { if (!cropEdit && !e.target.closest(".cropwrap")) $("labFile").click(); };   // image clicks don't reopen the picker
+  // clicking the empty drop zone picks a file — but never while cropping or painting a mask (a brush stroke
+  // captures the pointer on the drop zone, so its closing click lands on the zone, not the image)
+  drop.onclick = e => { if (!cropEdit && !maskEdit && !e.target.closest(".cropwrap")) $("labFile").click(); };
   $("labFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (f) await labUpload(f); };
   async function labUpload(f) {
     try {
