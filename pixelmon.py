@@ -121,6 +121,7 @@ def print_help():
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
         opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
+        opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact", "0.6"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
@@ -611,6 +612,51 @@ def stitch_inpaint(a, sprite):
     full.save(sprite)
 
 
+def _hex_rgb(colors):
+    out = []
+    for h in colors:
+        h = str(h).strip().lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        if re.fullmatch(r"[0-9a-fA-F]{6}", h):
+            out.append([int(h[i:i + 2], 16) for i in (0, 2, 4)])
+    return out
+
+
+def art_palette(a, sprite, pal):
+    """--art + --palette: move the finished picture's colors toward the palette WITHOUT pixelating it.
+    Each pixel is blended toward its nearest palette color by --palette-strength (1 = exactly that color)."""
+    s = getattr(a, "palette_strength", 0)
+    if not (a.art and pal and pal != "none" and s > 0 and sprite and os.path.isfile(sprite)):
+        return
+    colors = a.custom_hex.split() if pal == "Custom" else ((getattr(_pal, "ALL_PALETTES", {}) or {}).get(pal) if _pal else None)
+    rgb = _hex_rgb(colors or [])
+    if not rgb:
+        return
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        print("   note: --palette-strength needs numpy + Pillow; left the colors as rendered")
+        return
+    im = Image.open(sprite)
+    alpha = im.getchannel("A") if im.mode in ("RGBA", "LA") else None
+    px = np.asarray(im.convert("RGB")).astype(np.float32)
+    P = np.array(rgb, dtype=np.float32)
+    out = np.empty_like(px)
+    for y in range(0, px.shape[0], 64):                    # rows in chunks: pixels x colors stays small
+        c = px[y:y + 64]
+        d = c[:, :, None, :] - P[None, None, :, :]
+        rmean = (c[:, :, None, 0] + P[None, None, :, 0]) / 2  # "redmean": closer to how eyes judge color distance
+        dist = (2 + rmean / 256) * d[..., 0] ** 2 + 4 * d[..., 1] ** 2 + (2 + (255 - rmean) / 256) * d[..., 2] ** 2
+        near = P[dist.argmin(-1)]
+        out[y:y + 64] = near if s >= 1 else c * (1 - s) + near * s
+    res = Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8), "RGB")
+    if alpha is not None:
+        res.putalpha(alpha)
+    res.save(sprite)
+
+
 def keep_outside_mask(a, sprite):
     """--mask: paste ONLY the masked pixels of the new render onto the original (--init), at the output's
     native size, so everything outside the mask stays exactly as it was."""
@@ -849,6 +895,7 @@ def run_farm(a, work):
             sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
+            art_palette(a, sprite, pal)
             done += 1
             sj = f"{subj}  " if a.batch else ""
             print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
@@ -1036,9 +1083,12 @@ def main():
     p.add_argument("--no-lora", dest="no_lora", action="store_true",
                    help="generate from the base model only (no pixel-art LoRA)")
     p.add_argument("--art", action="store_true",
-                   help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no "
-                        "downscale, no palette lock. Saves SDXL's native full-res image "
-                        "(default 1024px). For real illustrations, not sprites.")
+                   help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no pixel "
+                        "downscale. Saves SDXL's full-res image (default 1024px; a smaller --out is a "
+                        "smooth resize). --palette pulls its colors toward a palette (--palette-strength).")
+    p.add_argument("--palette-strength", dest="palette_strength", type=float, default=0.6, metavar="F",
+                   help="--art with a --palette: how far colors move toward the palette, 0..1 "
+                        "(1 = every pixel exactly a palette color, posterized; ~0.4-0.7 keeps smooth shading). default 0.6")
     p.add_argument("--fast", action="store_true",
                    help="LCM mode: ~3-4x faster (8 steps); small quality trade-off")
     p.add_argument("--lcm-lora", dest="lcm_lora", default="lcm-lora-sdxl.safetensors",
@@ -1113,7 +1163,7 @@ def main():
         ignored = [f for f, on in [
             ("--transparent", a.transparent), ("--dither", a.dither != "none"),
             ("--snap-pixels", a.snap_pixels), ("--pixel-grid", a.pixel_grid > 0),
-            ("--palette", a.palette not in ("none", "random"))] if on]
+            ] if on]
         if ignored:
             print(f"   note: {', '.join(ignored)} have no effect in --art mode "
                   f"(there's no pixelation step to apply them to)")
@@ -1128,6 +1178,8 @@ def main():
             p.error("--pixel-size parts must be 1..32")
     if not 0.0 <= a.steer_start < a.steer_end <= 1.0:
         p.error("--steer-start/--steer-end must satisfy 0 <= start < end <= 1")
+    if not 0.0 <= a.palette_strength <= 1.0:
+        p.error("--palette-strength must be 0..1")
     if a.mask and not a.init:
         p.error("--mask needs --init (the image to edit)")
     if a.mask and not os.path.isfile(os.path.expanduser(a.mask)):
@@ -1249,7 +1301,8 @@ def main():
 
     total = n * len(subjects)
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
-    pal_label = "ART / full-res" if a.art else ("random" if a.palette == "random" else a.palette)
+    art_pal = f" + {a.palette} @ {a.palette_strength:g}" if a.palette != "none" and a.palette_strength > 0 else ""
+    pal_label = ("ART / full-res" + art_pal) if a.art else ("random" if a.palette == "random" else a.palette)
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
@@ -1315,6 +1368,7 @@ def main():
             sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
+            art_palette(a, sprite, pal)
             preview = next((f for f in files if "_preview_" in f), None)
             first_open = first_open or preview or sprite   # open preview if saved, else the sprite
             tag = f"[{i}/{total}] " if total > 1 else ""

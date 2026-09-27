@@ -642,6 +642,13 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         argv += ["--out", out]
     if size:
         argv += ["--size", size]
+    if art:                                      # art mode: the palette tints the painting (no pixelation)
+        pal = str(p.get("palette") or "none")
+        ps = num("palette_strength", float, 0.0, 1.0)
+        if pal != "none" and ps != 0:
+            argv += ["--palette", pal]
+            if ps is not None:
+                argv += ["--palette-strength", f"{ps:g}"]
     if not art:
         pal = str(p.get("palette") or "none")
         argv += ["--palette", pal]

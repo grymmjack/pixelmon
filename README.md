@@ -244,14 +244,15 @@ The GUI only offers what the render server actually has: LoRAs, checkpoints, Con
 IPAdapter and inpainting models are read live from ComfyUI, so a missing group just means that
 feature's menu is empty.
 
-**3. Start ComfyUI, then render**
+**3. Render**
 ```bash
-~/launch-comfyui.sh                      # the render engine; leave it running (or in tmux)
 pixelmon "a fierce dragon" --no-open     # the CLI
 pixelmon-gui                             # the web GUI → http://127.0.0.1:8190
 ```
-Both render on `local` (this machine's ComfyUI, port 8188) unless told otherwise. On
-**AMD/ROCm**, log out and back in once first (so the `render` group sticks).
+Both render on `local` (this machine's ComfyUI, port 8188) unless told otherwise, and `pixelmon`
+starts that ComfyUI by itself the first time it's needed (~15 s; log in `~/ComfyUI/server.log`).
+To keep it running yourself, use `~/launch-comfyui.sh`. On **AMD/ROCm**, log out and back in once
+first (so the `render` group sticks).
 
 **4. Your own LoRAs (optional)**
 The `ega-art-v2` and `dosart-vga` LoRAs in the GUI's LoRA list were trained on a private art

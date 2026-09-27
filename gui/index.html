@@ -165,6 +165,9 @@ select.advset { border-color: var(--accent); }
 .tab { white-space: nowrap; flex-shrink: 0; padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
 .tab.on { background: var(--panel); border-color: var(--line); color: var(--text); }
 .pane { flex: 1; overflow-y: auto; padding: 14px; }
+#colorBox:not(.art) .artonly { display: none; }
+#colorBox .artonly { margin: 8px 0 4px; } #colorBox .artonly input[type=range] { width: 100%; }
+#colorBox.art .pxonly { opacity: .4; }
 .srvdown { position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(0,0,0,.88); backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
 .srvdown .box { max-width: 520px; }
@@ -594,11 +597,14 @@ fieldset.closed { padding-bottom: 2px; }
       <legend>Palette &amp; dither<i class="help" data-help="palette">i</i></legend>
       <select id="palette"></select>
       <div class="swatches" id="swatches"></div>
-      <div class="row">
+      <div class="artonly"><label>Palette strength <span id="psVal"></span><i class="help" data-help="pstrength">i</i></label>
+        <input type="range" id="palette_strength" min="0" max="1" step="0.05" value="0.6">
+        <div class="hint" id="hPStrength"></div></div>
+      <div class="row pxonly">
         <div><label>Dither<i class="help" data-help="dither">i</i></label><select id="dither"></select></div>
         <div><label>Amount <span id="amtVal"></span><i class="help" data-help="amount">i</i></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
       </div>
-      <div class="row">
+      <div class="row pxonly">
         <div><label>Despeckle (px, 0 = off)<i class="help" data-help="despeckle">i</i></label><input type="number" id="despeckle" min="0" max="64"></div>
         <div><label>1-px outlines — thin lines up to…<i class="help" data-help="thin">i</i></label>
           <select id="thin_lines"><option value="0">off</option>
@@ -608,11 +614,11 @@ fieldset.closed { padding-bottom: 2px; }
             <option value="6">6 px thick → 1 px</option>
             <option value="8">8 px thick → 1 px — aggressive</option></select></div>
       </div>
-      <div class="row">
+      <div class="row pxonly">
         <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
           <input type="range" id="pixel_angles" min="0" max="3" step="0.25"></div>
       </div>
-      <div class="row">
+      <div class="row pxonly">
         <div><label>Grid<i class="help" data-help="grid">i</i></label><select id="angle_grid">
           <option value="pixel">pixel-art (free)</option><option value="square">square</option><option value="diagonal">diagonal</option>
           <option value="isometric">isometric</option><option value="hex">hex</option><option value="triangle">triangle</option></select></div>
@@ -965,7 +971,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
+  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull"];
 let activeStyles = new Set();
 
@@ -994,7 +1000,7 @@ function params(f = readForm()) {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
     styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
     no_sprite_suffix: f.no_sprite_suffix,
-    palette: f.palette, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
+    palette: f.palette, palette_strength: f.palette_strength, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
     steps: f.steps, cfg: f.cfg, fast: f.fast,
@@ -1016,6 +1022,7 @@ function cliFor(p) {
   if (p.negative) a.push("--negative", q(p.negative));
   if (p.styles.length) a.push("--style", p.styles.join(","));
   if (p.out) a.push("--out", p.out);
+  if (p.art && p.palette && p.palette !== "none") a.push("--palette", q(p.palette), "--palette-strength", p.palette_strength);
   if (!p.art) {
     a.push("--palette", q(p.palette));
     if (p.dither !== "none") a.push("--dither", p.dither, "--dither-amount", p.dither_amount);
@@ -1047,7 +1054,14 @@ function cliFor(p) {
 function refresh() {
   const f = readForm(), p = preset();
   $("kindsBox").classList.toggle("hidden", !(p && p.kinds));
-  $("colorBox").style.opacity = f.art ? .4 : 1;
+  $("colorBox").classList.toggle("art", !!f.art);        // art: palette + strength only; the pixel steps dim
+  { const ps = +f.palette_strength; $("psVal").textContent = ps.toFixed(2);
+    $("hPStrength").textContent = !f.palette || f.palette === "none" ? "pick a palette to tint the painting with its colors"
+      : ps === 0 ? "off — the painting keeps its own colors"
+      : ps < 0.35 ? "a light tint toward the palette; shading stays smooth"
+      : ps < 0.85 ? "clearly the palette's colors, still a smooth painting (recommended)"
+      : ps < 1 ? "nearly locked — banding starts to show"
+      : "exact palette colors only: a posterized painting (no pixelation)"; }
   $("finalPrompt").textContent = composedPrompt(f) || "…";
   $("amtVal").textContent = (+f.dither_amount).toFixed(2);
   { const m = /^(\d+)x(\d+)$/.exec(f.pixel_size || ""), W = +f.outW, H = +f.outH;
@@ -1345,7 +1359,11 @@ const HELP = {
   transparent: `<span class="tipk">Transparent bg</span>: removes the plain background around a single sprite or
     character, so it can be placed in a game. Not for scenes.`,
   artmode: `<span class="tipk">Art mode</span>: makes a full-resolution painting/illustration instead of pixel art
-    (no palette, no pixel steps).`,
+    (no pixel steps). SDXL paints at 1024 and a smaller size is a smooth resize. A palette can still tint it —
+    see <b>Palette strength</b>.`,
+  pstrength: `<span class="tipk">Palette strength</span> (art mode): pulls every color of the painting toward its nearest
+    color in the palette, without pixelating. <b>0.4–0.7</b> = the palette's look with smooth shading; <b>1</b> = only
+    exact palette colors (a posterized painting you can open in DRAW with the palette). 0 = off.`,
   suffix: `<span class="tipk">No sprite suffix</span>: pixelmon normally adds "game sprite, solid background" to every
     prompt. Tick this for full scenes (it happens automatically when Kind is "scene background").`,
   palette: `<span class="tipk">Palette</span>: the exact set of colors the picture may use. <b>EGA</b> = the 16 colors of
@@ -1926,7 +1944,7 @@ function renderSetup() {
       <span class="dim">${found.length} more found on ${osName}</span></div>`; };
   const fd = S.folder_default || "os", SV = SETUP.servers || {}, cur = SETUP.server_locked || S.server || "local";
   const srvSect = `<fieldset class="setup-sect"><legend>Render server</legend>
-      <p>The ComfyUI that renders everything. <b>local</b> = ComfyUI on this machine (start it with <code>~/launch-comfyui.sh</code>).
+      <p>The ComfyUI that renders everything. <b>local</b> = ComfyUI on this machine (pixelmon starts it by itself when you render).
         For another box, name it in <code>servers.json</code> in the pixelmon folder (copy <code>servers.example.json</code>),
         or type its address. A comma list (<code>gpubox,local</code>) spreads batches across several.</p>
       <div class="addrow"><input type="text" id="setupServer" list="setupServers" value="${esc(cur)}" ${SETUP.server_locked ? "disabled" : ""}
@@ -2232,7 +2250,7 @@ function initGalleryTools() {
 
 
 // ---------------- every slider: mouse wheel steps it, click its readout to type a value, middle-click resets ----------------
-const READOUTS = { amtVal: "#dither_amount", paVal: "#pixel_angles", maskSizeVal: "#maskSize", evoDenVal: "#evoDenoise",
+const READOUTS = { psVal: "#palette_strength", amtVal: "#dither_amount", paVal: "#pixel_angles", maskSizeVal: "#maskSize", evoDenVal: "#evoDenoise",
   evoStVal: "#evoSteer", evoStartVal: "#evoStart", evoEndVal: "#evoEnd", labStrVal: "#labStrength", labDenVal: "#labDenoise",
   editStrVal: "#editStrength", steerStrVal: "#steerStrength", steerStartVal: "#steerStart", steerEndVal: "#steerEnd" };
 const readoutSlider = el => {
@@ -2244,7 +2262,7 @@ const readoutSlider = el => {
 function sliderDefault(r) {
   if (r.dataset.adj) return ADJ0[r.dataset.adj];
   const id = r.id, L = LAB_DEFAULTS();
-  const map = { dither_amount: FORM_DEFAULTS.dither_amount, pixel_angles: FORM_DEFAULTS.pixel_angles, maskSize: 16,
+  const map = { palette_strength: 0.6, dither_amount: FORM_DEFAULTS.dither_amount, pixel_angles: FORM_DEFAULTS.pixel_angles, maskSize: 16,
     evoDenoise: EVO_DEFAULTS.denoise, evoSteer: EVO_DEFAULTS.steer, evoStart: EVO_DEFAULTS.start, evoEnd: EVO_DEFAULTS.end,
     labStrength: L.strength, labDenoise: L.denoise, editStrength: 1,
     steerStrength: STEER_DEFAULTS.strength, steerStart: STEER_DEFAULTS.start, steerEnd: STEER_DEFAULTS.end };
@@ -3249,7 +3267,8 @@ function statusUpdate(jobs) {
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
   $("sbStatus").innerHTML = run
     ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
-    : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? `<span class="err">● ${esc(META.server)} unreachable</span>` : "● idle";
+    : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? (SRV.local ? `<span class="busy">● ComfyUI isn't running yet: it starts with your first render</span>`
+      : `<span class="err">● ${esc(META.server)} unreachable</span>`) : "● idle";
   // 🪙 per image: a coin for every newly finished image (previews excluded), staggered if several land at once
   const outs = Object.fromEntries(jobs.map(j => [j.id, j.outputs.length]));
   if (prevOutputs && NF.coin) {
@@ -4161,8 +4180,10 @@ const SRV = { up: null, since: 0, hidden: false };
 function srvState(r) {
   if (!r || !META) return false;
   const changed = r.up !== SRV.up || r.server !== META.server;
+  SRV.local = /\/\/(127\.0\.0\.1|localhost)[:/]/.test(r.url || "");   // pixelmon starts a local ComfyUI by itself
   if (r.up !== SRV.up) {
-    if (r.up === false) { SRV.since = Date.now(); SRV.hidden = false; notify("pixelmon", `render server ${r.server} isn't answering`, true); }
+    if (r.up === false && SRV.local) SRV.since = Date.now();
+    else if (r.up === false) { SRV.since = Date.now(); SRV.hidden = false; notify("pixelmon", `render server ${r.server} isn't answering`, true); }
     else if (SRV.up === false) { notify("pixelmon", `render server ${r.server} is back`); srvRefreshLists(); }
     SRV.up = r.up;
   }
@@ -4181,7 +4202,7 @@ async function srvRefreshLists() {            // model menus that came back empt
 }
 function srvOverlay() {
   const el = $("srvDown"), tab = document.querySelector(".tab.on")?.dataset.tab;
-  const show = SRV.up === false && !SRV.hidden && tab !== "setup";
+  const show = SRV.up === false && !SRV.local && !SRV.hidden && tab !== "setup";
   if (show) {
     el.style.top = document.querySelector(".main .tabs").offsetHeight + "px";
     const m = Math.round((Date.now() - SRV.since) / 60000);
@@ -4341,7 +4362,7 @@ async function init() {
   const saved = store.get("form", null);
   FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
     era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, transparent: false,
-    art: false, no_sprite_suffix: false, palette: "EGA", dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
+    art: false, no_sprite_suffix: false, palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
     seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
