@@ -112,7 +112,7 @@ works:
 sudo apt install -y python3.11-venv git          # if needed (Debian 12)
 git clone https://github.com/grymmjack/pixelmon.git ~/pixelmon
 cd ~/pixelmon && ./install.sh                     # auto-detects nvidia → CUDA wheel
-./download-models.sh                              # all models incl. dosegafx
+./download-models.sh --all                        # every model (or no flag = core only)
 # confirm CUDA actually sees the card:
 ~/ComfyUI/.venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ~/launch-comfyui.sh                               # banner should read "NVIDIA CUDA (…)"
@@ -201,45 +201,76 @@ pixelmon "a dragon" --seed 12345      # same dragon, full quality
 
 ## Install from scratch
 
+Everything pixelmon needs, start to finish. Steps 1–3 are all a single machine needs; step 5
+is for rendering on a second, faster GPU box.
+
+**1. Get the code and build the engine**
 ```bash
 git clone https://github.com/grymmjack/pixelmon.git ~/pixelmon
 cd ~/pixelmon
-./install.sh            # clones ComfyUI, builds the venv, links everything
-./download-models.sh    # ~7.6 GB of models from Hugging Face + Civitai (no login needed)
+./install.sh
 ```
+`install.sh` clones ComfyUI into `~/ComfyUI`, builds its Python venv with the right PyTorch for
+your GPU, installs OpenCV, the IPAdapter node and the pixel-snapper, links pixelmon's node and
+commands into place (`pixelmon`, `pixelmon-gui`), and copies the shipped preset folders
+(`presets/`, with their images) into `~/pixelmon-gallery/gui-presets/`. It's safe to re-run.
+
+**2. Download the models**
+```bash
+./download-models.sh --list     # what you have / what's missing
+./download-models.sh            # core: SDXL + the style LoRAs              (~7.9 GB)
+./download-models.sh --all      # + LAB, steering, Juggernaut XL           (~25 GB)
+```
+Pick groups with `--lab`, `--steer`, `--juggernaut` instead of `--all`. Files you already have are
+skipped. If a Civitai download asks for a login, make a free key at civitai.com (Account → API
+keys) and run `CIVITAI_TOKEN=<key> ./download-models.sh`.
+
+| Group | File (in `~/ComfyUI/models/…`) | Size | Used by |
+|---|---|---|---|
+| core | `checkpoints/sd_xl_base_1.0.safetensors` — [SDXL base 1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | 6.9 GB | everything |
+| core | `loras/pixel-art-xl.safetensors` — [Pixel Art XL](https://huggingface.co/nerijs/pixel-art-xl) | 171 MB | pixel art (the default LoRA), most style guides |
+| core | `loras/lcm-lora-sdxl.safetensors` — [LCM-LoRA SDXL](https://huggingface.co/latent-consistency/lcm-lora-sdxl) | 394 MB | `--fast`, LAB live preview |
+| core | `loras/dosegafx.safetensors` — [EGA retro style](https://civitai.com/models/290771) | 82 MB | the `dosega` style |
+| core | `loras/retro-game-art.safetensors` — [Retro Game Art](https://civitai.com/models/553027) | 218 MB | the `r3tr0` style |
+| core | `loras/pixelartredmond.safetensors` — [PixelArtRedmond](https://huggingface.co/artificialguybr/PixelArtRedmond) | 163 MB | the `pixelartredmond` style |
+| `--lab` | `controlnet/controlnet-union-sdxl-promax.safetensors` — [ControlNet union](https://huggingface.co/xinsir/controlnet-union-sdxl-1.0) | 2.4 GB | LAB convert, `--control`, "keep shape & direction" |
+| `--lab` | `unet/sdxl-inpainting-0.1.fp16.safetensors` — [SDXL inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1) | 5.1 GB | LAB edits that paint something new, `--inpaint-model` |
+| `--steer` | `ipadapter/ip-adapter-plus_sdxl_vit-h.safetensors` — [IP-Adapter](https://huggingface.co/h94/IP-Adapter) | 848 MB | Steering tab, evolve, `--steer` |
+| `--steer` | `clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | 2.5 GB | the image encoder for IP-Adapter |
+| `--juggernaut` | `checkpoints/juggernautXL_v9.safetensors` — [Juggernaut XL v9](https://huggingface.co/RunDiffusion/Juggernaut-XL-v9) | 6.6 GB | optional alternative checkpoint (⚙ Advanced) |
+| automatic | CLIPSeg ([CIDAS/clipseg-rd64-refined](https://huggingface.co/CIDAS/clipseg-rd64-refined)) | ~600 MB | LAB "select by words", `--animate`; fetched on first use |
+
+The GUI only offers what the render server actually has: LoRAs, checkpoints, ControlNet,
+IPAdapter and inpainting models are read live from ComfyUI, so a missing group just means that
+feature's menu is empty.
+
+**3. Render**
+```bash
+pixelmon "a fierce dragon" --no-open     # the CLI
+pixelmon-gui                             # the web GUI → http://127.0.0.1:8190
+```
+`pixelmon` starts ComfyUI for you if it isn't running. On **AMD/ROCm**, log out and back in once
+first (so the `render` group sticks).
+
+**4. Your own LoRAs (optional)**
+The `ega-art-v2` and `dosart-vga` LoRAs in the GUI's LoRA list were trained on a private art
+collection and aren't downloadable. Any SDXL LoRA works: drop the `.safetensors` into
+`~/ComfyUI/models/loras/` (on the render server) and it appears in the LoRA menu. To give it a
+trigger word, default strength and palette in the GUI, add it to `gui/presets.json`.
+
+**5. A separate render server (optional)**
+Run steps 1–2 on the GPU box, start ComfyUI there with `~/launch-comfyui.sh` (it listens on the
+network), and on your desk machine copy `servers.example.json` to `servers.json` with the box's
+address. Then `pixelmon … --server <name>` renders there, and `pixelmon-gui` uses it for every
+render. Details: [render farm guide](README-RENDER-FARM.md).
 
 > **GPU auto-detection.** `install.sh` and `launch-comfyui.sh` detect your card —
 > **NVIDIA (CUDA)**, **AMD (ROCm)**, or **CPU** — and configure the matching
 > PyTorch wheel and launch flags automatically. The `render`-group + HSA-override
 > + `--lowvram` steps are **AMD-only**; NVIDIA skips them. Force a vendor with
 > `PIXELMON_GPU=nvidia|amd|cpu`, and pick an interpreter with `PYTHON=python3.11`.
-
-On **AMD/ROCm**, log out and back in once (so the `render` group sticks). Then:
-```bash
-pixelmon "a fierce dragon"
-```
-
-`install.sh` is idempotent and explains each step. What it does:
-
-1. Clones **ComfyUI** into `~/ComfyUI` (if absent).
-2. Creates `~/ComfyUI/.venv` (Python 3.10) and installs
-   `torch/torchvision/torchaudio==2.5.1+rocm6.2` from the ROCm index, then
-   ComfyUI's `requirements.txt`.
-3. **Symlinks** this repo's files into place (so the repo stays the source of truth):
-   - `pixelmon.py` → `~/ComfyUI/pixelmon.py`
-   - `custom_nodes/pixelart_palette` → `~/ComfyUI/custom_nodes/pixelart_palette`
-   - `bin/pixelmon` → `~/.local/bin/pixelmon`
-   - `launch-comfyui.sh` → `~/launch-comfyui.sh`
-4. Adds you to the **`render`** group (`sudo usermod -aG render $USER`).
-
-`download-models.sh` fetches into `~/ComfyUI/models/`:
-
-| File | Size | Goes to |
-|---|---|---|
-| `sd_xl_base_1.0.safetensors` | 6.9 GB | `models/checkpoints/` |
-| `pixel-art-xl.safetensors` (Pixel Art XL LoRA) | 171 MB | `models/loras/` |
-| `lcm-lora-sdxl.safetensors` (for `--fast`) | 394 MB | `models/loras/` |
-| `dosegafx.safetensors` (EGA retro style SDXL LoRA, [Civitai 290771](https://civitai.com/models/290771/ega-retro-style-sdxl)) | 82 MB | `models/loras/` |
+> Per-OS guides: [Linux AMD](README-LINUX-AMD-ROCM.md) · [Linux NVIDIA](README-LINUX-NVIDIA.md) ·
+> [Windows NVIDIA (WSL2)](README-WINDOWS-NVIDIA.md) · [macOS Apple Silicon](README-MACOS-APPLE-SILICON.md)
 
 ---
 
