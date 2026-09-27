@@ -322,7 +322,9 @@ select.advset { border-color: var(--accent); }
 #peek .pk-bar .btn.on { border-color: var(--accent); color: var(--accent); }
 #peek .pk-cap { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #peek { max-width: calc(100vw - 16px); }
+#peek img.shrunk, #lbImg.shrunk { image-rendering: auto; }   /* bigger than the screen: smooth shrink, no shimmer */
 #peek details { margin-top: 6px; width: 0; min-width: 100%; }   /* wraps to the image's width instead of widening the peek */
+#peek .pk-bar, #peek #peekPal { width: 0; min-width: 100%; }   /* a long filename can't widen the peek (and shrink the zoom) */
 #peek summary { cursor: pointer; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
 #peek .pk-form { font: 11.5px var(--mono); color: var(--dim); margin-top: 5px; max-height: 190px; overflow-y: auto; word-break: break-word; }
 #peek .pk-form b { color: var(--text); font-weight: 500; }
@@ -2992,9 +2994,12 @@ function showPeek(el) {
     $("peekCap").textContent = `${it.src ? it.cap || it.cork : job.label || `seed ${o.seed ?? "?"}`}${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
     $("peekZooms").innerHTML = ["fit", 2, 3, 4].map(z => `<button class="btn small ${z == PEEK.zoom ? "on" : ""}" data-peekzoom="${z}">${z === "fit" ? "fit" : z + "×"}</button>`).join("");
     pk.style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
-    // measure the peek's frame (padding, caption, palette, formula) around a 1× image, invisibly
-    pk.style.visibility = "hidden"; pk.classList.remove("hidden"); img.style.width = iw + "px";
-    const frameW = pk.offsetWidth - iw, frameH = pk.offsetHeight - img.offsetHeight, minW = pk.offsetWidth - frameW;
+    // measure the peek's frame (padding, caption, palette, formula) around the image, invisibly — at 1×, or
+    // narrower for a picture wider than the window (a 4K wallpaper), so the measurement itself isn't clipped
+    pk.style.visibility = "hidden"; pk.classList.remove("hidden");
+    const mw = Math.min(iw, Math.max(120, innerWidth - 120)); img.style.width = mw + "px";
+    const frameW = pk.offsetWidth - mw, frameH = pk.offsetHeight - img.offsetHeight;
+    const minW = Math.min(360, innerWidth - 16) - frameW;             // the peek's own minimum width, frame excluded
     // Collision detection: never cover the thumbnail being hovered (that made it close and reopen forever).
     // Try each side of it; each side allows the largest whole zoom that fits there; take the biggest.
     const live = el && el.isConnected ? el.getBoundingClientRect() : null;
@@ -3006,18 +3011,23 @@ function showPeek(el) {
       { s: "below", w: innerWidth - 2 * M,             h: innerHeight - M - (r.bottom + G) },
       { s: "above", w: innerWidth - 2 * M,             h: r.top - G - M }];
     for (const c of sides) {
-      c.k = Math.floor(Math.min((c.w - frameW) / iw, (c.h - frameH) / ih));
-      if (Math.max(minW, iw) + frameW > c.w) c.k = Math.min(c.k, 0);   // the frame itself doesn't fit there
+      c.f = Math.min((c.w - frameW) / iw, (c.h - frameH) / ih);          // the scale that fills this side exactly
+      if (minW + frameW > c.w) c.f = -1;                                 // the frame itself doesn't fit there
     }
-    const best = sides.reduce((a, b) => (Math.min(b.k, want) > Math.min(a.k, want) ? b : a));
-    let k = Math.max(1, Math.min(want, best.k));
-    img.style.width = iw * k + "px";
+    const best = sides.reduce((a, b) => (Math.min(b.f, want) > Math.min(a.f, want) ? b : a));
+    // a whole zoom (square pixels) when the picture fits at 1× or more; a big one shrinks to fit instead
+    const fitAll = Math.min((innerWidth - 2 * M - frameW) / iw, (innerHeight - 2 * M - frameH) / ih);
+    let k = Math.min(want, best.f);
+    k = k >= 1 ? Math.floor(k) : Math.max(0.02, best.f > 0 ? best.f : fitAll);
+    best.k = k;
+    img.classList.toggle("shrunk", k < 1);
+    img.style.width = Math.round(iw * k) + "px";
     drawGrid($("peekGrid"), img, k);
-    $("peekCap").textContent += ` · ${k}×`;
+    $("peekCap").textContent += k < 1 ? ` · ${Math.round(k * 100)}%` : ` · ${k}×`;
     const w = pk.offsetWidth, h = pk.offsetHeight, cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const clampX = x => Math.max(M, Math.min(innerWidth - w - M, x)), clampY = y => Math.max(M, Math.min(innerHeight - h - M, y));
     let left, top;
-    if (best.k < 1) { left = cx < innerWidth / 2 ? innerWidth - w - M : M; top = clampY(cy - h / 2); }   // tiny window: far side
+    if (best.f <= 0) { left = cx < innerWidth / 2 ? innerWidth - w - M : M; top = clampY(cy - h / 2); }   // tiny window: far side
     else if (best.s === "right") { left = r.right + G; top = clampY(cy - h / 2); }
     else if (best.s === "left") { left = r.left - G - w; top = clampY(cy - h / 2); }
     else if (best.s === "below") { top = r.bottom + G; left = clampX(cx - w / 2); }
@@ -4310,10 +4320,12 @@ function openLb(jobId, file, stack) {
 function setZoom(z) {
   lbZoom = z; store.set("lbZoom", z); const img = $("lbImg");
   const apply = () => {
-    // "fit" = the largest whole-number zoom that fits, so pixels stay square and even
-    const k = z === "fit" ? Math.max(1, Math.floor(Math.min(($("lbView").clientWidth - 40) / img.naturalWidth,
-                                                          ($("lbView").clientHeight - 40) / img.naturalHeight))) : z;
-    img.style.width = img.naturalWidth * k + "px";
+    // "fit" = the largest whole-number zoom that fits, so pixels stay square and even;
+    // a picture bigger than the view (a 4K wallpaper) shrinks to fit instead
+    const f = Math.min(($("lbView").clientWidth - 40) / img.naturalWidth, ($("lbView").clientHeight - 40) / img.naturalHeight);
+    const k = z === "fit" ? (f >= 1 ? Math.floor(f) : Math.max(0.02, f)) : z;
+    img.classList.toggle("shrunk", k < 1);
+    img.style.width = Math.round(img.naturalWidth * k) + "px";
     drawGrid($("lbGrid"), img, k);
   };
   img.complete ? apply() : (img.onload = apply);
