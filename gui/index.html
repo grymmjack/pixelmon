@@ -219,8 +219,10 @@ select.advset { border-color: var(--accent); }
 
 /* ---- LAB ---- */
 .lab { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
-/* docked loupe: pinned to the bottom of the LAB while the rest scrolls; grip on its top edge */
-.labzoom { position: sticky; bottom: 0; z-index: 6; margin: 14px -14px -14px; padding: 12px 14px 12px;
+/* docked loupe: the LAB scrolls in its own area above; the loupe is anchored to the pane's bottom and grows upward */
+#labPane:not(.hidden) { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.lab-scroll { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 14px; }
+.labzoom { flex: none; position: relative; z-index: 6; padding: 12px 14px 12px;
   background: var(--panel); border-top: 1px solid var(--accent); box-shadow: 0 -8px 22px rgba(0,0,0,.55); }
 .labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
 .lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr) 8px var(--lz-c3, .7fr) 8px var(--lz-c4, .45fr); margin-top: 8px;
@@ -677,7 +679,7 @@ fieldset.closed { padding-bottom: 2px; }
     <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="setupPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
-    <div class="pane hidden" id="labPane">
+    <div class="pane hidden" id="labPane"><div class="lab-scroll" id="labScroll">
       <div class="panebar"><span class="grow"></span>
         <button type="button" class="btn small" id="labReset" title="put every LAB setting back to defaults (your LAB input images stay)">↺ reset lab</button></div>
       <div class="lab">
@@ -769,6 +771,7 @@ fieldset.closed { padding-bottom: 2px; }
           <button type="button" class="btn" id="labSave" style="width:100%;margin-top:10px"
             title="save everything — input, adjustments, steering, and the style in the left panel — as a preset">💾 Save LAB preset</button></div>
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
+      </div>
       </div>
       <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50% · 33% · 10%
           <span class="dim">(follows your pointer over the input · scroll or drag a view and the others follow · drag the top edge or the dividers to resize)</span></summary>
@@ -2236,7 +2239,8 @@ function initLabZoomFollow() {
   grip.addEventListener("pointerdown", e => {
     e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
     const h0 = views.offsetHeight, y0 = e.clientY;          // grip on top: drag up = taller
-    const mv = ev => views.style.setProperty("--lz-h", Math.max(120, Math.min(innerHeight - 160, h0 - (ev.clientY - y0))) + "px");
+    const maxH = () => $("labPane").clientHeight - 140;      // always leave a strip of the LAB above
+    const mv = ev => views.style.setProperty("--lz-h", Math.max(120, Math.min(maxH(), h0 - (ev.clientY - y0))) + "px");
     const up = () => { grip.classList.remove("drag"); grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); store.set("lzH", views.offsetHeight); };
     grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up);
   });
@@ -3481,7 +3485,7 @@ async function labRefine(job, o) {
     LABS.refine = null;
   }
   store.set("lab", LABS); await loadLab(); renderLab();
-  $("labPane").scrollTo({ top: 0, behavior: "smooth" });
+  $("labScroll").scrollTo({ top: 0, behavior: "smooth" });
   ok(isEdit ? `🎯 round ${round}: seed ${o.seed ?? "?"} is the input now — subtle tweak at ${LABS.edit.strength.toFixed(2)}, steering toward it. Apply edit.`
             : `🎯 seed ${o.seed ?? "?"} is the input now — convert again (img2img change ${LABS.denoise.toFixed(2)}) to keep refining`);
 }
