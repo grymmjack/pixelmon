@@ -798,6 +798,27 @@ class JobQueue:
                 self.proc.terminate()
             return True
 
+    def clear(self, stop_running=False):
+        """Clear the Queue tab: cancel waiting jobs, forget finished ones (their files stay in the
+        gallery). The running job keeps going unless stop_running."""
+        cancelled = removed = 0
+        with self.lock:
+            for jid in list(self.order):
+                job = self.jobs[jid]
+                if job["status"] == "queued":
+                    job["status"] = "cancelled"
+                    cancelled += 1
+                elif job["status"] == "running":
+                    if stop_running and self.current == jid and self.proc:
+                        job["status"] = "cancelled"
+                        self.proc.terminate()
+                        cancelled += 1
+                    continue                     # it drops off the list once it has stopped
+                self.order.remove(jid)
+                del self.jobs[jid]
+                removed += 1
+        return {"cancelled": cancelled, "removed": removed}
+
     def snapshot(self):
         with self.lock:
             return [dict(self.jobs[j], log=self.jobs[j]["log"][-40:]) for j in self.order[-60:]]
@@ -812,8 +833,8 @@ class JobQueue:
         while True:
             jid = self.q.get()
             with self.lock:
-                job = self.jobs[jid]
-                if job["status"] == "cancelled":
+                job = self.jobs.get(jid)
+                if not job or job["status"] == "cancelled":    # cleared from the queue, or cancelled
                     continue
                 job["status"], job["started"] = "running", time.time()
                 self.current = jid
@@ -959,6 +980,40 @@ def board_dir(name):
     if not name:
         raise ValueError("board needs a name")
     return os.path.join(BOARDS, name)
+
+
+GALLERY_HOME = os.path.dirname(PRESETS)                           # ~/pixelmon-gallery
+BACKUPS = os.path.join(GALLERY_HOME, "backups")
+BACKUP_SKIP = {"backups", "preset-candidates"}                    # old backups and seed-picking scratch
+
+
+def make_backup(keyword, gallery):
+    """Zip everything in ~/pixelmon-gallery (renders, presets, corkboards, LAB inputs…) into
+    backups/pixelmon-gallery-<keyword>-<YYYY-MM-DD>.zip. Returns (path, files, bytes)."""
+    kw = re.sub(r"[^\w-]+", "-", str(keyword or "").strip()).strip("-")[:40] or "backup"
+    os.makedirs(BACKUPS, exist_ok=True)
+    base = f"pixelmon-gallery-{kw}-{time.strftime('%Y-%m-%d')}"
+    path, i = os.path.join(BACKUPS, base + ".zip"), 2
+    while os.path.exists(path):
+        path, i = os.path.join(BACKUPS, f"{base}-{i}.zip"), i + 1
+    roots = [GALLERY_HOME] + ([gallery] if not os.path.realpath(gallery).startswith(os.path.realpath(GALLERY_HOME) + os.sep) else [])
+    n = 0
+    with zipfile.ZipFile(path + ".part", "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for root in roots:
+            top = os.path.basename(os.path.normpath(root))
+            for d, dirs, files in os.walk(root):
+                rel = os.path.relpath(d, root)
+                if rel == ".":
+                    dirs[:] = [x for x in dirs if x not in BACKUP_SKIP]
+                for f in files:
+                    if f.endswith(".part"):
+                        continue
+                    full = os.path.join(d, f)
+                    z.write(full, os.path.normpath(os.path.join(top, rel, f)),
+                            compress_type=zipfile.ZIP_STORED if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".zip")) else zipfile.ZIP_DEFLATED)
+                    n += 1
+    os.replace(path + ".part", path)
+    return path, n, os.path.getsize(path)
 
 
 def list_boards():
@@ -1285,6 +1340,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not full.startswith(os.path.realpath(BOARDS) + os.sep) or not full.lower().endswith(IMG_EXT):
                 return self._json({"error": "forbidden"}, 403)
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
+        if u.path == "/api/backup/download":
+            name = os.path.basename(urllib.parse.parse_qs(u.query).get("name", [""])[0])
+            full = os.path.realpath(os.path.join(BACKUPS, name))
+            if not name.endswith(".zip") or not full.startswith(os.path.realpath(BACKUPS) + os.sep) or not os.path.isfile(full):
+                return self._json({"error": "no such backup"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Length", str(os.path.getsize(full)))
+            self.end_headers()
+            with open(full, "rb") as fh:
+                shutil.copyfileobj(fh, self.wfile)
+            return
         if u.path == "/api/boards/zip":
             try:
                 d = board_dir(urllib.parse.parse_qs(u.query).get("board", [""])[0])
@@ -1409,6 +1477,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     target = os.path.join(REFS, safe_name(arg)) if arg else REFS
                 elif kind == "presets":
                     target = PRESETS
+                elif kind == "backups":
+                    target = BACKUPS
                 elif kind == "board":
                     target = board_dir(arg)
                 elif kind == "dir":
@@ -1455,6 +1525,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 out = unique_path(LAB, safe_name(os.path.basename(src), 120))
                 shutil.copy2(src, out)
                 return self._json({"file": os.path.basename(out), "size": image_size(out)})
+            if u.path == "/api/jobs/clear":
+                return self._json(self.jobs.clear(bool(body.get("stop_running"))))
+            if u.path == "/api/backup":
+                path, n, size = make_backup(body.get("keyword"), self.gallery)
+                return self._json({"path": path, "name": os.path.basename(path), "files": n, "bytes": size})
+            if u.path == "/api/boards/rename":
+                src, dst = board_dir(body.get("board")), board_dir(body.get("name"))
+                if not os.path.isdir(src):
+                    raise ValueError("no such board")
+                if os.path.exists(dst):
+                    raise ValueError(f"a board called “{os.path.basename(dst)}” already exists")
+                os.rename(src, dst)
+                return self._json({"name": os.path.basename(dst)})
+            if u.path == "/api/boards/delete":
+                d = board_dir(body.get("board"))
+                if not os.path.isdir(d):
+                    raise ValueError("no such board")
+                if not os.path.realpath(d).startswith(os.path.realpath(BOARDS) + os.sep):
+                    raise ValueError("not a board")
+                shutil.rmtree(d)                         # the board's copies only; originals stay in the gallery
+                return self._json({"ok": True})
             if u.path == "/api/boards/new":
                 d = board_dir(body.get("name"))
                 os.makedirs(d, exist_ok=True)

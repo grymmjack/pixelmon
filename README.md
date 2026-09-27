@@ -430,7 +430,13 @@ serves it locally at `/docs/settings-atlas.html`.
   generation resolution, pixel-pipeline internals, ControlNet/inpaint tuning, IPAdapter
   models, animation). Blank = default; the tab shows how many overrides are active.
 - **📌 Corkboard:** collect images from anywhere into boards (drag its edge to resize,
-  hover to preview), zip a board or send it to steering.
+  hover to preview), rename or delete boards, zip a board or send it to steering.
+- **Housekeeping:** each tab has its own clear/reset (✕ clear queue, ↺ reset lab, ✕ clear
+  steering, ✕ clear batch, ↺ reset defaults in Advanced). **🗄 backup…** in the Gallery zips
+  your whole `~/pixelmon-gallery` (renders, presets, corkboards, LAB inputs) into
+  `~/pixelmon-gallery/backups/pixelmon-gallery-<keyword>-<date>.zip`. **⚡** next to reset
+  puts the entire app back to first-launch state (with a typed confirmation); no files are
+  ever deleted by it.
 
 Every render is kept in `~/pixelmon-gallery/gui/<job>/` with a `job.json`.
 LoRA presets (trigger tags, default strength and palette) live in `gui/presets.json`.

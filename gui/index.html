@@ -53,7 +53,8 @@ body.cork-dragging { cursor: col-resize; user-select: none; }
 .brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .brand h1 { font: 700 20px var(--mono); margin: 0; letter-spacing: 1px;
   background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.srv { font-size: 12px; color: var(--dim); }
+.srv { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.brand .btn { white-space: nowrap; flex-shrink: 0; }
 .srv b { color: var(--ok); } .srv b.down { color: var(--bad); }
 fieldset { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; padding: 8px 10px 10px; }
 legend { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
@@ -93,6 +94,11 @@ a.btn { color: var(--text); text-decoration: none; display: inline-block; text-t
 .btn:hover { border-color: var(--accent); }
 /* ---- Advanced tab ---- */
 #advN { color: var(--accent); font-weight: 600; }
+.panebar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; min-height: 28px; }
+.panebar .grow { flex: 1; min-width: 0; color: var(--dim); font-size: 12.5px; }
+.panebar .grow a, .panebar .grow button.linkish { color: var(--accent); }
+.btn.nuke { color: var(--warn); border-color: rgba(255,255,85,.45); padding-inline: 9px; }
+.btn.nuke:hover { color: var(--bad); border-color: var(--bad); }
 select.advset { border-color: var(--accent); }
 .advtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; color: var(--dim); font-size: 13px; }
 .advtop a { color: var(--accent); }
@@ -360,7 +366,9 @@ fieldset.closed { padding-bottom: 2px; }
       <a class="btn small" id="docsBtn" href="https://claude.ai/artifact/Howqpc3cfKV7Xjt4aAbrSS" target="_blank" rel="noopener"
         style="margin-left:auto;align-self:center" title="settings atlas: every setting with ranges &amp; examples, and how a render is built">📖 docs</a>
       <button type="button" class="btn small" id="resetAll" style="margin-left:6px;align-self:center"
-        title="reset the whole setup to defaults (prompt, LoRA, styles, canvas, palette, dither, seed, steering, evolve) — files are never touched">↺ reset</button></div>
+        title="reset the whole setup to defaults (prompt, LoRA, styles, canvas, palette, dither, seed, steering, evolve) — files are never touched">↺ reset</button>
+      <button type="button" class="btn small nuke" id="nukeAll" style="margin-left:6px;align-self:center"
+        title="⚡ reset EVERYTHING everywhere: every tab's settings, the queue and all remembered preferences (files are never deleted)">⚡</button></div>
     <div class="presetbar">
       <select id="presetSel" title="saved lab presets"><option value="">— presets —</option></select>
       <button type="button" class="btn small" id="presetLoad">Load</button>
@@ -559,11 +567,19 @@ fieldset.closed { padding-bottom: 2px; }
       <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
       <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
     </div>
-    <div class="pane" id="queuePane"><div class="empty">Nothing rendered yet this session.</div></div>
-    <div class="pane hidden" id="galleryPane"></div>
+    <div class="pane" id="queuePane">
+      <div class="panebar"><span class="grow"></span>
+        <button type="button" class="btn small" id="queueClear" title="cancel waiting jobs and clear finished ones from this list (renders stay in the Gallery)">✕ clear queue</button></div>
+      <div id="queueList"><div class="empty">Nothing rendered yet this session.</div></div></div>
+    <div class="pane hidden" id="galleryPane">
+      <div class="panebar"><span class="grow" id="backupMsg"></span>
+        <button type="button" class="btn small" id="galleryBackup" title="zip your whole pixelmon gallery (renders, presets, corkboards, LAB inputs) into one backup file">🗄 backup…</button></div>
+      <div id="galleryList"></div></div>
     <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
     <div class="pane hidden" id="labPane">
+      <div class="panebar"><span class="grow"></span>
+        <button type="button" class="btn small" id="labReset" title="put every LAB setting back to defaults (your LAB input images stay)">↺ reset lab</button></div>
       <div class="lab">
         <div class="lab-col"><h3>1 · Input image</h3>
           <div class="lab-drop" id="labDrop"><span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span></div>
@@ -645,6 +661,7 @@ fieldset.closed { padding-bottom: 2px; }
         <input type="text" id="batchPath" class="grow" placeholder="~/git/qb64-dungeon/assets/data/default/art-prompts.txt">
         <button class="btn small" id="batchLoad">Load path</button>
         <button class="btn small" id="batchPick">Open file…</button><input type="file" id="batchFile" accept=".txt,.tsv,.csv,.md,text/*" hidden>
+        <button class="btn small" id="batchClear" title="empty the batch list, path and pasted rows">✕ clear batch</button>
       </div>
       <details style="margin-bottom:10px"><summary>…or paste rows</summary>
         <textarea id="batchText" rows="6" placeholder="path | style | size | prompt   (also: folder | name | style | size | prompt,  name | prompt,  or one prompt per line)"></textarea>
@@ -675,6 +692,7 @@ fieldset.closed { padding-bottom: 2px; }
         <span class="rng"><i class="help" data-help="window" style="margin:0 4px 0 0">i</i>
           active from <input type="range" id="steerStart" min="0" max="0.95" step="0.05" style="width:90px"><b id="steerStartVal"></b>
           to <input type="range" id="steerEnd" min="0.05" max="1" step="0.05" style="width:90px"><b id="steerEndVal"></b></span>
+        <button type="button" class="btn small" id="steerClear" title="deselect every reference and turn steering off (the images stay in your library)">✕ clear steering</button>
         <span id="steerCount" style="color:var(--dim)"></span>
         <button class="btn small" id="steerClear">clear selection</button>
       </div>
@@ -690,7 +708,9 @@ fieldset.closed { padding-bottom: 2px; }
   <aside class="cork hidden" id="cork">
     <div class="cork-resize" id="corkResize" title="drag to resize the corkboard · double-click to reset"></div>
     <div class="cork-head"><b>📌</b><select id="boardSel" title="board"></select>
-      <button class="btn small" id="boardNew" title="new board">+</button></div>
+      <button class="btn small" id="boardNew" title="new board">+</button>
+      <button class="btn small" id="boardRename" title="rename this board">✎</button>
+      <button class="btn small" id="boardDelete" title="delete this board (its copies only; originals stay in your gallery)">🗑</button></div>
     <div class="cork-actions">
       <button class="btn small" id="boardReveal" title="open this board's folder">📂 browse</button>
       <button class="btn small" id="boardZip" title="download the board as a .zip">⬇ zip</button>
@@ -1564,7 +1584,7 @@ function renderAdv() {
       <span>Every remaining pixelmon setting. <b>Blank = default.</b> Changes apply to every render — normal, LAB, evolve and batch — and are saved with presets.</span>
       <a href="${ATLAS_URL}" target="_blank" rel="noopener">📖 settings atlas — every setting, ranges &amp; examples ↗</a>
       <a href="/docs/settings-atlas.html" target="_blank">(local copy)</a>
-      <button type="button" class="btn small" id="advReset" ${n ? "" : "disabled"}>Reset all ${n ? `(${n})` : ""}</button>
+      <button type="button" class="btn small" id="advReset" title="clear every Advanced override back to pixelmon's defaults">↺ reset defaults${n ? ` (${n})` : ""}</button>
       ${META && META.adv_lists && !META.adv_lists.live ? `<span style="color:var(--warn,#fa5)">render server unreachable — model lists are fallbacks</span>` : ""}
     </div>` + ADV_GROUPS.map(g => `<fieldset class="advgroup"><legend>${esc(g.title)}</legend><p>${esc(g.note)}</p><div class="advgrid">${
       g.fields.map(f => `<div class="advf ${advIsSet(f, ADV[f.k]) ? "set" : ""}">
@@ -1589,10 +1609,84 @@ function renderAdv() {
     el.closest(".advf").classList.toggle("set", advIsSet(f, ADV[f.k]));
     save();
     const n2 = Object.keys(advParams()).length;
-    $("advReset").disabled = !n2; $("advReset").textContent = `Reset all${n2 ? ` (${n2})` : ""}`;
+    $("advReset").textContent = `↺ reset defaults${n2 ? ` (${n2})` : ""}`;
   });
   $("advPane").querySelectorAll("[data-advreset]").forEach(b => b.onclick = () => { delete ADV[b.dataset.advreset]; save(); renderAdv(); });
-  $("advReset").onclick = () => { ADV = {}; save(); renderAdv(); };
+  $("advReset").onclick = () => {
+    const k = Object.keys(advParams()).length;
+    if (k && !confirm(`Clear all ${k} Advanced override${k > 1 ? "s" : ""} back to pixelmon's defaults?`)) return;
+    ADV = {}; save(); renderAdv();
+  };
+}
+
+
+// ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
+const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
+  init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
+function initPaneTools() {
+  $("queueClear").onclick = async () => {
+    const js = Object.values(JOBS), waiting = js.filter(j => j.status === "queued").length,
+          running = js.some(j => j.status === "running"), done = js.length - waiting - (running ? 1 : 0);
+    if (!js.length) return;
+    if (!confirm(`Clear the queue?\n\n${waiting ? `• ${waiting} waiting job${waiting > 1 ? "s" : ""} will be cancelled\n` : ""}`
+      + `${done ? `• ${done} finished job${done > 1 ? "s" : ""} leave this list (their renders stay in the Gallery)\n` : ""}`
+      + `${running ? "• the render that's running now keeps going\n" : ""}`)) return;
+    try { await api("/api/jobs/clear", {}); } catch (e) { return showErr(e); }
+    lastJobsJSON = ""; poll();
+  };
+  $("galleryBackup").onclick = async () => {
+    const kw = prompt("Backup name keyword (goes into pixelmon-gallery-<keyword>-<date>.zip):", "backup");
+    if (kw === null) return;
+    const msg = $("backupMsg"); msg.textContent = "zipping your gallery…";
+    try {
+      const r = await api("/api/backup", { keyword: kw });
+      msg.innerHTML = `saved <b>${esc(r.name)}</b> · ${r.files} files · ${(r.bytes / 1048576).toFixed(1)} MB — `
+        + `<button type="button" class="btn small" id="backupOpen">📂 open folder</button> `
+        + `<a class="btn small" href="/api/backup/download?name=${encodeURIComponent(r.name)}" download>⬇ download</a>`;
+      $("backupOpen").onclick = () => reveal("backups");
+    } catch (e) { msg.textContent = ""; showErr(e); }
+  };
+  $("labReset").onclick = () => {
+    if (!confirm("Reset every LAB setting to defaults?\n\nThe selected input, adjustments, crop, mask, edit, strength and change settings are cleared. "
+                 + "Your LAB input images stay in the strip.")) return;
+    Object.assign(LABS, LAB_DEFAULTS()); cropEdit = false; maskCanvas.width = 0;
+    store.set("lab", LABS); renderAdj(); renderLab(); loadLab();
+  };
+  $("steerClear").onclick = () => {
+    STEER.use = false; STEER.sel = []; $("useSteer").checked = false;
+    renderRefs(); saveSteer(); refresh();
+  };
+  $("batchClear").onclick = () => {
+    Object.assign(BATCH, { rows: [], sel: [], group: null, exists: [], source: "" });
+    $("batchText").value = ""; $("batchPath").value = ""; store.set("batchPath", ""); $("batchFilter").value = "";
+    renderBatch();
+  };
+  $("boardRename").onclick = async () => {
+    const name = prompt(`Rename board “${CORK.board}” to:`, CORK.board);
+    if (!name || name.trim() === CORK.board) return;
+    try { CORK.board = (await api("/api/boards/rename", { board: CORK.board, name: name.trim() })).name; } catch (e) { return showErr(e); }
+    loadBoards();
+  };
+  $("boardDelete").onclick = async () => {
+    const n = curBoard().items.length;
+    if (!confirm(`Delete board “${CORK.board}”?\n\n${n ? `Its ${n} image${n > 1 ? "s are" : " is"} removed with it — only the board's copies; `
+                 + "the originals stay in your gallery." : "It's empty."}`)) return;
+    try { await api("/api/boards/delete", { board: CORK.board }); } catch (e) { return showErr(e); }
+    CORK.board = "favorites"; loadBoards();
+  };
+  $("nukeAll").onclick = async () => {
+    if (!confirm("⚡ RESET EVERYTHING\n\nThis puts the whole app back to how it was on first launch:\n"
+      + "• every setting: prompt, LoRA, canvas, palette, steering, evolve, LAB, batch and ⚙ Advanced\n"
+      + "• the queue is cleared and a render that's running now is STOPPED\n"
+      + "• every remembered preference: prompt history, notifications, zoom, corkboard width, open sections…\n\n"
+      + "Nothing is deleted: your gallery, presets, corkboards, LAB inputs and steering images all stay.\n\nContinue?")) return;
+    const t = prompt("Type RESET to confirm:");
+    if ((t || "").trim().toUpperCase() !== "RESET") { showErr("Nothing was reset."); return; }
+    try { await api("/api/jobs/clear", { stop_running: true }); } catch {}
+    try { Object.keys(localStorage).filter(k => k.startsWith("pmgui.")).forEach(k => localStorage.removeItem(k)); } catch {}
+    history.replaceState(null, "", location.pathname);
+    location.reload();
+  };
 }
 
 // ---------------- presets (lab snapshots) ----------------
@@ -2877,14 +2971,14 @@ function renderQueue(jobs) {
   if (LABS.group && !$("labPane").classList.contains("hidden")) renderLab();
   const active = jobs.filter(j => j.status === "queued" || j.status === "running").length;
   $("qcount").textContent = active ? `(${active})` : "";
-  if (!jobs.length) return;
+  if (!jobs.length) { $("queueList").innerHTML = `<div class="empty">Nothing in the queue.</div>`; return; }
   const groups = [], seen = {};
   for (const j of [...jobs].reverse()) {
     if (j.group) { if (!seen[j.group]) { seen[j.group] = []; groups.push(seen[j.group]); } seen[j.group].push(j); }
     else groups.push([j]);
   }
   for (const g of groups) g.sort((a, b) => a.created - b.created);
-  $("queuePane").innerHTML = groups.map(jobCard).join("");
+  $("queueList").innerHTML = groups.map(jobCard).join("");
   fillPalettes($("queuePane"));
 }
 async function loadGallery() {
@@ -2892,7 +2986,7 @@ async function loadGallery() {
   for (const j of GALLERY) JOBS[j.id] = JOBS[j.id] || j;
   const cells = GALLERY.flatMap(j => j.outputs.map(o => thumbHtml(j, o, 0,
     `${esc((j.params.lora || "").replace(".safetensors", ""))} · s${o.seed ?? "?"}`)));
-  $("galleryPane").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
+  $("galleryList").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
   fillPalettes($("galleryPane"));
 }
 let pollTimer = null;
@@ -2995,7 +3089,8 @@ function switchTab(t) {
 }
 async function init() {
   META = await api("/api/meta");
-  $("srv").innerHTML = `renders on <b class="${META.server_up ? "" : "down"}">${META.server}</b>${META.server_up ? "" : " (unreachable)"}`;
+  $("srv").innerHTML = `on <b class="${META.server_up ? "" : "down"}">${META.server}</b>${META.server_up ? "" : " ✗"}`;
+  $("srv").title = `renders on ${META.server}${META.server_up ? "" : " (unreachable)"}`;
   const loras = [...new Set([...META.loras, ...Object.keys(META.presets).filter(k => !META.loras_live)])];
   const ordered = [...Object.keys(META.presets).filter(k => loras.includes(k)), ...loras.filter(k => !META.presets[k])];
   $("lora").innerHTML = ordered.map(k => `<option value="${esc(k)}">${esc(META.presets[k] ? META.presets[k].label : k.replace(".safetensors", ""))}</option>`).join("")
@@ -3018,6 +3113,7 @@ async function init() {
   initEvo();
   initPresets();
   initBatch();
+  initPaneTools();
   $("openGallery").onclick = () => reveal("gallery");
 
   const saved = store.get("form", null);
