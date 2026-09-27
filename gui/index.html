@@ -444,10 +444,13 @@ fieldset.closed { padding-bottom: 2px; }
       </div>
       <div class="row">
         <div><label>Despeckle (px, 0 = off)<i class="help" data-help="despeckle">i</i></label><input type="number" id="despeckle" min="0" max="64"></div>
-        <div><label>1-px outlines<i class="help" data-help="thin">i</i></label>
-          <select id="thin_lines"><option value="0">off</option><option value="2">thin strokes ≤ 2 px</option>
-            <option value="3">≤ 3 px</option><option value="4">≤ 4 px (recommended)</option><option value="6">≤ 6 px</option>
-            <option value="8">≤ 8 px — aggressive</option></select></div>
+        <div><label>1-px outlines — thin lines up to…<i class="help" data-help="thin">i</i></label>
+          <select id="thin_lines"><option value="0">off</option>
+            <option value="2">2 px thick → 1 px (only the thinnest)</option>
+            <option value="3">3 px thick → 1 px</option>
+            <option value="4">4 px thick → 1 px (recommended)</option>
+            <option value="6">6 px thick → 1 px</option>
+            <option value="8">8 px thick → 1 px — aggressive</option></select></div>
       </div>
       <div class="row">
         <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
@@ -1181,7 +1184,12 @@ const HELP = {
     2–3 px after downscaling — no prompt can make them exactly 1 px. This thins them afterwards: strokes of the
     darkest color (EGA black) up to the chosen width are skeletonized to connected single-pixel lines, and the freed
     pixels take the surrounding color. Dark areas thicker than that (shadows, doorways, night sky) are kept.
-    Runs before pixel-art angles, so thinned lines get clean angles too.`,
+    Runs before pixel-art angles, so thinned lines get clean angles too.
+    <ul><li>The result is <b>always 1 px</b>. The number is the <b>thickest line that still gets thinned</b> —
+    so a <b>bigger</b> number means <b>more</b> 1-px lines. Lines thicker than it are left alone.</li>
+    <li>Only the <b>darkest color</b> counts as line color. In 4-color palettes (Game Boy, CGA) the next-darkest
+    shade often draws outlines too — those stay thick.</li>
+    <li>Small images (≤ 160 px): keep it at 2 — there, eyes and shading are thin strokes too.</li></ul>`,
   pxsize: `<span class="tipk">Pixel size</span>: how many output pixels one <i>art</i> pixel covers. The art is drawn on a
     grid of (output size ÷ pixel size) and every art pixel is scaled up by exactly that much at the end.
     <ul><li><b>1×1</b>: full detail at your output size</li><li><b>2×1</b>: wide pixels — the EGA/CGA 160-wide look</li>

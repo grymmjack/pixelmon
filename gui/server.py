@@ -257,8 +257,9 @@ def prompt_warnings(p, pm):
     if w and max(w, h) <= 160 and not art:
         # on small sprites/portraits almost every feature (eyes, nose, beard shading) IS a thin stroke
         if tl > 2:
-            warn(f"1-px outlines ≤{tl} on a {w}×{h} image thins away the features themselves (eyes, shading) — "
-                 "use ≤2 or off for small sprites/portraits", setf("outlines → ≤2", "thin_lines", "2"), setf("outlines off", "thin_lines", "0"))
+            warn(f"1-px outlines thinning lines up to {tl} px on a {w}×{h} image thins away the features themselves "
+                 "(eyes, shading) — use 2 or off for small sprites/portraits",
+                 setf("outlines → up to 2 px", "thin_lines", "2"), setf("outlines off", "thin_lines", "0"))
         if pa:
             warn(f"pixel-art angles on a {w}×{h} image reshapes the features — it's meant for 320×200+ scenes",
                  setf("angles off", "pixel_angles", 0))
