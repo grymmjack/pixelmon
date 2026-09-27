@@ -30,9 +30,16 @@ body.cork-dragging { cursor: col-resize; user-select: none; }
 .cork-actions { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
 .cork-body { flex: 1; overflow-y: auto; padding: 10px; }
 .cork-body.over { outline: 2px dashed var(--accent); outline-offset: -6px; background: rgba(85,255,255,.04); }
-.cork-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.cork-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); grid-auto-rows: var(--cork-row, 110px);
+  grid-auto-flow: dense; gap: 8px; }
 .cork-item { position: relative; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #000; cursor: pointer; }
-.cork-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
+.cork-item img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.cork-item .rs { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; opacity: 0;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%); border-bottom-right-radius: 3px; touch-action: none; }
+.cork-item:hover .rs, .cork-item.resizing .rs { opacity: .85; }
+.cork-item.resizing { border-color: var(--accent); z-index: 2; }
+.cork-item.drop-before { box-shadow: -4px 0 0 var(--accent); } .cork-item.drop-after { box-shadow: 4px 0 0 var(--accent); }
+.cork-item.dragging { opacity: .35; }
 .cork-item .x { position: absolute; top: 3px; right: 3px; border: 1px solid var(--line); background: rgba(0,0,0,.7);
   color: var(--text); border-radius: 4px; font-size: 11px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0; }
 .cork-item:hover .x { opacity: 1; } .cork-item:hover { border-color: var(--accent); }
@@ -720,6 +727,7 @@ fieldset.closed { padding-bottom: 2px; }
       <button class="btn small" id="boardZip" title="download the board as a .zip">⬇ zip</button>
       <button class="btn small" id="boardSteer" title="use everything on this board as steering references">🧭 to steering</button>
       <button class="btn small" id="boardClear" title="remove everything from this board (deletes only the board's copies)">✕ clear</button>
+      <button class="btn small" id="boardLayoutReset" title="put this board back to plain order and 1×1 sizes">↺ layout</button>
     </div>
     <div class="cork-body" id="corkBody"></div>
   </aside>
@@ -1624,6 +1632,77 @@ function renderAdv() {
 }
 
 
+
+// ---------------- corkboard as a mood board: drag to rearrange, corner-drag to resize ----------------
+function corkGridMetrics() {
+  const g = $("corkBody").querySelector(".cork-grid"); if (!g) return null;
+  const cs = getComputedStyle(g), tracks = cs.gridTemplateColumns.split(" ").filter(Boolean);
+  return { g, cols: tracks.length, colW: parseFloat(tracks[0]) || 100, gap: parseFloat(cs.columnGap) || 8 };
+}
+function corkSyncGrid() {   // square cells: row height = column width; re-render when the column count changes
+  const m = corkGridMetrics(); if (!m) return;
+  $("corkBody").style.setProperty("--cork-row", Math.round(m.colW) + "px");
+  if (m.cols !== CORK.cols) { CORK.cols = m.cols; renderCork(); }
+}
+function saveCorkLayout() {
+  const b = curBoard();
+  api("/api/boards/layout", { board: b.name, order: b.items, sizes: b.sizes || {} }).catch(showErr);
+}
+function corkMove(file, e) {
+  document.querySelectorAll(".cork-item.drop-before, .cork-item.drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+  const b = curBoard(), tgt = e.target.closest && e.target.closest(".cork-item");
+  const items = b.items.filter(f => f !== file);
+  let at = items.length;
+  if (tgt && tgt.dataset.cork !== file) {
+    const r = tgt.getBoundingClientRect();
+    at = items.indexOf(tgt.dataset.cork) + (e.clientX > r.left + r.width / 2 ? 1 : 0);
+  } else if (tgt) return;                   // dropped on itself
+  items.splice(at, 0, file); b.items = items;
+  renderCork(); saveCorkLayout();
+}
+function initMoodBoard() {
+  const body = $("corkBody");
+  // show where a moved item will land
+  body.addEventListener("dragover", e => {
+    document.querySelectorAll(".cork-item.drop-before, .cork-item.drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+    const t = e.target.closest && e.target.closest(".cork-item"); if (!t || t.classList.contains("dragging")) return;
+    const r = t.getBoundingClientRect(); t.classList.add(e.clientX > r.left + r.width / 2 ? "drop-after" : "drop-before");
+  });
+  document.addEventListener("dragstart", e => { const it = e.target.closest && e.target.closest(".cork-item"); if (it) it.classList.add("dragging"); });
+  document.addEventListener("dragend", () => document.querySelectorAll(".cork-item.dragging, .drop-before, .drop-after")
+    .forEach(x => x.classList.remove("dragging", "drop-before", "drop-after")));
+  // corner handle: drag to span more / fewer grid cells (snaps to the grid)
+  let justResized = false;
+  body.addEventListener("pointerdown", e => {
+    const h = e.target.closest("[data-cork-rs]"); if (!h) return;
+    e.preventDefault(); e.stopPropagation(); hidePeek();
+    const it = h.closest(".cork-item"), f = it.dataset.cork, b = curBoard(), m = corkGridMetrics(); if (!m) return;
+    b.sizes = b.sizes || {};
+    const [w0, h0] = b.sizes[f] || [1, 1], x0 = e.clientX, y0 = e.clientY, cell = m.colW + m.gap;
+    it.classList.add("resizing"); h.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const w = Math.max(1, Math.min(m.cols, Math.round(w0 + (ev.clientX - x0) / cell)));
+      const hh = Math.max(1, Math.min(8, Math.round(h0 + (ev.clientY - y0) / cell)));
+      it.style.gridColumn = `span ${w}`; it.style.gridRow = `span ${hh}`; it.dataset.span = `${w}x${hh}`;
+    };
+    const up = () => {
+      h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); it.classList.remove("resizing");
+      const [w, hh] = (it.dataset.span || `${w0}x${h0}`).split("x").map(Number);
+      if (w === 1 && hh === 1) delete b.sizes[f]; else b.sizes[f] = [w, hh];
+      justResized = true; setTimeout(() => (justResized = false), 250);
+      saveCorkLayout();
+    };
+    h.addEventListener("pointermove", move); h.addEventListener("pointerup", up);
+  });
+  body.addEventListener("click", e => { if (justResized || e.target.closest("[data-cork-rs]")) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  $("boardLayoutReset").onclick = () => {
+    const b = curBoard(); if (!b.items.length) return;
+    if (!confirm(`Reset the layout of “${b.name}”? Every image goes back to 1×1, oldest first.`)) return;
+    api("/api/boards/layout", { board: b.name, order: [], sizes: {} }).then(loadBoards).catch(showErr);
+  };
+  if ("ResizeObserver" in window) new ResizeObserver(() => corkSyncGrid()).observe(body);
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -2138,15 +2217,19 @@ function renderCork() {
   $("boardSel").value = CORK.board;
   const b = curBoard();
   $("corkN").textContent = b.items.length ? `(${b.items.length})` : "";
+  const cols = CORK.cols || 2, span = f => { const [w, h] = (b.sizes || {})[f] || [1, 1]; return [Math.min(w, cols), h]; };
   $("corkBody").innerHTML = (b.items.length ? `<div class="cork-grid">${b.items.map(f =>
-      `<div class="cork-item" data-cork="${esc(f)}"><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
+      `<div class="cork-item" data-cork="${esc(f)}" style="grid-column:span ${span(f)[0]};grid-row:span ${span(f)[1]}"><span class="rs" data-cork-rs title="drag to resize"></span><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
         <button class="x" data-cork-x="${esc(f)}" title="remove from board (deletes only the board's copy)">×</button></div>`).join("")}</div>` : "")
     + `<div class="cork-hint" style="margin-top:${b.items.length ? 10 : 0}px">Drag images here — renders, gallery, steering refs, the lightbox, or files from your desktop.</div>`;
   store.set("corkOpen", CORK.open); store.set("corkBoard", CORK.board);
+  requestAnimationFrame(corkSyncGrid);
 }
 async function corkDrop(e) {
   e.preventDefault(); $("corkBody").classList.remove("over");
   const raw = e.dataTransfer.getData(DRAG_MIME);
+  const own = raw && (() => { try { const p = JSON.parse(raw); return p.board === CORK.board && p.file ? p.file : null; } catch { return null; } })();
+  if (own) return corkMove(own, e);        // rearranging this board
   try {
     if (raw) await api("/api/boards/add", { board: CORK.board, ...JSON.parse(raw) });
     else for (const f of [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"))) {
@@ -3118,6 +3201,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initMoodBoard();
   $("openGallery").onclick = () => reveal("gallery");
 
   const saved = store.get("form", null);

@@ -1016,6 +1016,49 @@ def make_backup(keyword, gallery):
     return path, n, os.path.getsize(path)
 
 
+BOARD_LAYOUT = ".layout.json"          # per board: {"order": [file, …], "sizes": {file: [cols, rows]}}
+MAX_SPAN = 8
+
+
+def board_layout(d, files):
+    """The board's saved mood-board layout applied to its current files: items in the saved order (new
+    ones appended oldest-first), and a [cols, rows] span per item that isn't the default 1×1."""
+    try:
+        with open(os.path.join(d, BOARD_LAYOUT), encoding="utf-8") as fh:
+            lay = json.load(fh)
+    except (OSError, ValueError):
+        lay = {}
+    have = set(files)
+    order = [f for f in lay.get("order", []) if f in have]
+    order += [f for f in files if f not in set(order)]
+    sizes = {}
+    for f, wh in (lay.get("sizes") or {}).items():
+        if f in have and isinstance(wh, list) and len(wh) == 2:
+            w, h = (max(1, min(MAX_SPAN, int(v))) for v in wh)
+            if (w, h) != (1, 1):
+                sizes[f] = [w, h]
+    return order, sizes
+
+
+def save_board_layout(board, order, sizes):
+    d = board_dir(board)
+    if not os.path.isdir(d):
+        raise ValueError("no such board")
+    files = [f for f in os.listdir(d) if f.lower().endswith(IMG_EXT)]
+    have = set(files)
+    order = [str(f) for f in (order or []) if str(f) in have]
+    clean = {}
+    for f, wh in (sizes or {}).items():
+        if f in have and isinstance(wh, (list, tuple)) and len(wh) == 2:
+            w, h = (max(1, min(MAX_SPAN, int(v))) for v in wh)
+            if (w, h) != (1, 1):
+                clean[f] = [w, h]
+    tmp = os.path.join(d, BOARD_LAYOUT + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"order": order, "sizes": clean}, fh, indent=1)
+    os.replace(tmp, os.path.join(d, BOARD_LAYOUT))
+
+
 def list_boards():
     os.makedirs(os.path.join(BOARDS, "favorites"), exist_ok=True)
     out = []
@@ -1024,7 +1067,8 @@ def list_boards():
         if os.path.isdir(d) and not b.startswith("."):
             files = sorted((f for f in os.listdir(d) if f.lower().endswith(IMG_EXT)),
                            key=lambda f: os.path.getmtime(os.path.join(d, f)))
-            out.append({"name": b, "items": files})
+            order, sizes = board_layout(d, files)
+            out.append({"name": b, "items": order, "sizes": sizes})
     return out
 
 
@@ -1530,6 +1574,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/backup":
                 path, n, size = make_backup(body.get("keyword"), self.gallery)
                 return self._json({"path": path, "name": os.path.basename(path), "files": n, "bytes": size})
+            if u.path == "/api/boards/layout":
+                save_board_layout(body.get("board"), body.get("order"), body.get("sizes"))
+                return self._json({"ok": True})
             if u.path == "/api/boards/rename":
                 src, dst = board_dir(body.get("board")), board_dir(body.get("name"))
                 if not os.path.isdir(src):

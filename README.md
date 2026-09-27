@@ -429,8 +429,10 @@ serves it locally at `/docs/settings-atlas.html`.
 - **⚙ Advanced:** every remaining pixelmon setting (sampler, scheduler, checkpoint,
   generation resolution, pixel-pipeline internals, ControlNet/inpaint tuning, IPAdapter
   models, animation). Blank = default; the tab shows how many overrides are active.
-- **📌 Corkboard:** collect images from anywhere into boards (drag its edge to resize,
-  hover to preview), rename or delete boards, zip a board or send it to steering.
+- **📌 Corkboard:** collect images from anywhere into boards and lay them out like a mood
+  board: drag an image onto another to move it, drag its corner to make it span more or
+  fewer grid cells (↺ layout resets). Drag the board's edge to resize it, hover to preview,
+  rename or delete boards, zip a board or send it to steering.
 - **Housekeeping:** each tab has its own clear/reset (✕ clear queue, ↺ reset lab, ✕ clear
   steering, ✕ clear batch, ↺ reset defaults in Advanced). **🗄 backup…** in the Gallery zips
   your whole `~/pixelmon-gallery` (renders, presets, corkboards, LAB inputs) into
