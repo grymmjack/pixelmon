@@ -1508,6 +1508,30 @@ def move_preset(pid, to_folder, before=None):
     return preset_id(to_folder, new)
 
 
+def rename_preset(pid, new_name):
+    """Rename a preset in place (its json + picture), keeping its spot in the folder's order."""
+    folder, name, d = preset_loc(pid)
+    new = safe_name(new_name or "")
+    if not new:
+        raise ValueError("the new name is empty")
+    if not os.path.isfile(os.path.join(d, name + ".json")):
+        raise ValueError("no such preset")
+    if new == name:
+        return preset_id(folder, name)
+    if os.path.exists(os.path.join(d, new + ".json")):
+        raise ValueError(f"“{new}” already exists in {folder or 'unfiled'}")
+    names = [p["name"] for p in list_presets() if p["folder"] == folder]
+    rec = _read_json(os.path.join(d, name + ".json"), {})
+    for f in _preset_files(d, name):
+        os.rename(f, os.path.join(d, new + os.path.splitext(f)[1]))
+    if rec.get("image"):
+        rec["image"] = new + os.path.splitext(rec["image"])[1]
+    rec["name"] = new
+    _write_json(os.path.join(d, new + ".json"), rec)
+    _set_order(folder, [new if n == name else n for n in names])
+    return preset_id(folder, new)
+
+
 def export_folder(folder, gallery):
     """Every preset in a folder as one zip: <name>.zip bundles + folder.json (name + order)."""
     folder = folder_name(folder) if folder else ""
@@ -2104,6 +2128,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if u.path == "/api/presets/move":
                 return self._json({"id": move_preset(body.get("id"), body.get("folder"), body.get("before"))})
+            if u.path == "/api/presets/rename":
+                return self._json({"id": rename_preset(body.get("id"), body.get("name"))})
+            if u.path == "/api/presets/note":
+                folder, name, d = preset_loc(body.get("id"))
+                f = os.path.join(d, name + ".json")
+                if not os.path.isfile(f):
+                    raise ValueError("no such preset")
+                rec = _read_json(f, {})
+                rec["note"] = str(body.get("note") or "")[:500]
+                _write_json(f, rec)
+                return self._json({"ok": True})
             if u.path == "/api/presets/order":
                 _set_order(folder_name(body.get("folder") or ""), [safe_name(n) for n in body.get("order") or []])
                 return self._json({"ok": True})

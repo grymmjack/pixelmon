@@ -1948,7 +1948,8 @@ function arrangeActions(el) {
     const folders = [...PFOLDERS.filter(f => f !== p.folder).map(f => [`📁 ${f}`, () => presetMoveToFolder(p.id, f)]),
                      ...(p.folder ? [["unfiled", () => presetMoveToFolder(p.id, "")]] : []),
                      ["＋ new folder…", async () => { const f = prompt("New folder name:"); if (f) presetMoveToFolder(p.id, f); }]];
-    return [[`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")],
+    return [["✎ Rename…", () => presetRename(p.id)], ["📝 Edit note…", () => presetEditNote(p.id)],
+            [`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")],
             ["📁 Move to folder… ▸", folders]];
   }
   const ci = el.closest(".cork-item");
@@ -1969,6 +1970,21 @@ async function presetMoveTo(id, where) {
   await loadPresets($("presetSel").value);
   const c = [...document.querySelectorAll(".pcard[data-pid]")].find(x => x.dataset.pid === id);   // show where it went
   if (c) c.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+async function presetRename(id) {
+  const p = presetById(id); if (!p) return;
+  const name = prompt(`Rename preset “${p.name}” to:`, p.name);
+  if (!name || name.trim() === p.name) return;
+  try {
+    const r = await api("/api/presets/rename", { id, name: name.trim() });
+    await loadPresets($("presetSel").value === id ? r.id : $("presetSel").value);
+  } catch (e) { showErr(e); }
+}
+async function presetEditNote(id) {
+  const p = presetById(id); if (!p) return;
+  const note = prompt(`Note for “${p.name}”:`, p.note || "");
+  if (note === null) return;
+  try { await api("/api/presets/note", { id, note }); await loadPresets($("presetSel").value); } catch (e) { showErr(e); }
 }
 async function presetMoveToFolder(id, folder) {
   try {
@@ -2173,7 +2189,7 @@ function renderPresetsPane() {
                   p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬",
                   p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`].filter(Boolean).join(" · ");
     return `<div class="pcard" draggable="true" data-pid="${esc(p.id)}">${p.image ? `<img src="${presetImg(p)}" alt="" draggable="false">` : `<div class="noimg">no picture</div>`}
-      <div class="body"><h4>${esc(p.name)}${PFOLDER === "*" ? ` <span class="pfolder">${esc(p.folder || "unfiled")}</span>` : ""}</h4><div class="note">${esc(p.note || "")}</div>
+      <div class="body"><h4 title="double-click to rename">${esc(p.name)}${PFOLDER === "*" ? ` <span class="pfolder">${esc(p.folder || "unfiled")}</span>` : ""}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
         ${p.image ? `<div class="pal" data-pdir="@presets" data-pfile="${esc((p.folder ? p.folder + "/" : "") + p.image)}"></div>` : ""}
         <div class="acts"><button class="btn small" data-pload="${esc(p.id)}" title="load this preset" aria-label="load">📥</button>
@@ -2187,6 +2203,7 @@ function renderPresetsPane() {
 }
 function initPresetFolders() {
   const pane = $("presetsPane");
+  pane.addEventListener("dblclick", e => { const h = e.target.closest(".pcard[data-pid] h4"); if (h) presetRename(h.closest(".pcard").dataset.pid); });
   pane.addEventListener("click", async e => {
     const c = e.target.closest("[data-pf]");
     if (c) { PFOLDER = c.dataset.pf; return renderPresetsPane(); }
