@@ -31,6 +31,8 @@ import types
 import urllib.parse
 import urllib.request
 import zipfile
+from struct import error as struct_error
+from zlib import error as zlib_error
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 REPO = os.path.dirname(HERE)
@@ -1995,6 +1997,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": f"couldn't import: {e}"}, 400)
             return self._json({"name": rec["name"], "id": rec.get("id"), "folder": rec.get("folder"),
                                "count": rec.get("count"), "snapshot": rec.get("snapshot")})
+        if u.path == "/api/lab/layered":
+            return self._upload_layered(urllib.parse.parse_qs(u.query))
         if u.path == "/api/lab/upload":
             return self._upload(urllib.parse.parse_qs(u.query), lab=True)
         if u.path == "/api/refs/upload":            # raw image bytes; ?collection=&filename=
@@ -2352,6 +2356,30 @@ def _upload(self, q, lab=False):
 
 
 Handler._upload = _upload
+
+
+def _upload_layered(self, q):
+    """A layered file (.draw / .ora / .psd): its 'art' layer becomes the LAB input, its 'mask' layer the mask."""
+    import layered
+    fname = safe_name((q.get("filename") or ["art.draw"])[0], 96)
+    n = int(self.headers.get("Content-Length") or 0)
+    if not 0 < n <= 200 * 1024 * 1024:
+        return self._json({"error": "file must be under 200 MB"}, 400)
+    try:
+        art, mask, info = layered.read_layered(fname, self.rfile.read(n))
+    except (ValueError, KeyError, OSError, struct_error, zlib_error, zipfile.BadZipFile) as e:
+        return self._json({"error": f"couldn't read {fname}: {e}"}, 400)
+    os.makedirs(LAB, exist_ok=True)
+    out = unique_path(LAB, os.path.splitext(fname)[0] + ".png")
+    art.save(out)
+    res = {"file": os.path.basename(out), "size": image_size(out), "info": info, "mask": None}
+    if mask is not None:
+        buf = io.BytesIO(); mask.save(buf, "PNG")
+        res["mask"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    return self._json(res)
+
+
+Handler._upload_layered = _upload_layered
 
 
 def main():

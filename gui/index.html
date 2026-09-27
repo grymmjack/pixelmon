@@ -679,7 +679,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="lab">
         <div class="lab-col"><h3>1 · Input image</h3>
           <div class="lab-drop" id="labDrop"><span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span></div>
-          <input type="file" id="labFile" accept="image/*" hidden>
+          <input type="file" id="labFile" accept="image/*,.draw,.ora,.psd" hidden>
           <div class="croptools"><button type="button" class="btn small" id="cropBtn" title="draw a box to use only part of the image">✂ crop</button>
             aspect <select id="cropAspect"><option value="0">free</option><option value="1.6">320×200</option><option value="1.905">320×168</option>
               <option value="1.3333">4:3</option><option value="1">1:1</option><option value="1.7778">16:9</option></select>
@@ -3733,6 +3733,24 @@ function renderLab() {
     if (jobs.length) { $("labOut").innerHTML = jobCard(jobs.length > 1 ? jobs : [jobs[0]]); fillPalettes($("labOut")); }
   }
 }
+// a layered file from DRAW / GIMP / Krita: the "art" layer (or all visible layers) is the input, the "mask" layer the mask
+async function labLayered(f) {
+  let r;
+  try {
+    const res = await fetch(`/api/lab/layered?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+    r = await res.json(); if (!res.ok) throw new Error(r.error);
+  } catch (e) { return showErr(e); }
+  await labSet(r);
+  const I = r.info || {};
+  if (r.mask) {
+    LABS.mask = r.mask; maskCanvas.width = 0; store.set("lab", LABS);
+    const img = $("labDrop").querySelector(".cropwrap img");
+    const go = () => { maskLoad(r.mask, img.naturalWidth || r.size[0], img.naturalHeight || r.size[1]); renderLab(); };
+    img && !img.complete ? img.addEventListener("load", go, { once: true }) : go();
+  }
+  ok(`${f.name}: ${I.art_layer ? `art from layer “${I.art_layer}”` : "art = all visible layers"}${I.mask_layer ? `, mask from layer “${I.mask_layer}”` :
+     " — no layer named “mask”, so no mask (layers: " + (I.layers || []).join(", ") + ")"}`);
+}
 async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.refine = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
@@ -3794,6 +3812,7 @@ function initLab() {
   drop.onclick = e => { if (!cropEdit && !maskEdit && !e.target.closest(".cropwrap")) $("labFile").click(); };
   $("labFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (f) await labUpload(f); };
   async function labUpload(f) {
+    if (/\.(draw|ora|psd)$/i.test(f.name)) return labLayered(f);
     try {
       const r = await fetch(`/api/lab/upload?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
       const j = await r.json(); if (!r.ok) throw new Error(j.error); await labSet(j);
@@ -3805,7 +3824,7 @@ function initLab() {
     e.preventDefault(); drop.classList.remove("over");
     const raw = e.dataTransfer.getData(DRAG_MIME);
     if (raw) { try { await labSet(await api("/api/lab/import", JSON.parse(raw))); } catch (err) { showErr(err); } return; }
-    const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) labUpload(f);
+    const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/") || /\.(draw|ora|psd)$/i.test(x.name)); if (f) labUpload(f);
   });
   $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
     LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; maskCanvas.width = 0; renderLab(); labSchedule(); };
