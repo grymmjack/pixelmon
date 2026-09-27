@@ -649,6 +649,12 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             argv += ["--palette", pal]
             if ps is not None:
                 argv += ["--palette-strength", f"{ps:g}"]
+            dither = str(p.get("dither") or "none")
+            if dither != "none":
+                argv += ["--dither", dither]
+                da = num("dither_amount", float, 0.0, 1.0)
+                if da is not None:
+                    argv += ["--dither-amount", f"{da:g}"]
     if not art:
         pal = str(p.get("palette") or "none")
         argv += ["--palette", pal]

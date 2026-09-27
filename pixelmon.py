@@ -121,7 +121,7 @@ def print_help():
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
         opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
-        opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact", "0.6"),
+        opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact (+ --dither)", "0.6"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
@@ -309,7 +309,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
     tag = "art" if a.art else palette
-    ow, oh = (a.sw, a.sh) if a.art else (a.ow, a.oh)
+    ow, oh = (a.sw, a.sh) if a.art else (a.ow * a.enlarge, a.oh * a.enlarge)
     prefix = f"pixelmon/{name}_{ow}x{oh}_{tag}_s{seed}"
 
     g = {
@@ -623,6 +623,26 @@ def _hex_rgb(colors):
     return out
 
 
+def _palette_node():
+    """The PixelArtPalette node module (for its dithering), or None."""
+    try:
+        sys.path.insert(0, os.path.join(COMFY, "custom_nodes"))
+        from pixelart_palette import nodes
+        return nodes
+    except Exception:
+        return None
+
+
+def enlarge_output(a, sprite):
+    """Pixel art past 1024 was made at 1/k size: enlarge it by exactly k, nearest neighbour (crisp square pixels)."""
+    k = getattr(a, "enlarge", 1)
+    if k <= 1 or not (sprite and os.path.isfile(sprite)):
+        return
+    from PIL import Image
+    im = Image.open(sprite)
+    im.resize((im.width * k, im.height * k), Image.NEAREST).save(sprite)
+
+
 def art_palette(a, sprite, pal):
     """--art + --palette: move the finished picture's colors toward the palette WITHOUT pixelating it.
     Each pixel is blended toward its nearest palette color by --palette-strength (1 = exactly that color)."""
@@ -643,14 +663,22 @@ def art_palette(a, sprite, pal):
     alpha = im.getchannel("A") if im.mode in ("RGBA", "LA") else None
     px = np.asarray(im.convert("RGB")).astype(np.float32)
     P = np.array(rgb, dtype=np.float32)
-    out = np.empty_like(px)
-    for y in range(0, px.shape[0], 64):                    # rows in chunks: pixels x colors stays small
-        c = px[y:y + 64]
-        d = c[:, :, None, :] - P[None, None, :, :]
-        rmean = (c[:, :, None, 0] + P[None, None, :, 0]) / 2  # "redmean": closer to how eyes judge color distance
-        dist = (2 + rmean / 256) * d[..., 0] ** 2 + 4 * d[..., 1] ** 2 + (2 + (255 - rmean) / 256) * d[..., 2] ** 2
-        near = P[dist.argmin(-1)]
-        out[y:y + 64] = near if s >= 1 else c * (1 - s) + near * s
+    exact = None
+    if a.dither != "none":                                   # the palette node's own dithering, so it matches pixel mode
+        node = _palette_node()
+        if node:
+            exact = np.asarray(node._quantize_dither(im.convert("RGB"), rgb, a.dither, a.dither_amount)).astype(np.float32)
+        else:
+            print("   note: couldn't load the palette node's dithering; used plain nearest colors")
+    if exact is None:
+        exact = np.empty_like(px)
+        for y in range(0, px.shape[0], 64):                # rows in chunks: pixels x colors stays small
+            c = px[y:y + 64]
+            d = c[:, :, None, :] - P[None, None, :, :]
+            rmean = (c[:, :, None, 0] + P[None, None, :, 0]) / 2  # "redmean": closer to how eyes judge color distance
+            dist = (2 + rmean / 256) * d[..., 0] ** 2 + 4 * d[..., 1] ** 2 + (2 + (255 - rmean) / 256) * d[..., 2] ** 2
+            exact[y:y + 64] = P[dist.argmin(-1)]
+    out = exact if s >= 1 else px * (1 - s) + exact * s
     res = Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8), "RGB")
     if alpha is not None:
         res.putalpha(alpha)
@@ -896,6 +924,7 @@ def run_farm(a, work):
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)
+            enlarge_output(a, sprite)
             done += 1
             sj = f"{subj}  " if a.batch else ""
             print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
@@ -1161,7 +1190,7 @@ def main():
         a.negative = ART_NEGATIVE if a.art else PIXEL_NEGATIVE
     if a.art:
         ignored = [f for f, on in [
-            ("--transparent", a.transparent), ("--dither", a.dither != "none"),
+            ("--transparent", a.transparent), ("--dither (needs a --palette)", a.dither != "none" and a.palette == "none"),
             ("--snap-pixels", a.snap_pixels), ("--pixel-grid", a.pixel_grid > 0),
             ] if on]
         if ignored:
@@ -1236,8 +1265,19 @@ def main():
                 a.ow = a.oh = int(a.out)
         except ValueError:
             p.error(f"bad --out {a.out!r}; use N or WxH (e.g. 320x200)")
-        if not (1 <= a.ow <= 1024 and 1 <= a.oh <= 1024):
-            p.error("--out dimensions must be 1..1024")
+        if not (1 <= a.ow <= 4096 and 1 <= a.oh <= 4096):
+            p.error("--out dimensions must be 1..4096")
+    # Pixel art past 1024 (wallpapers): the palette node works up to 1024, so the art is made at 1/k of the
+    # size and enlarged by exactly k afterwards — nearest neighbour, so every pixel stays square and crisp.
+    a.enlarge = 1
+    if not a.art and max(a.ow, a.oh) > 1024:
+        k = next((k for k in range(2, 17) if a.ow % k == 0 and a.oh % k == 0 and max(a.ow, a.oh) <= 1024 * k), None)
+        if not k:
+            p.error(f"--out {a.ow}x{a.oh}: past 1024, pixel art has to divide evenly by a whole number "
+                    f"(1920x1080, 2560x1440, 3840x2160 … all do)")
+        a.enlarge, a.ow, a.oh = k, a.ow // k, a.oh // k
+        if max(a.sw, a.sh) > 1024:
+            a.sw, a.sh = a.ow, a.oh
 
     def _r64(v):
         return max(64, int(round(v / 64.0)) * 64)
@@ -1245,11 +1285,12 @@ def main():
     a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
 
     if a.art and max(a.sw, a.sh) > a.res:
-        # Art mode bigger than --res: generate at that size directly (rounded to the /64 SDXL likes).
-        # Anything smaller keeps the --res generation above and is resized to exactly W x H afterwards:
-        # SDXL can't draw at 256 px (it makes abstract blobs), so a small picture must be a shrunk big one.
-        a.gen_w, a.gen_h = _r64(a.sw), _r64(a.sh)
-        a.sw, a.sh = a.gen_w, a.gen_h   # filename/labels reflect the true output size
+        # Art mode bigger than --res (wallpapers): SDXL paints its own ~1-megapixel size for that shape
+        # (1344x768 for 16:9) and the picture is resized up to W x H. Painting straight at 1920+ repeats
+        # the subject, and 4K doesn't fit an 8 GB card. Smaller sizes keep the --res render above and
+        # are resized down: SDXL can't draw at 256 px (it makes abstract blobs).
+        ar = a.sw / a.sh
+        a.gen_w, a.gen_h = _r64(a.res * ar ** 0.5), _r64(a.res / ar ** 0.5)
 
     # Inpaint crop-and-stitch: a small mask is a small patch of a 1024px render, so the model mostly
     # continues the surroundings. Cut out the mask's neighbourhood (with context), render THAT at full
@@ -1306,7 +1347,7 @@ def main():
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
-    lw, lh = (a.sw, a.sh) if a.art else (a.ow, a.oh)
+    lw, lh = (a.sw, a.sh) if a.art else (a.ow * a.enlarge, a.oh * a.enlarge)
     size_label = f"{lw}x{lh}" if lw != lh else f"{lw}px"
     if len(POOL) > 1:
         print(f"🚜 render farm: {len(POOL)} servers — {', '.join(_short(s) for s in POOL)}")
@@ -1369,6 +1410,7 @@ def main():
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)
+            enlarge_output(a, sprite)
             preview = next((f for f in files if "_preview_" in f), None)
             first_open = first_open or preview or sprite   # open preview if saved, else the sprite
             tag = f"[{i}/{total}] " if total > 1 else ""

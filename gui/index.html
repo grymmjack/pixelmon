@@ -574,7 +574,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="row">
         <div><label>Output size (exact)<i class="help" data-help="outsize">i</i></label><select id="outPreset"></select></div>
         <div><label>Custom W × H</label>
-          <div class="inline"><input type="number" id="outW" min="1" max="1024"><span>×</span><input type="number" id="outH" min="1" max="1024"></div></div>
+          <div class="inline"><input type="number" id="outW" min="1" max="4096"><span>×</span><input type="number" id="outH" min="1" max="4096"></div></div>
       </div>
       <div class="checks">
         <label><input type="checkbox" id="snap_pixels"> snap pixels<i class="help" data-help="snap">i</i></label>
@@ -600,7 +600,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="artonly"><label>Palette strength <span id="psVal"></span><i class="help" data-help="pstrength">i</i></label>
         <input type="range" id="palette_strength" min="0" max="1" step="0.05" value="0.6">
         <div class="hint" id="hPStrength"></div></div>
-      <div class="row pxonly">
+      <div class="row" id="ditherRow">
         <div><label>Dither<i class="help" data-help="dither">i</i></label><select id="dither"></select></div>
         <div><label>Amount <span id="amtVal"></span><i class="help" data-help="amount">i</i></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
       </div>
@@ -961,6 +961,20 @@ const SIZES = [
   ["128x128", "128×128 — sprite"], ["96x96", "96×96"], ["64x64", "64×64"], ["48x48", "48×48"], ["32x32", "32×32"], ["16x16", "16×16"],
   ["Wide"],
   ["1024x576", "1024×576 — 16:9"], ["512x288", "512×288 — 16:9"], ["384x216", "384×216 — 16:9"],
+  ["Retro computers  (@ = the machine's pixel shape, set for you)"],
+  ["280x192", "280×192 — Apple II hi-res"], ["560x192", "560×192 — Apple IIe double hi-res"],
+  ["280x192@7x4", "280×192 @ 7×4 — Apple II lo-res (40×48 blocks)"],
+  ["320x200@1x1", "320×200 — Commodore 64 hi-res"], ["320x200@2x1", "320×200 @ 2×1 — Commodore 64 multicolor (160×200)"],
+  ["256x192", "256×192 — ZX Spectrum"],
+  ["320x256", "320×256 — Amiga PAL low-res"], ["320x200@1x1a", "320×200 — Amiga NTSC low-res"],
+  ["640x256@1x1", "640×256 — Amiga PAL hi-res"], ["640x512", "640×512 — Amiga PAL hi-res interlaced"],
+  ["320x192", "320×192 — Atari 400/800 hi-res (GR.8)"], ["320x192@2x1", "320×192 @ 2×1 — Atari 400/800 4-color (160×192)"],
+  ["320x192@4x1", "320×192 @ 4×1 — Atari 400/800 GTIA 16-shade (80×192)"],
+  ["Wallpapers & displays  (pixel art past 1024 is made smaller and enlarged ×2–×4)"],
+  ["1024x768", "1024×768 — XGA 4:3"], ["1280x720", "1280×720 — HD 720p"], ["1366x768", "1366×768 — laptop"],
+  ["1600x900", "1600×900"], ["1920x1080", "1920×1080 — Full HD 1080p"], ["1920x1200", "1920×1200 — 16:10"],
+  ["2560x1080", "2560×1080 — ultrawide"], ["2560x1440", "2560×1440 — QHD 1440p"], ["3440x1440", "3440×1440 — ultrawide QHD"],
+  ["3840x2160", "3840×2160 — 4K UHD"], ["1080x1920", "1080×1920 — phone (portrait)"],
   ["Other"],
   ["custom", "custom…"]];
 let META = null, lbItem = null, lbZoom = "fit", lastJobsJSON = "";
@@ -1022,7 +1036,10 @@ function cliFor(p) {
   if (p.negative) a.push("--negative", q(p.negative));
   if (p.styles.length) a.push("--style", p.styles.join(","));
   if (p.out) a.push("--out", p.out);
-  if (p.art && p.palette && p.palette !== "none") a.push("--palette", q(p.palette), "--palette-strength", p.palette_strength);
+  if (p.art && p.palette && p.palette !== "none" && +p.palette_strength > 0) {
+    a.push("--palette", q(p.palette), "--palette-strength", p.palette_strength);
+    if (p.dither !== "none") a.push("--dither", p.dither, "--dither-amount", p.dither_amount);
+  }
   if (!p.art) {
     a.push("--palette", q(p.palette));
     if (p.dither !== "none") a.push("--dither", p.dither, "--dither-amount", p.dither_amount);
@@ -1061,14 +1078,25 @@ function refresh() {
       : ps < 0.35 ? "a light tint toward the palette; shading stays smooth"
       : ps < 0.85 ? "clearly the palette's colors, still a smooth painting (recommended)"
       : ps < 1 ? "nearly locked — banding starts to show"
-      : "exact palette colors only: a posterized painting (no pixelation)"; }
+      : "exact palette colors only: a posterized painting (no pixelation)";
+    if (f.art && f.dither !== "none" && f.palette !== "none" && ps > 0)
+      $("hPStrength").textContent += ` · dithered (${f.dither}) — strongest at 1, where it replaces the color bands with dot patterns`;
+    $("ditherRow").style.opacity = f.art && (!f.palette || f.palette === "none" || !ps) ? .4 : ""; }
   $("finalPrompt").textContent = composedPrompt(f) || "…";
   $("amtVal").textContent = (+f.dither_amount).toFixed(2);
   { const m = /^(\d+)x(\d+)$/.exec(f.pixel_size || ""), W = +f.outW, H = +f.outH;
     $("hPxSize").textContent = !m ? (f.snap_pixels ? "auto + snap pixels: the snapper guesses its own grid — pixels can come out HUGE; pick a size"
                                                    : "auto — one art pixel per output pixel")
       : `${W}×${H} → art grid ${Math.round(W / m[1])}×${Math.round(H / m[2])}, each pixel ${m[1]}×${m[2]} screen pixels`
-        + (W % m[1] || H % m[2] ? " (size isn't an exact multiple — edges get uneven)" : ""); }
+        + (W % m[1] || H % m[2] ? " (size isn't an exact multiple — edges get uneven)" : "");
+    if (!f.art && Math.max(W, H) > 1024) {         // same rule as pixelmon: made at 1/k, enlarged by exactly k
+      let k = 2; while (k <= 16 && !(W % k === 0 && H % k === 0 && Math.max(W, H) <= 1024 * k)) k++;
+      $("hPxSize").textContent = k > 16 ? `${W}×${H} can't be made as pixel art: past 1024 it has to divide evenly by 2…16`
+        : `${W}×${H}: the pixel art is made at ${W / k}×${H / k} and enlarged ×${k} (square, crisp pixels)`
+          + (m ? `, so each art pixel is ${m[1] * k}×${m[2] * k} screen pixels` : "");
+    } else if (f.art && Math.max(W, H) > 1024)
+      $("hPxSize").textContent = `art mode: SDXL paints about 1 megapixel in this shape, then it's resized up to ${W}×${H} (softer than native)`;
+  }
   const pa = +f.pixel_angles || 0;
   $("paVal").textContent = pa ? pa.toFixed(2) : "off";
   $("hAngles").textContent = !pa ? "off — edges exactly as rendered"
@@ -1131,9 +1159,14 @@ function showStyleTip(name, el) {
   tip.classList.remove("hidden");
 }
 function hideStyleTip() { $("styleTip").classList.add("hidden"); }
+// a size preset is "WxH", or "WxH@PWxPH" when the machine also had a pixel shape (C64 multicolor = 2×1)
+const sizeOf = v => { const [wh, px] = v.split("@"); return { wh, px: px ? px.replace(/[a-z]+$/, "") : null }; };
 function syncOutPreset() {
-  const v = `${$("outW").value}x${$("outH").value}`;
-  $("outPreset").value = SIZES.some(s => s.length === 2 && s[0] === v) ? v : "custom";
+  const v = `${$("outW").value}x${$("outH").value}`, px = $("pixel_size").value, cur = $("outPreset").value;
+  const hits = SIZES.filter(s => s.length === 2 && sizeOf(s[0]).wh === v);
+  const keep = hits.find(s => s[0] === cur && (!sizeOf(cur).px || sizeOf(cur).px === px));     // two machines, same size
+  const pick = keep || hits.find(s => sizeOf(s[0]).px && sizeOf(s[0]).px === px) || hits.find(s => !sizeOf(s[0]).px) || hits[0];
+  $("outPreset").value = pick ? pick[0] : "custom";
 }
 function applyPreset() {
   const p = preset(); if (!p) return;
@@ -4383,7 +4416,15 @@ async function init() {
   $("lora").addEventListener("change", () => { applyPreset(); refresh(); });
   $("showFull").addEventListener("change", () => { lastJobsJSON = ""; poll(); });
   $("outPreset").addEventListener("change", e => {
-    if (e.target.value !== "custom") { const [w, h] = e.target.value.split("x"); $("outW").value = w; $("outH").value = h; refresh(); }
+    if (e.target.value === "custom") return;
+    const { wh, px } = sizeOf(e.target.value), [w, h] = wh.split("x");
+    $("outW").value = w; $("outH").value = h;
+    if (px) {                                   // the machine's pixel shape
+      const sel = $("pixel_size");
+      if (![...sel.options].some(o => o.value === px)) sel.insertAdjacentHTML("beforeend", `<option value="${px}">${px.replace("x", "×")}</option>`);
+      sel.value = px;
+    }
+    refresh();
   });
   $("dice").onclick = () => { $("seed").value = Math.floor(Math.random() * 2 ** 31); $("seedLock").checked = true; refresh(); };
   $("renderBtn").onclick = async () => {
