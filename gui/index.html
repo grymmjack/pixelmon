@@ -1394,7 +1394,8 @@ async function loadPresets(select) {
   const opt = p => `<option value="${esc(p.name)}" title="${esc(p.note || "")}">${esc(p.name)}</option>`;
   const demos = PRESETS.filter(p => p.name.startsWith("style-"));
   $("presetSel").innerHTML = `<option value="">— presets (${PRESETS.length}) —</option>` +
-    PRESETS.filter(p => !p.name.startsWith("style-")).map(opt).join("") +
+    // both sets in a group, so they indent alike (browsers indent grouped options)
+    `<optgroup label="presets">${PRESETS.filter(p => !p.name.startsWith("style-")).map(opt).join("")}</optgroup>` +
     (demos.length ? `<optgroup label="style demos — one per style">${demos.map(opt).join("")}</optgroup>` : "");
   if (select) $("presetSel").value = select;
   const importZone = `<div class="pimport" id="pImport">⬆ IMPORT a preset .zip — drop it here or click
