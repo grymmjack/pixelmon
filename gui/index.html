@@ -674,7 +674,7 @@ fieldset.closed { padding-bottom: 2px; }
         <div><label>Grid<i class="help" data-help="grid">i</i></label><select id="angle_grid">
           <option value="pixel">pixel-art (free)</option><option value="square">square</option><option value="diagonal">diagonal</option>
           <option value="isometric">isometric</option><option value="hex">hex</option><option value="triangle">triangle</option></select></div>
-        <div></div>
+        <div style="align-self:end"><button type="button" class="btn small" data-sweepall="angle_grid" style="width:100%">sweep grids</button></div>
       </div>
       <div class="hint" id="hAngles"></div>
     </fieldset>
@@ -724,7 +724,9 @@ fieldset.closed { padding-bottom: 2px; }
         <div class="sweepall" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">
           <button type="button" class="btn small" data-sweepall="sampler">sweep samplers</button>
           <button type="button" class="btn small" data-sweepall="scheduler">sweep schedulers</button>
-          <button type="button" class="btn small" data-sweepall="base">sweep checkpoints</button></div>
+          <button type="button" class="btn small" data-sweepall="base">sweep checkpoints</button>
+          <button type="button" class="btn small" data-sweepall="angle_grid">sweep grids</button>
+          <button type="button" class="btn small" data-sweepall="dither">sweep dithers</button></div>
         <div class="sweep-pick hidden" id="sweepPick"></div>
         <div class="err" style="color:var(--dim)" id="sweepHint"></div>
         <button type="button" class="btn" id="sweepBtn" style="width:100%;margin-top:4px">Run sweep</button>
@@ -1487,7 +1489,7 @@ const HELP = {
   sweep: `<span class="tipk">Sweep</span>: renders the SAME picture (same seed) several times, changing just one setting
     — e.g. LoRA strength 0.5, 0.7, 0.9 — shown side by side, so you can see exactly what that setting does.
     Settings with a list (sampler, scheduler, checkpoint, palette, style…) show every option to tick — no typing names.
-    <b>sweep samplers / schedulers / checkpoints</b> render one of each in a single click.`,
+    <b>sweep samplers / schedulers / checkpoints / grids / dithers</b> render one of each in a single click.`,
   adjust: `<span class="tipk">Adjust source</span>: tune your input picture before it's converted — like a photo editor.
     The preview updates as you drag, and exactly this adjusted version is what gets used.
     <ul><li><b>brightness / contrast / gamma</b>: lighten, add punch, lift or deepen the mid-tones</li>
@@ -4534,7 +4536,8 @@ function sweepCount() {
 // one click: the same picture and seed once with every sampler / scheduler / checkpoint the server has
 function sweepAllLabels() {
   document.querySelectorAll("[data-sweepall]").forEach(b => {
-    const n = (sweepOptions(b.dataset.sweepall) || []).length, what = { sampler: "samplers", scheduler: "schedulers", base: "checkpoints" }[b.dataset.sweepall];
+    const n = (sweepOptions(b.dataset.sweepall) || []).length,
+      what = { sampler: "samplers", scheduler: "schedulers", base: "checkpoints", angle_grid: "grids", dither: "dithers" }[b.dataset.sweepall];
     b.textContent = `sweep ${what}${n ? ` (${n})` : ""}`; b.disabled = !n;
     b.title = `same picture and seed, once with each of the ${n} ${what} on the render server — ${n} renders`;
   });
@@ -4542,6 +4545,13 @@ function sweepAllLabels() {
 async function sweepAll(field) {
   const vals = (sweepOptions(field) || []).map(([v]) => v);
   if (!vals.length) return showErr("the render server hasn't listed any yet (is it answering?)");
+  const f = readForm();
+  if (field === "dither" && (!f.palette || f.palette === "none"))
+    return showErr("dithering mixes palette colors — pick a palette first (with none, every dither looks the same)");
+  if (field === "angle_grid" && !(+f.pixel_angles > 0)) {         // the grid only shapes edges when pixel-art angles is on
+    setSlider($("pixel_angles"), 1.5);
+    note("pixel-art angles was off — turned it on at 1.5 so the grids show a difference");
+  }
   $("sweepField").value = field; $("sweepValues").value = vals.join(", "); renderSweepPick();
   await sweep();
 }
