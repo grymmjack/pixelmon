@@ -1072,19 +1072,20 @@ def list_boards():
     return out
 
 
-def export_bundle(name, gallery):
+def export_bundle(pid, gallery):
     """A preset + everything it references, as zip bytes (see README.txt inside)."""
-    f = os.path.join(PRESETS, safe_name(name) + ".json")
+    _, name, pdir = preset_loc(pid)
+    f = os.path.join(pdir, name + ".json")
     if not os.path.isfile(f):
-        raise ValueError(f"no preset {name!r}")
+        raise ValueError(f"no preset {pid!r}")
     with open(f, encoding="utf-8") as fh:
         rec = json.load(fh)
     snap = rec.get("snapshot") or {}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("preset.json", json.dumps(rec, indent=1))
-        if rec.get("image") and os.path.isfile(os.path.join(PRESETS, rec["image"])):
-            z.write(os.path.join(PRESETS, rec["image"]), "picture" + os.path.splitext(rec["image"])[1])
+        if rec.get("image") and os.path.isfile(os.path.join(pdir, rec["image"])):
+            z.write(os.path.join(pdir, rec["image"]), "picture" + os.path.splitext(rec["image"])[1])
         lab = snap.get("lab") or {}
         if lab.get("file"):
             try:
@@ -1123,11 +1124,20 @@ def export_bundle(name, gallery):
     return buf.getvalue(), safe_name(rec.get("name") or name)
 
 
-def import_bundle(data, gallery):
+def import_bundle(data, gallery, folder=""):
     """Unpack a bundle: images go back where pixelmon looks for them (never overwriting), the preset's
-    references are rewritten to wherever they landed, and the preset is saved. Returns the saved record."""
+    references are rewritten to wherever they landed, and the preset is saved into `folder`.
+    A folder zip (folder.json + <name>.zip bundles) recreates that folder. Returns the saved record(s)."""
     z = zipfile.ZipFile(io.BytesIO(data))
     names = set(z.namelist())
+    if "folder.json" in names:
+        meta = json.loads(z.read("folder.json"))
+        target = folder_name(meta.get("folder") or "") or "imported"
+        recs = [import_bundle(z.read(m), gallery, target) for m in sorted(names) if m.endswith(".zip")]
+        order = [n for n in meta.get("order") or []]
+        _set_order(target, [r["name"] for n in order for r in recs if r.get("orig") == n] + [r["name"] for r in recs if r.get("orig") not in order])
+        return {"folder": target, "count": len(recs), "name": recs[0]["name"] if recs else "", "id": recs[0]["id"] if recs else "",
+                "snapshot": None}
     if "preset.json" not in names:
         raise ValueError("not a pixelmon preset bundle (no preset.json)")
     rec = json.loads(z.read("preset.json"))
@@ -1172,32 +1182,148 @@ def import_bundle(data, gallery):
                        "params": {"prompt": (snap.get("form") or {}).get("subject", ""), "form": snap.get("form")},
                        "outputs": [{"file": fname, "seed": par.get("seed")}], "created": time.time()}, fh, indent=1)
         par.update({"dir": jid, "file": fname})
-    name = safe_name(rec.get("name") or "imported")
-    base, k = name, 1
-    while os.path.exists(os.path.join(PRESETS, name + ".json")):
-        name, k = f"{base}-{k}", k + 1
+    orig = safe_name(rec.get("name") or "imported")
+    pdir = preset_dir(folder)
+    name, k = orig, 1
+    while os.path.exists(os.path.join(pdir, name + ".json")):
+        name, k = f"{orig}-{k}", k + 1
     rec["name"] = name
-    os.makedirs(PRESETS, exist_ok=True)
+    for key in ("id", "folder"):
+        rec.pop(key, None)
+    os.makedirs(pdir, exist_ok=True)
     pic = next((m for m in names if m.startswith("picture.")), None)
     rec["image"] = None
     if pic and pic.lower().endswith(IMG_EXT):
         rec["image"] = name + os.path.splitext(pic)[1]
-        with open(os.path.join(PRESETS, rec["image"]), "wb") as fh:
+        with open(os.path.join(pdir, rec["image"]), "wb") as fh:
             fh.write(z.read(pic))
-    with open(os.path.join(PRESETS, name + ".json"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(pdir, name + ".json"), "w", encoding="utf-8") as fh:
         json.dump(rec, fh, indent=1)
-    return rec
+    return dict(rec, orig=orig, id=preset_id(folder_name(folder) if folder else "", name))
+
+
+# ---- preset folders: sub-folders of PRESETS; a preset's id is "FOLDER/name" ("name" = unfiled, at the top) ----
+FOLDERS_ORDER = ".folders.json"          # [folder, …] display order
+PRESET_ORDER = ".order.json"             # per folder: [name, …] display order
+
+
+def folder_name(s):
+    """A preset folder name: letters, digits, spaces, dots, dashes (e.g. 'TUNED FACTORY')."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w .-]+", "-", str(s or ""))).strip(" -.")[:48]
+
+
+def preset_dir(folder):
+    folder = folder_name(folder) if folder else ""
+    return os.path.join(PRESETS, folder) if folder else PRESETS
+
+
+def preset_loc(pid):
+    """'FOLDER/name' or 'name' -> (folder, name, dir). ValueError on nonsense."""
+    pid = str(pid or "")
+    folder, _, name = pid.rpartition("/")
+    name = safe_name(name)
+    if not name:
+        raise ValueError("no preset given")
+    return (folder_name(folder) if folder else ""), name, preset_dir(folder)
+
+
+def preset_id(folder, name):
+    return f"{folder}/{name}" if folder else name
+
+
+def _read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
+
+
+def _write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1)
+    os.replace(tmp, path)
+
+
+def list_folders():
+    os.makedirs(PRESETS, exist_ok=True)
+    have = sorted(d for d in os.listdir(PRESETS) if os.path.isdir(os.path.join(PRESETS, d)) and not d.startswith("."))
+    order = [f for f in _read_json(os.path.join(PRESETS, FOLDERS_ORDER), []) if f in have]
+    return order + [f for f in have if f not in order]
 
 
 def list_presets():
+    """Every preset, folder by folder in display order (unfiled ones last), each with 'id' and 'folder'."""
     out = []
-    for f in sorted(glob.glob(os.path.join(PRESETS, "*.json"))):
-        try:
-            with open(f, encoding="utf-8") as fh:
-                out.append(json.load(fh))
-        except Exception:
-            continue
+    for folder in list_folders() + [""]:
+        d = preset_dir(folder)
+        recs = {}
+        for f in glob.glob(os.path.join(d, "*.json")):
+            if os.path.basename(f).startswith("."):
+                continue
+            rec = _read_json(f, None)
+            if isinstance(rec, dict):
+                name = os.path.splitext(os.path.basename(f))[0]
+                rec.update(name=name, folder=folder, id=preset_id(folder, name))
+                recs[name] = rec
+        order = [n for n in _read_json(os.path.join(d, PRESET_ORDER), []) if n in recs]
+        out += [recs[n] for n in order + sorted(n for n in recs if n not in order)]
     return out
+
+
+def _set_order(folder, names):
+    d = preset_dir(folder)
+    have = {os.path.splitext(f)[0] for f in os.listdir(d) if f.endswith(".json") and not f.startswith(".")}
+    names = [n for n in names if n in have]
+    _write_json(os.path.join(d, PRESET_ORDER), names + sorted(have - set(names)))
+
+
+def _preset_files(d, name):
+    return [os.path.join(d, name + e) for e in (".json",) + IMG_EXT if os.path.isfile(os.path.join(d, name + e))]
+
+
+def move_preset(pid, to_folder, before=None):
+    """Move a preset into to_folder ('' = unfiled), placed before the preset named `before` (else last)."""
+    folder, name, d = preset_loc(pid)
+    to_folder = folder_name(to_folder) if to_folder else ""
+    td = preset_dir(to_folder)
+    if not os.path.isfile(os.path.join(d, name + ".json")):
+        raise ValueError("no such preset")
+    os.makedirs(td, exist_ok=True)
+    new = name
+    if td != d:
+        k = 2
+        while os.path.exists(os.path.join(td, new + ".json")):
+            new, k = f"{name}-{k}", k + 1
+        rec = _read_json(os.path.join(d, name + ".json"), {})
+        for f in _preset_files(d, name):
+            ext = os.path.splitext(f)[1]
+            shutil.move(f, os.path.join(td, new + ext))
+        if rec.get("image"):
+            rec["image"] = new + os.path.splitext(rec["image"])[1]
+        rec["name"] = new
+        _write_json(os.path.join(td, new + ".json"), rec)
+    names = [p["name"] for p in list_presets() if p["folder"] == to_folder and p["name"] != new]
+    at = names.index(before) if before in names else len(names)
+    names.insert(at, new)
+    _set_order(to_folder, names)
+    return preset_id(to_folder, new)
+
+
+def export_folder(folder, gallery):
+    """Every preset in a folder as one zip: <name>.zip bundles + folder.json (name + order)."""
+    folder = folder_name(folder) if folder else ""
+    recs = [p for p in list_presets() if p["folder"] == folder]
+    if not recs:
+        raise ValueError("that folder has no presets")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("folder.json", json.dumps({"folder": folder or "unfiled", "order": [p["name"] for p in recs]}, indent=1))
+        for p in recs:
+            data, _ = export_bundle(p["id"], gallery)
+            z.writestr(p["name"] + ".zip", data)
+    return buf.getvalue(), safe_name(folder or "unfiled")
 
 
 _COLOR_CACHE = {}
@@ -1333,10 +1459,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": "not found"}, 404)
             return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
         if u.path == "/api/presets":
-            return self._json({"presets": list_presets()})
-        if u.path == "/api/presets/export":
+            return self._json({"presets": list_presets(), "folders": list_folders()})
+        if u.path == "/api/presets/folder/export":
             try:
-                body, fname = export_bundle(urllib.parse.parse_qs(u.query).get("name", [""])[0], self.gallery)
+                body, fname = export_folder(urllib.parse.parse_qs(u.query).get("folder", [""])[0], self.gallery)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="pixelmon-presets-{fname}.zip"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if u.path == "/api/presets/export":
+            q = urllib.parse.parse_qs(u.query)
+            try:
+                body, fname = export_bundle((q.get("id") or q.get("name") or [""])[0], self.gallery)
             except ValueError as e:
                 return self._json({"error": str(e)}, 404)
             self.send_response(200)
@@ -1460,11 +1599,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
             if not 0 < n <= 300 * 1024 * 1024:
                 return self._json({"error": "bundle must be under 300 MB"}, 400)
+            folder = urllib.parse.parse_qs(u.query).get("folder", [""])[0]
             try:
-                rec = import_bundle(self.rfile.read(n), self.gallery)
+                rec = import_bundle(self.rfile.read(n), self.gallery, folder)
             except (ValueError, zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
                 return self._json({"error": f"couldn't import: {e}"}, 400)
-            return self._json({"name": rec["name"], "snapshot": rec.get("snapshot")})
+            return self._json({"name": rec["name"], "id": rec.get("id"), "folder": rec.get("folder"),
+                               "count": rec.get("count"), "snapshot": rec.get("snapshot")})
         if u.path == "/api/lab/upload":
             return self._upload(urllib.parse.parse_qs(u.query), lab=True)
         if u.path == "/api/refs/upload":            # raw image bytes; ?collection=&filename=
@@ -1646,7 +1787,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 name = safe_name(body.get("name") or "")
                 if not name or not isinstance(body.get("snapshot"), dict):
                     raise ValueError("preset needs a name and a snapshot")
-                os.makedirs(PRESETS, exist_ok=True)
+                folder = folder_name(body.get("folder") or "")
+                pdir = preset_dir(folder)
+                os.makedirs(pdir, exist_ok=True)
                 rec = {"name": name, "saved": time.time(), "note": str(body.get("note") or "")[:500],
                        "snapshot": body["snapshot"], "image": None}
                 img = body.get("image")                 # {dir, file} of a render to keep as the preset's picture
@@ -1654,18 +1797,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     src = self.jobs.gallery_path(img)
                     ext = os.path.splitext(src)[1].lower()
                     for e in IMG_EXT:                       # replace the previous picture of this preset
-                        if os.path.isfile(os.path.join(PRESETS, name + e)):
-                            os.remove(os.path.join(PRESETS, name + e))
-                    shutil.copy2(src, os.path.join(PRESETS, name + ext))
+                        if os.path.isfile(os.path.join(pdir, name + e)):
+                            os.remove(os.path.join(pdir, name + e))
+                    shutil.copy2(src, os.path.join(pdir, name + ext))
                     rec["image"] = name + ext
-                with open(os.path.join(PRESETS, name + ".json"), "w", encoding="utf-8") as f:
+                elif os.path.isfile(os.path.join(pdir, name + ".json")):      # re-saving keeps its picture
+                    rec["image"] = (_read_json(os.path.join(pdir, name + ".json"), {}) or {}).get("image")
+                with open(os.path.join(pdir, name + ".json"), "w", encoding="utf-8") as f:
                     json.dump(rec, f, indent=1)
-                return self._json({"name": name})
+                return self._json({"name": name, "id": preset_id(folder, name), "folder": folder})
             if u.path == "/api/presets/delete":
-                name = safe_name(body.get("name") or "")
-                for e in (".json",) + IMG_EXT if name else ():   # exact names only
-                    if os.path.isfile(os.path.join(PRESETS, name + e)):
-                        os.remove(os.path.join(PRESETS, name + e))
+                folder, name, pdir = preset_loc(body.get("id") or body.get("name"))
+                for f in _preset_files(pdir, name):     # exact names only
+                    os.remove(f)
+                return self._json({"ok": True})
+            if u.path == "/api/presets/move":
+                return self._json({"id": move_preset(body.get("id"), body.get("folder"), body.get("before"))})
+            if u.path == "/api/presets/order":
+                _set_order(folder_name(body.get("folder") or ""), [safe_name(n) for n in body.get("order") or []])
+                return self._json({"ok": True})
+            if u.path == "/api/presets/folder/new":
+                name = folder_name(body.get("name"))
+                if not name:
+                    raise ValueError("folder needs a name")
+                os.makedirs(preset_dir(name), exist_ok=True)
+                return self._json({"folder": name})
+            if u.path == "/api/presets/folder/rename":
+                src, dst = folder_name(body.get("folder")), folder_name(body.get("name"))
+                if not src or not dst or not os.path.isdir(preset_dir(src)):
+                    raise ValueError("no such folder")
+                if os.path.exists(preset_dir(dst)):
+                    raise ValueError(f"a folder called “{dst}” already exists")
+                os.rename(preset_dir(src), preset_dir(dst))
+                order = _read_json(os.path.join(PRESETS, FOLDERS_ORDER), [])
+                _write_json(os.path.join(PRESETS, FOLDERS_ORDER), [dst if f == src else f for f in order])
+                return self._json({"folder": dst})
+            if u.path == "/api/presets/folder/delete":
+                name = folder_name(body.get("folder"))
+                d = preset_dir(name)
+                if not name or not os.path.isdir(d) or os.path.realpath(d) == os.path.realpath(PRESETS):
+                    raise ValueError("no such folder")
+                shutil.rmtree(d)
+                return self._json({"ok": True})
+            if u.path == "/api/presets/folders/order":
+                _write_json(os.path.join(PRESETS, FOLDERS_ORDER), [folder_name(f) for f in body.get("order") or []])
                 return self._json({"ok": True})
             if u.path == "/api/refs/collection":
                 name = safe_name(body.get("name") or "")

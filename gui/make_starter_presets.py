@@ -11,7 +11,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "gui"))
 import server  # noqa: E402  (build_argv, load_presets)
 
-PRESETS = os.path.expanduser("~/pixelmon-gallery/gui-presets")
+PRESETS = os.path.expanduser("~/pixelmon-gallery/gui-presets/FACTORY")   # the factory folder of the presets tab
 WORK = tempfile.mkdtemp(prefix="pixelmon-presetgen-")
 DEFAULT_NEG = server.pixelmon_constant("PIXEL_NEGATIVE", "")
 ART_NEG = server.pixelmon_constant("ART_NEGATIVE", "")

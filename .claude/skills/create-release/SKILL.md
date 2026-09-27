@@ -87,7 +87,7 @@ If `gui/make_starter_presets.py` changed since the last release (new/edited `SPE
 cd ~/pixelmon && ~/ComfyUI/.venv/bin/python gui/make_starter_presets.py <names…>    # or no names = all 65
 ```
 
-They land in `~/pixelmon-gallery/gui-presets/` (not in the repo). Look at the samples before moving on. Skip if nothing preset-related changed.
+They land in `~/pixelmon-gallery/gui-presets/FACTORY/` (not in the repo); the user's own presets live in the other folders there and are never touched. Look at the samples before moving on. Skip if nothing preset-related changed.
 
 ---
 

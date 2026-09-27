@@ -308,6 +308,17 @@ fieldset.closed { padding-bottom: 2px; }
 .pcard .noimg { aspect-ratio: 16/10; display: grid; place-items: center; color: var(--dim); background: var(--panel2); }
 .pcard .body { padding: 8px 10px; flex: 1; display: flex; flex-direction: column; } .pcard h4 { margin: 0 0 3px; font-size: 14px; }
 .pcard .note { font-size: 12px; color: var(--dim); min-height: 16px; }
+.pfbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.pfbar .pfacts { display: flex; gap: 6px; margin-left: auto; }
+.pfchip { border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 999px; padding: 4px 11px;
+  cursor: pointer; font-size: 12.5px; text-transform: none; letter-spacing: 0; }
+.pfchip span { color: var(--dim); font: 11px var(--mono); margin-left: 3px; }
+.pfchip.on { border-color: var(--accent); color: var(--accent); }
+.pfchip.pf-over { border-color: var(--accent); background: rgba(85,255,255,.12); }
+.pfchip.drop-before { box-shadow: -3px 0 0 var(--accent); } .pfchip.drop-after { box-shadow: 3px 0 0 var(--accent); }
+.pcard.drop-before { box-shadow: -4px 0 0 var(--accent); } .pcard.drop-after { box-shadow: 4px 0 0 var(--accent); }
+.pcard.dragging { opacity: .4; } .pcard[draggable] { cursor: grab; }
+.pcard h4 .pfolder { font: 10.5px var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; vertical-align: 1px; }
 .pcard .acts { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; }   /* pinned to the card's bottom */
 .pcard .acts .btn { flex: 1; min-width: 0; padding: 5px 0; font-size: 15px; line-height: 1; text-align: center; }
 .pcard .acts .btn.go { border-color: var(--accent); }
@@ -1821,36 +1832,118 @@ function applySnapshot(snap) {
     if (snap.lab.active) switchTab("lab");
   }
 }
+let PFOLDERS = [], PFOLDER = store.get("presetFolder", "*");     // "*" = all folders, "" = unfiled
+const PDRAG = "application/x-pixelmon-preset", PFDRAG = "application/x-pixelmon-pfolder";
+const presetImg = p => `/preset-img/${p.folder ? encodeURIComponent(p.folder) + "/" : ""}${encodeURIComponent(p.image)}`;
+const presetById = id => PRESETS.find(x => x.id === id);
+function saveFolder() { return PFOLDER !== "*" ? PFOLDER : "USER"; }   // where Save… puts new presets
 async function loadPresets(select) {
-  try { PRESETS = (await api("/api/presets")).presets; } catch { return; }
-  const opt = p => `<option value="${esc(p.name)}" title="${esc(p.note || "")}">${esc(p.name)}</option>`;
-  const demos = PRESETS.filter(p => p.name.startsWith("style-"));
+  let r; try { r = await api("/api/presets"); } catch { return; }
+  PRESETS = r.presets; PFOLDERS = r.folders || [];
+  if (PFOLDER !== "*" && PFOLDER !== "" && !PFOLDERS.includes(PFOLDER)) PFOLDER = "*";
+  const groups = [...PFOLDERS, ""].map(f => [f, PRESETS.filter(p => p.folder === f)]).filter(([, ps]) => ps.length);
   $("presetSel").innerHTML = `<option value="">— presets (${PRESETS.length}) —</option>` +
-    // both sets in a group, so they indent alike (browsers indent grouped options)
-    `<optgroup label="presets">${PRESETS.filter(p => !p.name.startsWith("style-")).map(opt).join("")}</optgroup>` +
-    (demos.length ? `<optgroup label="style demos — one per style">${demos.map(opt).join("")}</optgroup>` : "");
+    groups.map(([f, ps]) => `<optgroup label="${esc(f || "unfiled")}">${ps.map(p =>
+      `<option value="${esc(p.id)}" title="${esc(p.note || "")}">${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
   if (select) $("presetSel").value = select;
-  const importZone = `<div class="pimport" id="pImport">⬆ IMPORT a preset .zip — drop it here or click
+  renderPresetsPane();
+}
+function renderPresetsPane() {
+  store.set("presetFolder", PFOLDER);
+  const count = f => PRESETS.filter(p => p.folder === f).length, unfiled = count("");
+  const chip = (f, label, n) => `<button type="button" class="pfchip ${PFOLDER === f ? "on" : ""}" data-pf="${esc(f)}"
+      ${f !== "*" && f !== "" ? `draggable="true"` : ""} title="${f === "*" ? "every preset" : "drop presets here to move them"}">${esc(label)} <span>${n}</span></button>`;
+  const concrete = PFOLDER !== "*";
+  const bar = `<div class="pfbar">${chip("*", "All", PRESETS.length)}${PFOLDERS.map(f => chip(f, f, count(f))).join("")}
+      ${unfiled ? chip("", "unfiled", unfiled) : ""}
+      <button type="button" class="btn small" id="pfNew" title="new preset folder">+ folder</button>
+      <span class="pfacts">${concrete && PFOLDER ? `<button type="button" class="btn small" id="pfRename" title="rename this folder">✎ rename</button>
+        <button type="button" class="btn small" id="pfDelete" title="delete this folder and its presets">🗑 delete</button>` : ""}
+      ${concrete && count(PFOLDER) ? `<a class="btn small" href="/api/presets/folder/export?folder=${encodeURIComponent(PFOLDER)}" download
+        title="every preset in this folder as one .zip (import it to recreate the folder)">⬇ zip folder</a>` : ""}</span></div>`;
+  const importZone = `<div class="pimport" id="pImport">⬆ IMPORT a preset or folder .zip into “${esc(saveFolder())}” — drop it here or click
     <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="pImportLoad" ${store.get("importLoad", true) ? "checked" : ""}> load it now</label>
     <input type="file" id="pImportFile" accept=".zip,application/zip" hidden></div>`;
-  $("presetsPane").innerHTML = importZone + (PRESETS.length ? `<div class="pcards">${PRESETS.map(p => {
+  const shown = PRESETS.filter(p => PFOLDER === "*" || p.folder === PFOLDER);
+  $("presetsPane").innerHTML = bar + importZone + (shown.length ? `<div class="pcards">${shown.map(p => {
     const f = (p.snapshot && p.snapshot.form) || {};
     const bits = [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
                   f.dither && f.dither !== "none" && f.dither, f.seedLock && f.seed && `seed ${f.seed}`,
                   p.snapshot && p.snapshot.steer && p.snapshot.steer.use && `🧭 ${p.snapshot.steer.sel.length}`,
                   p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬",
                   p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`].filter(Boolean).join(" · ");
-    return `<div class="pcard">${p.image ? `<img src="/preset-img/${encodeURIComponent(p.image)}" alt="">` : `<div class="noimg">no picture</div>`}
-      <div class="body"><h4>${esc(p.name)}</h4><div class="note">${esc(p.note || "")}</div>
+    return `<div class="pcard" draggable="true" data-pid="${esc(p.id)}">${p.image ? `<img src="${presetImg(p)}" alt="" draggable="false">` : `<div class="noimg">no picture</div>`}
+      <div class="body"><h4>${esc(p.name)}${PFOLDER === "*" ? ` <span class="pfolder">${esc(p.folder || "unfiled")}</span>` : ""}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
-        ${p.image ? `<div class="pal" data-pdir="@presets" data-pfile="${esc(p.image)}"></div>` : ""}
-        <div class="acts"><button class="btn small" data-pload="${esc(p.name)}" title="load this preset" aria-label="load">📥</button>
-          <button class="btn small go" data-prender="${esc(p.name)}" title="load this preset and render it" aria-label="load and render">▶</button>
-          <a class="btn small" href="/api/presets/export?name=${encodeURIComponent(p.name)}" download
+        ${p.image ? `<div class="pal" data-pdir="@presets" data-pfile="${esc((p.folder ? p.folder + "/" : "") + p.image)}"></div>` : ""}
+        <div class="acts"><button class="btn small" data-pload="${esc(p.id)}" title="load this preset" aria-label="load">📥</button>
+          <button class="btn small go" data-prender="${esc(p.id)}" title="load this preset and render it" aria-label="load and render">▶</button>
+          <a class="btn small" href="/api/presets/export?id=${encodeURIComponent(p.id)}" download
              title="download this preset + all its images as a .zip" aria-label="download zip">⬇</a>
-          <button class="btn small del" data-pdel="${esc(p.name)}" title="delete this preset" aria-label="delete">🗑</button></div></div></div>`;
-  }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`);
+          <button class="btn small del" data-pdel="${esc(p.id)}" title="delete this preset" aria-label="delete">🗑</button></div></div></div>`;
+  }).join("")}</div>` : `<div class="empty">${PRESETS.length ? "No presets in this folder yet — drag some onto its chip, or save one." : "No presets yet — set things up and hit “Save…”, or save one from any image's lightbox."}</div>`)
+    + `<div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>`;
   fillPalettes($("presetsPane"));
+}
+function initPresetFolders() {
+  const pane = $("presetsPane");
+  pane.addEventListener("click", async e => {
+    const c = e.target.closest("[data-pf]");
+    if (c) { PFOLDER = c.dataset.pf; return renderPresetsPane(); }
+    if (e.target.id === "pfNew") {
+      const name = prompt("New preset folder name (e.g. FACTORY, TUNED FACTORY, USER):"); if (!name) return;
+      try { PFOLDER = (await api("/api/presets/folder/new", { name })).folder; } catch (err) { return showErr(err); }
+      return loadPresets();
+    }
+    if (e.target.id === "pfRename") {
+      const name = prompt(`Rename folder “${PFOLDER}” to:`, PFOLDER); if (!name || name === PFOLDER) return;
+      try { PFOLDER = (await api("/api/presets/folder/rename", { folder: PFOLDER, name })).folder; } catch (err) { return showErr(err); }
+      return loadPresets();
+    }
+    if (e.target.id === "pfDelete") {
+      const n = PRESETS.filter(p => p.folder === PFOLDER).length;
+      if (!confirm(`Delete folder “${PFOLDER}”${n ? ` and the ${n} preset${n > 1 ? "s" : ""} in it` : ""}?\n\nThis can't be undone`
+                   + (n ? " — use ⬇ zip folder first if you might want them back." : "."))) return;
+      try { await api("/api/presets/folder/delete", { folder: PFOLDER }); } catch (err) { return showErr(err); }
+      PFOLDER = "*"; return loadPresets();
+    }
+  });
+  // drag presets onto a folder chip (move) or onto another card (reorder / move there); drag folder chips to reorder them
+  const clearMarks = () => pane.querySelectorAll(".drop-before, .drop-after, .pf-over").forEach(x => x.classList.remove("drop-before", "drop-after", "pf-over"));
+  pane.addEventListener("dragstart", e => {
+    const card = e.target.closest && e.target.closest(".pcard[data-pid]"), chip = e.target.closest && e.target.closest(".pfchip[draggable]");
+    if (card) { e.dataTransfer.setData(PDRAG, card.dataset.pid); e.dataTransfer.effectAllowed = "move"; card.classList.add("dragging"); }
+    else if (chip) { e.dataTransfer.setData(PFDRAG, chip.dataset.pf); e.dataTransfer.effectAllowed = "move"; }
+  });
+  pane.addEventListener("dragend", () => { clearMarks(); pane.querySelectorAll(".dragging").forEach(x => x.classList.remove("dragging")); });
+  pane.addEventListener("dragover", e => {
+    const types = [...e.dataTransfer.types]; if (!types.includes(PDRAG) && !types.includes(PFDRAG)) return;
+    const chip = e.target.closest(".pfchip"), card = e.target.closest(".pcard");
+    clearMarks();
+    if (chip && chip.dataset.pf !== "*") { e.preventDefault(); (types.includes(PFDRAG) ? chip.classList.add(sideOf(e, chip)) : chip.classList.add("pf-over")); }
+    else if (card && types.includes(PDRAG)) { e.preventDefault(); card.classList.add(sideOf(e, card)); }
+  });
+  const sideOf = (e, el) => { const r = el.getBoundingClientRect(); return e.clientX > r.left + r.width / 2 ? "drop-after" : "drop-before"; };
+  pane.addEventListener("drop", async e => {
+    const pid = e.dataTransfer.getData(PDRAG), pf = e.dataTransfer.getData(PFDRAG); if (!pid && !pf) return;
+    e.preventDefault(); const chip = e.target.closest(".pfchip"), card = e.target.closest(".pcard"), side = (chip || card) && sideOf(e, chip || card);
+    clearMarks();
+    try {
+      if (pf && chip && chip.dataset.pf !== "*" && chip.dataset.pf !== "" && chip.dataset.pf !== pf) {   // reorder folders
+        const order = PFOLDERS.filter(f => f !== pf); order.splice(order.indexOf(chip.dataset.pf) + (side === "drop-after" ? 1 : 0), 0, pf);
+        await api("/api/presets/folders/order", { order });
+      } else if (pid && chip && chip.dataset.pf !== "*") {                                             // move into a folder
+        await api("/api/presets/move", { id: pid, folder: chip.dataset.pf });
+      } else if (pid && card && card.dataset.pid !== pid) {                                            // place before/after a card
+        const tgt = presetById(card.dataset.pid), src = presetById(pid); if (!tgt || !src) return;
+        const names = PRESETS.filter(p => p.folder === tgt.folder && p.id !== pid).map(p => p.name);
+        const at = names.indexOf(tgt.name) + (side === "drop-after" ? 1 : 0);
+        if (src.folder === tgt.folder) { names.splice(at, 0, src.name); await api("/api/presets/order", { folder: tgt.folder, order: names }); }
+        else await api("/api/presets/move", { id: pid, folder: tgt.folder, before: names[at] || null });
+      } else return;
+    } catch (err) { return showErr(err); }
+    loadPresets($("presetSel").value);
+  });
 }
 function latestOutput() {
   if (EVO.parent) return { dir: EVO.parent.dir, file: EVO.parent.file };
@@ -1858,30 +1951,34 @@ function latestOutput() {
   return jobs.length ? { dir: jobs[0].dir, file: jobs[0].outputs[0].file } : null;
 }
 async function savePreset(snap, suggested, image) {
-  const name = prompt("Preset name:", suggested || $("presetSel").value || "");
+  const folder = saveFolder(), cur = presetById($("presetSel").value);
+  const name = prompt(`Preset name — saves into folder “${folder}” (pick a folder on the Presets tab to save elsewhere):`,
+                      suggested || (cur && cur.name) || "");
   if (!name) return;
-  if (PRESETS.some(p => p.name === name) && !confirm(`Overwrite preset “${name}”?`)) return;
-  const note = prompt("Note (optional):", "") || "";
-  try { const r = await api("/api/presets", { name, note, snapshot: snap, image: image || latestOutput() }); await loadPresets(r.name); }
+  const existing = PRESETS.find(p => p.folder === folder && p.name === name);
+  if (existing && !confirm(`Overwrite preset “${name}” in “${folder}”?`)) return;
+  const note = prompt("Note (optional):", existing ? existing.note || "" : "") || "";
+  try { const r = await api("/api/presets", { name, folder, note, snapshot: snap, image: image || latestOutput() }); await loadPresets(r.id); }
   catch (e) { showErr(e); }
 }
 function initPresets() {
-  $("presetLoad").onclick = () => { const p = PRESETS.find(x => x.name === $("presetSel").value); if (p) applySnapshot(p.snapshot); };
+  $("presetLoad").onclick = () => { const p = presetById($("presetSel").value); if (p) applySnapshot(p.snapshot); };
   $("presetSave").onclick = () => savePreset(snapshot());
   $("presetsPane").addEventListener("click", async e => {
     if (e.target.id === "revealPresets") return reveal("presets");
     const b = e.target.closest("[data-pload],[data-prender],[data-pdel]"); if (!b) return;
-    const name = b.dataset.pload || b.dataset.prender || b.dataset.pdel, p = PRESETS.find(x => x.name === name);
-    if (b.dataset.pdel) { if (confirm(`Delete preset “${name}”? This can't be undone.`)) { await api("/api/presets/delete", { name }); loadPresets(); } return; }
+    const id = b.dataset.pload || b.dataset.prender || b.dataset.pdel, p = presetById(id);
+    if (b.dataset.pdel) { if (confirm(`Delete preset “${p ? p.name : id}”${p && p.folder ? ` from “${p.folder}”` : ""}? This can't be undone.`)) { await api("/api/presets/delete", { id }); loadPresets(); } return; }
     if (!p) return;
-    applySnapshot(p.snapshot); $("presetSel").value = name;
+    applySnapshot(p.snapshot); $("presetSel").value = id;
     if (b.dataset.prender) render({ ...params(), form: readForm() });
   });
   $("presetDel").onclick = async () => {
-    const name = $("presetSel").value;
-    if (!name || !confirm(`Delete preset “${name}”? This can't be undone.`)) return;
-    await api("/api/presets/delete", { name }); loadPresets();
+    const id = $("presetSel").value, p = presetById(id);
+    if (!id || !confirm(`Delete preset “${p ? p.name : id}”${p && p.folder ? ` from “${p.folder}”` : ""}? This can't be undone.`)) return;
+    await api("/api/presets/delete", { id }); loadPresets();
   };
+  initPresetFolders();
   loadPresets();
 }
 
@@ -2935,11 +3032,13 @@ function initLab() {
 // ---------------- preset bundles: .zip with every setting + every image it uses ----------------
 async function importBundle(file) {
   try {
-    const r = await fetch("/api/presets/import", { method: "POST", body: file });
+    const r = await fetch(`/api/presets/import?folder=${encodeURIComponent(saveFolder())}`, { method: "POST", body: file });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
-    await loadPresets(j.name);
-    if (store.get("importLoad", true) && j.snapshot) { applySnapshot(j.snapshot); $("presetSel").value = j.name; }
-    showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = `imported preset “${j.name}”`;
+    PFOLDER = j.count ? j.folder : saveFolder();
+    await loadPresets(j.id);
+    if (store.get("importLoad", true) && j.snapshot) { applySnapshot(j.snapshot); $("presetSel").value = j.id; }
+    showErr(); $("err").style.color = "var(--ok)";
+    $("err").textContent = j.count ? `imported ${j.count} presets into folder “${j.folder}”` : `imported preset “${j.name}” into “${PFOLDER}”`;
     setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 4000);
   } catch (e) { showErr(e); }
 }
@@ -2948,9 +3047,9 @@ async function snapshotZip() {
   const name = `snap-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   const inLab = !$("labPane").classList.contains("hidden");
   try {
-    const r = await api("/api/presets", { name, note: (readForm().subject || "").slice(0, 200), snapshot: snapshot(inLab), image: latestOutput() });
-    await loadPresets(r.name);
-    location.href = `/api/presets/export?name=${encodeURIComponent(r.name)}`;
+    const r = await api("/api/presets", { name, folder: saveFolder(), note: (readForm().subject || "").slice(0, 200), snapshot: snapshot(inLab), image: latestOutput() });
+    await loadPresets(r.id);
+    location.href = `/api/presets/export?id=${encodeURIComponent(r.id)}`;
   } catch (e) { showErr(e); }
 }
 function initBundles() {

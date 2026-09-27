@@ -415,9 +415,11 @@ serves it locally at `/docs/settings-atlas.html`.
 
 **The tabs (right):**
 - **Presets:** full snapshots of the form, steering, evolve, LAB and Advanced settings, each
-  with a sample picture and its palette. 65 factory presets ship: scenes, sprites, hardware
-  looks (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**.
-  Presets export/import as `.zip` bundles.
+  with a sample picture and its palette, organized in **folders** (FACTORY, TUNED FACTORY,
+  USER… create/rename/delete your own). Drag cards to reorder them or onto a folder to move
+  them; drag folders to reorder. 65 factory presets ship: scenes, sprites, hardware looks
+  (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**. A preset or a
+  whole folder exports/imports as a `.zip`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
   adjust the source first (brightness, contrast, posterize, crop…), and **edit** part of an
   image by painting a mask or selecting by words (inpainting).
@@ -443,7 +445,7 @@ serves it locally at `/docs/settings-atlas.html`.
 Every render is kept in `~/pixelmon-gallery/gui/<job>/` with a `job.json`.
 LoRA presets (trigger tags, default strength and palette) live in `gui/presets.json`.
 The factory presets are built by `~/ComfyUI/.venv/bin/python gui/make_starter_presets.py`
-into `~/pixelmon-gallery/gui-presets/` (`--try 4 NAME` renders candidate seeds to pick from;
+into `~/pixelmon-gallery/gui-presets/FACTORY/` (`--try 4 NAME` renders candidate seeds to pick from;
 presets you save yourself are never touched).
 
 ---
