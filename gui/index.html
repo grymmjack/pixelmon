@@ -1895,8 +1895,21 @@ function openMenu(x, y, target, extras = []) {
   document.body.appendChild(m);
   m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
   m.addEventListener("click", e => {
+    const back = e.target.closest("[data-sub-back]");
+    if (back) { const r = m.getBoundingClientRect(); return openMenu(r.left, r.top, target, extras); }
     const x = e.target.closest("[data-extra]");
-    if (x) { closeOpenMenu(); return extras[+x.dataset.extra][1](); }
+    if (x) {
+      const [label, act] = extras[+x.dataset.extra];
+      if (Array.isArray(act)) {            // "Move to… ▸": show the choices in place
+        m.innerHTML = `<button type="button" data-sub-back>‹ back</button><div class="om-h">${esc(label.replace(/\s*▸$/, ""))}</div>`
+          + (act.length ? act.map(([l], i) => `<button type="button" role="menuitem" data-sub="${i}">${esc(l)}</button>`).join("")
+                        : `<div class="om-h" style="text-transform:none">nothing to move to yet</div>`);
+        m.onclick = ev => { const b = ev.target.closest("[data-sub]"); if (b) { closeOpenMenu(); act[+b.dataset.sub][1](); } };
+        m.querySelector("[data-sub]")?.focus();
+        return;
+      }
+      closeOpenMenu(); return act();
+    }
     const b = e.target.closest("[data-open-app]");
     if (b) { closeOpenMenu(); openWith(b.dataset.openApp, target); }
     if (e.target.closest("[data-open-setup]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("setup"); }
@@ -1932,11 +1945,20 @@ function arrangeActions(el) {
   if (card) {
     const p = presetById(card.dataset.pid); if (!p) return [];
     const where = p.folder ? ` of ${p.folder}` : "";
-    return [[`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")]];
+    const folders = [...PFOLDERS.filter(f => f !== p.folder).map(f => [`📁 ${f}`, () => presetMoveToFolder(p.id, f)]),
+                     ...(p.folder ? [["unfiled", () => presetMoveToFolder(p.id, "")]] : []),
+                     ["＋ new folder…", async () => { const f = prompt("New folder name:"); if (f) presetMoveToFolder(p.id, f); }]];
+    return [[`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")],
+            ["📁 Move to folder… ▸", folders]];
   }
   const ci = el.closest(".cork-item");
-  if (ci) return [["⤒ Move to top of the board", () => corkMoveTo(ci.dataset.cork, "top")],
-                  ["⤓ Move to bottom of the board", () => corkMoveTo(ci.dataset.cork, "bottom")]];
+  if (ci) {
+    const f = ci.dataset.cork;
+    const boards = [...CORK.boards.filter(b => b.name !== CORK.board).map(b => [`📌 ${b.name}`, () => corkMoveToBoard(f, b.name)]),
+                    ["＋ new board…", async () => { const n = prompt("New board name:"); if (n) corkMoveToBoard(f, n); }]];
+    return [["⤒ Move to top of the board", () => corkMoveTo(f, "top")], ["⤓ Move to bottom of the board", () => corkMoveTo(f, "bottom")],
+            ["📌 Move to board… ▸", boards]];
+  }
   return [];
 }
 async function presetMoveTo(id, where) {
@@ -1947,6 +1969,24 @@ async function presetMoveTo(id, where) {
   await loadPresets($("presetSel").value);
   const c = [...document.querySelectorAll(".pcard[data-pid]")].find(x => x.dataset.pid === id);   // show where it went
   if (c) c.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+async function presetMoveToFolder(id, folder) {
+  try {
+    if (folder && !PFOLDERS.includes(folder)) folder = (await api("/api/presets/folder/new", { name: folder })).folder;
+    const r = await api("/api/presets/move", { id, folder });
+    showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = `moved to “${folder || "unfiled"}”`;
+    setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 2500);
+    const sel = $("presetSel").value === id ? r.id : $("presetSel").value;
+    await loadPresets(sel);
+  } catch (e) { showErr(e); }
+}
+async function corkMoveToBoard(file, board) {
+  try {
+    const r = await api("/api/boards/move", { board: CORK.board, file, to: board });
+    showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = `moved to board “${r.board}”`;
+    setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 2500);
+  } catch (e) { showErr(e); }
+  loadBoards();
 }
 function corkMoveTo(file, where) {
   const b = curBoard(), items = b.items.filter(f => f !== file);

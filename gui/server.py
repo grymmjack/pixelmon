@@ -1987,6 +1987,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/backup":
                 path, n, size = make_backup(body.get("keyword"), self.gallery)
                 return self._json({"path": path, "name": os.path.basename(path), "files": n, "bytes": size})
+            if u.path == "/api/boards/move":
+                # move one image from a board to another (the file moves; both layouts are kept tidy)
+                src_d, dst_d = board_dir(body.get("board")), board_dir(body.get("to"))
+                f = os.path.basename(str(body.get("file") or ""))
+                src = os.path.join(src_d, f)
+                if not f or not os.path.isfile(src):
+                    raise ValueError("not on that board")
+                if os.path.realpath(src_d) == os.path.realpath(dst_d):
+                    return self._json({"file": f})
+                os.makedirs(dst_d, exist_ok=True)
+                dst = os.path.join(dst_d, f)
+                if os.path.exists(dst):
+                    dst = unique_path(dst_d, f)
+                shutil.move(src, dst)
+                for d in (src_d, dst_d):                 # drop stale layout entries; the moved image lands last
+                    files = [x for x in os.listdir(d) if x.lower().endswith(IMG_EXT)]
+                    order, sizes = board_layout(d, sorted(files, key=lambda x: os.path.getmtime(os.path.join(d, x))))
+                    save_board_layout(os.path.basename(d), order, sizes)
+                return self._json({"file": os.path.basename(dst), "board": os.path.basename(dst_d)})
             if u.path == "/api/boards/layout":
                 save_board_layout(body.get("board"), body.get("order"), body.get("sizes"))
                 return self._json({"ok": True})

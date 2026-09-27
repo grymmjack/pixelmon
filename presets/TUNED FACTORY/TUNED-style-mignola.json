@@ -1,0 +1,98 @@
+{
+ "name": "TUNED-style-mignola",
+ "saved": 1790528165.7055988,
+ "note": "A tuned version of pixelmon default style-magnola",
+ "snapshot": {
+  "form": {
+   "subject": "a (stone gargoyle:1.3) perched on a (cathedral ledge:1.1) under a (full moon:1.2)",
+   "lora": "(none)",
+   "lora_strength": "0.6",
+   "kind": "character portrait",
+   "genre": "",
+   "era": "1990s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3)",
+   "outW": "192",
+   "outH": "256",
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "INK",
+   "dither": "none",
+   "dither_amount": "1",
+   "despeckle": "2",
+   "pixel_angles": "2.25",
+   "angle_grid": "diagonal",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": 1578611465,
+   "seedLock": true,
+   "n": "1",
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "mignola"
+   ]
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": null,
+   "size": [
+    0,
+    0
+   ],
+   "subject": "",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": false,
+   "denoise": 0.7,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "active": false
+  },
+  "adv": {
+   "sampler": "dpmpp_2m_sde_gpu",
+   "scheduler": "karras",
+   "base": "juggernautXL_v9.safetensors"
+  }
+ },
+ "image": "TUNED-style-mignola.png"
+}

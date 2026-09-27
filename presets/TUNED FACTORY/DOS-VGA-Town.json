@@ -1,0 +1,106 @@
+{
+ "name": "DOS-VGA-Town",
+ "saved": 1790475691.5078616,
+ "note": "",
+ "snapshot": {
+  "form": {
+   "subject": "a (medieval village street:1.3), (timber-framed houses:1.2), a stone well, a tavern sign",
+   "lora": "dosart-vga.safetensors",
+   "lora_strength": "0.8",
+   "kind": "scene background",
+   "genre": "adventure game",
+   "era": "1990s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": "320",
+   "outH": "200",
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "VGA",
+   "dither": "none",
+   "dither_amount": "0.5",
+   "despeckle": "0",
+   "pixel_angles": "0",
+   "angle_grid": "pixel",
+   "pixel_size": "1x1",
+   "thin_lines": "2",
+   "seed": 2134233290,
+   "seedLock": true,
+   "n": "1",
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "scene"
+   ]
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": "250px-Jes_wiki.png",
+   "size": [
+    250,
+    196
+   ],
+   "subject": "A jester with a mandolin and a mask with flowing fabric flying in the wind witgh bells at the end",
+   "mode": "tile",
+   "strength": 0.35,
+   "init": true,
+   "denoise": 0.6,
+   "w": 80,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 50,
+    "gamma": 2.05,
+    "saturation": 155,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 1.5,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": [
+     0.136,
+     0.1244,
+     0.4133,
+     0.3707
+    ]
+   },
+   "edges": false,
+   "live": false,
+   "pseed": 783616065,
+   "edit": {
+    "action": "change",
+    "strength": 1,
+    "what": ""
+   },
+   "active": false
+  },
+  "adv": {}
+ },
+ "image": "DOS-VGA-Town.png"
+}

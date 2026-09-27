@@ -1,0 +1,110 @@
+{
+ "name": "TUNED-mignola-face",
+ "saved": 1790530164.524247,
+ "note": "A tuned preset derived from pixelmon default for faces inspired by MIke Mignola",
+ "snapshot": {
+  "form": {
+   "subject": "nothing",
+   "lora": "(none)",
+   "lora_strength": "0.6",
+   "kind": "character portrait",
+   "genre": "",
+   "era": "1990s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (not holding weapon), shelfs, behind",
+   "outW": 320,
+   "outH": 305,
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "INK",
+   "dither": "none",
+   "dither_amount": "1",
+   "despeckle": "2",
+   "pixel_angles": "2.25",
+   "angle_grid": "diagonal",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": 468026064,
+   "seedLock": true,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "mignola"
+   ]
+  },
+  "steer": {
+   "use": true,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [
+    "cork-favorites/20260927-124748-99cd__a__stone_gargoyle_1_3__perched_on_a__cat_192x256_VGA_s1357660923_sprite_00001_.png",
+    "cork-favorites/20260927-124844-1c4c__a__stone_gargoyle_1_3__perched_on_a__cat_192x256_VGA_s1841166910_sprite_00001_.png",
+    "cork-favorites/20260927-125318-da0d__a__stone_gargoyle_1_3__perched_on_a__cat_192x256_INK_s889921091_sprite_00001_.png",
+    "cork-favorites/20260927-125527-f9d4__a__stone_gargoyle_1_3__perched_on_a__cat_192x256_INK_s1578611465_sprite_00001_.png",
+    "cork-favorites/20260927-130957-a606__counter_with_eldritch_items_including_ja_192x256_INK_s2016738761_sprite_00001_.png"
+   ],
+   "col": "cork-favorites",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": "shopkeeper_with_a_scar_on_his_face_320x305_INK_s1739893849_sprite_00001_.png",
+   "size": [
+    320,
+    305
+   ],
+   "subject": "shopkeeper with a scar on his face",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": true,
+   "denoise": 0.7,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "mask": "data:image/png;base64,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",
+   "edit": {
+    "action": "erase",
+    "strength": 1,
+    "what": "nothing"
+   },
+   "active": false
+  },
+  "adv": {
+   "sampler": "dpmpp_2m_sde_gpu",
+   "scheduler": "karras",
+   "base": "juggernautXL_v9.safetensors"
+  }
+ },
+ "image": "TUNED-mignola-face.png"
+}
