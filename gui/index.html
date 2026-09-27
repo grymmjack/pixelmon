@@ -62,6 +62,7 @@ body.cork-dragging { cursor: col-resize; user-select: none; }
   background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .srv { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand .btn { white-space: nowrap; flex-shrink: 0; }
+.brandlink { text-decoration: none; } .brandlink:hover h1, .brandlink:focus-visible h1 { filter: brightness(1.25); }
 .srv b { color: var(--ok); } .srv b.down { color: var(--bad); }
 fieldset { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; padding: 8px 10px 10px; }
 legend { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
@@ -101,6 +102,31 @@ a.btn { color: var(--text); text-decoration: none; display: inline-block; text-t
 .btn:hover { border-color: var(--accent); }
 /* ---- Advanced tab ---- */
 #advN { color: var(--accent); font-weight: 600; }
+/* ---- Setup tab + the "Open in…" menu ---- */
+.setup-intro { color: var(--dim); margin: 0 0 14px; max-width: 900px; }
+.setup-apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.appcard { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; display: flex; flex-direction: column; }
+.appcard img { width: 100%; aspect-ratio: 16/9; object-fit: cover; object-position: top left; display: block; border-bottom: 1px solid var(--line); }
+.appcard .in { padding: 10px 12px 12px; display: grid; gap: 8px; }
+.appcard h3 { margin: 0; font: 700 16px var(--mono); letter-spacing: .04em; color: var(--accent); }
+.appcard p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.45; }
+.appcard a { color: var(--accent); }
+.pathrow { display: flex; gap: 6px; align-items: center; } .pathrow input { flex: 1; min-width: 0; }
+.okmark { font: 12px var(--mono); } .okmark.ok { color: var(--ok); } .okmark.bad { color: var(--bad); }
+.setup-sect { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin-bottom: 14px; min-width: 0; }
+.setup-sect legend { padding: 0 6px; color: var(--accent); font-weight: 600; }
+.setup-sect > p { margin: 0 0 8px; color: var(--dim); font-size: 12.5px; }
+.approws { display: grid; gap: 6px; margin-bottom: 8px; }
+.approw { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(140px, 2fr) minmax(90px, 1.3fr) auto; gap: 6px; }
+.approw input { min-width: 0; font: 12px var(--mono); }
+.addrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#openMenu { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0,0,0,.6); padding: 4px; min-width: 210px; }
+#openMenu .om-h { font: 600 10.5px var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 5px 8px 3px; }
+#openMenu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 10px;
+  border-radius: 4px; cursor: pointer; font-size: 13px; text-transform: none; letter-spacing: 0; }
+#openMenu button:hover, #openMenu button:focus-visible { background: var(--panel2); color: var(--accent); outline: none; }
+#openMenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
 .panebar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; min-height: 28px; }
 .panebar .grow { flex: 1; min-width: 0; color: var(--dim); font-size: 12.5px; }
 .panebar .grow a, .panebar .grow button.linkish { color: var(--accent); }
@@ -384,7 +410,8 @@ fieldset.closed { padding-bottom: 2px; }
 <div class="app" id="app">
   <!-- ================= FORM ================= -->
   <form class="form" id="form" autocomplete="off" onsubmit="return false">
-    <div class="brand"><h1>PIXELMON</h1><span class="srv" id="srv">render server …</span>
+    <div class="brand"><a class="brandlink" href="https://github.com/grymmjack/pixelmon" target="_blank" rel="noopener"
+        title="pixelmon on GitHub"><h1>PIXELMON</h1></a><span class="srv" id="srv">render server …</span>
       <a class="btn small" id="docsBtn" href="https://claude.ai/artifact/Howqpc3cfKV7Xjt4aAbrSS" target="_blank" rel="noopener"
         style="margin-left:auto;align-self:center" title="settings atlas: every setting with ranges &amp; examples, and how a render is built">📖 docs</a>
       <button type="button" class="btn small" id="resetAll" style="margin-left:6px;align-self:center"
@@ -585,6 +612,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
       <div class="tab" data-tab="adv">⚙ Advanced <span id="advN"></span></div>
+      <div class="tab" data-tab="setup">🛠 Setup</div>
       <span style="flex:1"></span>
       <button class="btn small" id="openGallery" title="open the gallery folder in your file manager" style="align-self:center">📂 gallery</button>
       <button class="btn small" id="corkToggle" title="show/hide the corkboard — drag images onto it to collect them" style="align-self:center;margin-left:6px">📌 corkboard <span id="corkN"></span></button>
@@ -598,6 +626,7 @@ fieldset.closed { padding-bottom: 2px; }
         <button type="button" class="btn small" id="galleryBackup" title="zip your whole pixelmon gallery (renders, presets, corkboards, LAB inputs) into one backup file">🗄 backup…</button></div>
       <div id="galleryList"></div></div>
     <div class="pane hidden" id="advPane"></div>
+    <div class="pane hidden" id="setupPane"></div>
     <div class="pane hidden" id="presetsPane"></div>
     <div class="pane hidden" id="labPane">
       <div class="panebar"><span class="grow"></span>
@@ -759,7 +788,9 @@ fieldset.closed { padding-bottom: 2px; }
 <div id="styleTip" class="hidden"></div>
 <div id="helpTip" class="hidden"></div>
 <div id="peek" class="hidden"><div class="gstage"><img id="peekImg" alt=""><canvas id="peekGrid"></canvas></div>
-  <div class="pk-bar"><span class="pk-cap" id="peekCap"></span><span id="peekZooms"></span></div>
+  <div class="pk-bar"><span class="pk-cap" id="peekCap"></span>
+    <button class="btn small" id="peekDraw" title="open in DRAW">✎</button><button class="btn small" id="peekOpenIn" title="open in…">⋯</button>
+    <span id="peekZooms"></span></div>
   <div class="pk-bar" style="margin-top:3px">1–4 zoom · 0 fit · ←/→ flip · G grid · click to open · Esc</div>
   <div class="pal big" id="peekPal"></div>
   <details id="peekFormula"><summary>Formula</summary><div class="pk-form" id="peekForm"></div></details></div>
@@ -786,7 +817,9 @@ fieldset.closed { padding-bottom: 2px; }
       <button class="btn" id="lbSame">Re-run (same seed)</button>
       <button class="btn" id="lbReroll">Reroll (new seed)</button>
       <button class="btn" id="lbCopy">Copy CLI command</button>
-      <button class="btn" id="lbReveal">📂 Open its folder</button>
+      <button class="btn" id="lbDraw" title="open this image in DRAW (set its path in 🛠 Setup)">✎ Open in DRAW</button>
+      <button class="btn" id="lbOpenIn" title="open this image in another program">Open in…</button>
+      <button class="btn" id="lbReveal" title="open its folder (right-click for other programs)">📂 Open its folder</button>
       <button class="btn" id="lbClose">Close (Esc)</button>
     </div>
   </div>
@@ -1714,6 +1747,172 @@ function initMoodBoard() {
   if ("ResizeObserver" in window) new ResizeObserver(() => corkSyncGrid()).observe(body);
 }
 
+
+// ---------------- 🛠 Setup: DRAW / Kaleidotron + "Open in…" programs for images and folders ----------------
+let SETUP = null, setupTimer = null;
+async function loadSetup(render) {
+  try { SETUP = await api("/api/setup"); } catch (e) { return showErr(e); }
+  if (render) renderSetup();
+}
+function saveSetup() {
+  clearTimeout(setupTimer);
+  setupTimer = setTimeout(async () => { try { SETUP.setup = (await api("/api/setup", SETUP.setup)).setup; } catch (e) { showErr(e); } }, 400);
+}
+const drawPath = () => SETUP && (SETUP.setup.draw || SETUP.detected.draw);
+const ktPath = () => SETUP && (SETUP.setup.kaleidotron || SETUP.detected.kaleidotron);
+function renderSetup() {
+  if (!SETUP) return;
+  const S = SETUP.setup, D = SETUP.detected, osName = { linux: "Linux", windows: "Windows", macos: "macOS" }[SETUP.os] || SETUP.os;
+  const card = (key, title, img, url, blurb, how) => `<div class="appcard"><img src="/setup-img/${img}" alt="${title} screenshot" loading="lazy">
+    <div class="in"><h3>${title}</h3><p>${blurb} <a href="${url}" target="_blank" rel="noopener">${url.replace("https://", "")} ↗</a></p>
+      <div class="pathrow"><input type="text" data-setup-path="${key}" value="${esc(S[key])}" placeholder="${esc(D[key] ? "found: " + D[key] : "path to the program")}">
+        ${D[key] && S[key] !== D[key] ? `<button type="button" class="btn small" data-setup-use="${key}" title="use ${esc(D[key])}">use found</button>` : ""}</div>
+      <span class="okmark ${S[key] || D[key] ? "ok" : "bad"}">${S[key] ? "✓ set" : D[key] ? "✓ found automatically (leave blank to keep using it)" : "✗ not found — enter its path"}</span>
+      <p>${how}</p></div></div>`;
+  const rows = kind => (S[kind] || []).map((a, i) => `<div class="approw" data-kind="${kind}" data-i="${i}">
+      <input type="text" data-f="name" value="${esc(a.name)}" placeholder="name"><input type="text" data-f="exec" value="${esc(a.exec)}" placeholder="program">
+      <input type="text" data-f="args" value="${esc(a.args)}" placeholder="{} = the path" title="arguments; {} is replaced by the path (else it's added at the end)">
+      <button type="button" class="btn small" data-app-del title="remove">✕</button></div>`).join("") || `<p class="dim" style="margin:0">None yet.</p>`;
+  const adder = kind => { const have = new Set((S[kind] || []).map(a => a.exec + " " + a.args));
+    const found = (D[kind] || []).filter(a => !have.has(a.exec + " " + a.args));
+    return `<div class="addrow"><select data-add="${kind}"><option value="">➕ add program…</option>
+      ${found.length ? `<optgroup label="found on this ${osName} machine">${found.map((a, i) => `<option value="${i}">${esc(a.name)}</option>`).join("")}</optgroup>` : ""}
+      <option value="custom">custom program…</option></select>
+      <span class="dim">${found.length} more found on ${osName}</span></div>`; };
+  const fd = S.folder_default || "os";
+  $("setupPane").innerHTML = `<p class="setup-intro">The programs pixelmon hands your images and folders to. <b>Right-click any image</b>
+      (gallery, queue, lightbox, corkboard, presets, LAB, steering) or <b>any 📂 folder button</b> for <b>Open in…</b>.
+      Saved in <code>~/pixelmon-gallery/gui-setup.json</code>.</p>
+    <div class="setup-apps">
+      ${card("draw", "DRAW", "draw.png", "https://github.com/grymmjack/DRAW",
+        "grymmjack's pixel-art editor, made in QB64-PE: layers with blend modes, pixel-perfect brushes, symmetry, palettes, " +
+        "dithering and grids — the same pixel-art angles pixelmon's angle snap borrows.",
+        "<b>Open in DRAW</b> sits on every image: the lightbox, the hover preview, and every right-click menu.")}
+      ${card("kaleidotron", "Kaleidotron", "kaleidotron.jpg", "https://github.com/grymmjack/kaleidotron",
+        "grymmjack's fast art browser for pixel art, ANSI and retro formats: a zoomable thumbnail grid, palettes, recolor, " +
+        "a pixel-perfect viewer and much more.",
+        "<b>Open in Kaleidotron</b> is on every folder (right-click a 📂 button) and every image. Make it what 📂 buttons open, below.")}
+    </div>
+    <fieldset class="setup-sect"><legend>Image programs</legend>
+      <p>Offered in <b>Open in…</b> for images. <code>{}</code> in the arguments is replaced by the image's path.</p>
+      <div class="approws">${rows("image_apps")}</div>${adder("image_apps")}</fieldset>
+    <fieldset class="setup-sect"><legend>Folder programs</legend>
+      <p>Offered in <b>Open in…</b> for folders (right-click any 📂 button).</p>
+      <div class="approws">${rows("folder_apps")}</div>${adder("folder_apps")}
+      <div class="addrow" style="margin-top:10px"><label>📂 buttons open in
+        <select id="folderDefault"><option value="os" ${fd === "os" ? "selected" : ""}>the system file manager</option>
+          <option value="kaleidotron" ${fd === "kaleidotron" ? "selected" : ""}>Kaleidotron</option>
+          ${(S.folder_apps || []).map((a, i) => `<option value="dir:${i}" ${fd === `dir:${i}` ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+        </select></label></div></fieldset>`;
+}
+function initSetup() {
+  const pane = $("setupPane");
+  pane.addEventListener("input", e => {
+    const pth = e.target.dataset.setupPath;
+    if (pth) { SETUP.setup[pth] = e.target.value.trim(); return saveSetup(); }
+    const row = e.target.closest(".approw");
+    if (row) { SETUP.setup[row.dataset.kind][+row.dataset.i][e.target.dataset.f] = e.target.value; saveSetup(); }
+  });
+  pane.addEventListener("change", e => {
+    if (e.target.dataset.setupPath) return renderSetup();
+    if (e.target.id === "folderDefault") { SETUP.setup.folder_default = e.target.value; return saveSetup(); }
+    const kind = e.target.dataset.add; if (!kind || !e.target.value) return;
+    const found = (SETUP.detected[kind] || []).filter(a => !new Set((SETUP.setup[kind] || []).map(x => x.exec + " " + x.args)).has(a.exec + " " + a.args));
+    const a = e.target.value === "custom" ? { name: "My program", exec: "", args: "{}" } : { ...found[+e.target.value] };
+    (SETUP.setup[kind] = SETUP.setup[kind] || []).push(a);
+    renderSetup(); saveSetup();
+  });
+  pane.addEventListener("click", e => {
+    const use = e.target.dataset.setupUse;
+    if (use) { SETUP.setup[use] = SETUP.detected[use]; renderSetup(); return saveSetup(); }
+    if (e.target.closest("[data-app-del]")) {
+      const row = e.target.closest(".approw"); SETUP.setup[row.dataset.kind].splice(+row.dataset.i, 1);
+      if (row.dataset.kind === "folder_apps") SETUP.setup.folder_default = "os";
+      renderSetup(); saveSetup();
+    }
+  });
+  loadSetup(false);
+}
+
+// what an on-screen image / folder button refers to (for "Open in…")
+function imageTargetOf(el) {
+  if (!el || !el.closest) return null;
+  const th = el.closest(".thumb[data-file], .bthumb");
+  if (th) { const job = JOBS[th.dataset.job] || GALLERY.find(j => j.id === th.dataset.job); return job ? { src: { dir: job.dir, file: th.dataset.file } } : null; }
+  const ci = el.closest(".cork-item"); if (ci) return { board: CORK.board, file: ci.dataset.cork };
+  const pc = el.closest(".pcard[data-pid]"); if (pc && el.tagName === "IMG") return { preset: pc.dataset.pid };
+  const lr = el.closest("#labRecent img[data-labfile]"); if (lr) return { lab: lr.dataset.labfile };
+  if (el.closest("#labDrop .cropwrap") && LABS.file) return { lab: LABS.file };
+  const rf = el.closest(".ref[data-ref]"); if (rf) return { ref: rf.dataset.ref };
+  if (el.id === "lbImg" && lbItem) return { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
+  if (el.id === "peekImg" || el.closest("#peek")) return peekTarget();
+  return null;
+}
+function peekTarget() {
+  const it = PEEK.stack[PEEK.idx]; if (!it) return null;
+  if (it.ref) return { ref: it.ref };
+  if (it.src) return { board: it.board, file: it.cork };
+  const job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
+  return job ? { src: { dir: job.dir, file: it.file } } : null;
+}
+function folderTargetOf(el) {
+  if (!el || !el.closest) return null;
+  const rj = el.closest("[data-reveal-job]"); if (rj) return { folder: "job", arg: rj.dataset.revealJob };
+  const b = el.closest("button, a"); if (!b) return null;
+  return ({ openGallery: { folder: "gallery" }, revealPresets: { folder: "presets", arg: PFOLDER !== "*" ? PFOLDER : "" },
+            boardReveal: { folder: "board", arg: CORK.board }, batchOpenExport: { folder: "dir", arg: $("batchExport").value.trim() },
+            backupOpen: { folder: "backups" }, revealCol: { folder: "refs", arg: STEER.col },
+            lbReveal: lbItem ? { folder: "job", arg: lbItem.job.dir } : null })[b.id] || null;
+}
+async function openWith(app, target) {
+  try {
+    const r = await api("/api/open", { app, target });
+    showErr(); $("err").style.color = "var(--ok)"; $("err").textContent = `opened in ${r.with}`;
+    setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 2500);
+  } catch (e) { showErr(e); }
+}
+function openMenu(x, y, target) {
+  closeOpenMenu();
+  const isDir = !!target.folder, S = (SETUP && SETUP.setup) || {}, items = [];
+  if (isDir) {
+    items.push(["os", "📂 File manager (system)"]);
+    if (ktPath()) items.push(["kaleidotron", "🌀 Kaleidotron"]);
+    (S.folder_apps || []).forEach((a, i) => items.push([`dir:${i}`, a.name]));
+  } else {
+    if (drawPath()) items.push(["draw", "✎ DRAW"]);
+    if (ktPath()) items.push(["kaleidotron", "🌀 Kaleidotron"]);
+    (S.image_apps || []).forEach((a, i) => items.push([`img:${i}`, a.name]));
+    items.push(["os", "System default"]);
+  }
+  const m = document.createElement("div"); m.id = "openMenu"; m.setAttribute("role", "menu");
+  m.innerHTML = `<div class="om-h">${isDir ? "Open folder in" : "Open image in"}</div>`
+    + items.map(([k, n]) => `<button type="button" role="menuitem" data-open-app="${esc(k)}">${esc(n)}</button>`).join("")
+    + `<hr><button type="button" data-open-setup>🛠 Set up programs…</button>`;
+  document.body.appendChild(m);
+  m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
+  m.addEventListener("click", e => {
+    const b = e.target.closest("[data-open-app]");
+    if (b) { closeOpenMenu(); openWith(b.dataset.openApp, target); }
+    if (e.target.closest("[data-open-setup]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("setup"); }
+  });
+  m.querySelector("button").focus();
+}
+function closeOpenMenu() { const m = $("openMenu"); if (m) m.remove(); }
+function initOpenWith() {
+  document.addEventListener("contextmenu", e => {
+    if (e.target.closest("#openMenu")) return e.preventDefault();
+    const t = imageTargetOf(e.target) || folderTargetOf(e.target); if (!t) return;
+    e.preventDefault(); hidePeek(); openMenu(e.clientX, e.clientY, t);
+  });
+  document.addEventListener("pointerdown", e => { if (!e.target.closest("#openMenu")) closeOpenMenu(); }, true);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeOpenMenu(); });
+  const at = el => { const r = el.getBoundingClientRect(); return [r.left, r.bottom + 4]; };
+  $("lbDraw").onclick = () => lbItem && openWith("draw", { src: { dir: lbItem.job.dir, file: lbItem.o.file } });
+  $("lbOpenIn").onclick = e => lbItem && openMenu(...at(e.currentTarget), { src: { dir: lbItem.job.dir, file: lbItem.o.file } });
+  $("peekDraw").onclick = e => { e.stopPropagation(); const t = peekTarget(); if (t) openWith("draw", t); };
+  $("peekOpenIn").onclick = e => { e.stopPropagation(); const t = peekTarget(); if (t) openMenu(...at(e.currentTarget), t); };
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -2174,16 +2373,22 @@ function initGridOverlay() {
 
 // ---------------- hover peek: blown-up preview of a thumbnail ----------------
 let PEEK = { el: null, stack: [], idx: 0, zoom: 3, timer: null, hideTimer: null };
-const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item";
+const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item, .ref[data-ref]";
 function peekFind(item) {   // the on-screen thumbnail for a stack item
   if (item.cork) return [...document.querySelectorAll(".cork-item")].find(x => x.dataset.cork === item.cork);
+  if (item.ref) return [...document.querySelectorAll(".ref[data-ref]")].find(x => x.dataset.ref === item.ref);
   return [...document.querySelectorAll(".thumb[data-file], .bthumb")]
     .find(x => x.dataset.job === item.job && x.dataset.file === item.file);
 }
 function corkStack() {   // the current board: renders keep their full preview; other images preview as plain pictures
   const b = curBoard();
   return b.items.map(f => { const hit = boardJobOf(f);
-    return hit ? { ...hit, cork: f } : { cork: f, board: b.name, src: `/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}` }; });
+    return hit ? { ...hit, cork: f } : { cork: f, board: b.name, src: `/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}`,
+                                          cap: f, pdir: "@board:" + b.name, pfile: f }; });
+}
+function refStack() {   // the steering collection on screen, as plain pictures
+  return [...document.querySelectorAll("#refGrid .ref[data-ref]")].map(el => { const ref = el.dataset.ref;
+    return { ref, src: `/refs/${ref.split("/").map(encodeURIComponent).join("/")}`, cap: ref.split("/").pop(), pdir: "@refs", pfile: ref }; });
 }
 function showPeek(el) {
   const it = PEEK.stack[PEEK.idx] || {};
@@ -2199,7 +2404,7 @@ function showPeek(el) {
     img.style.width = img.naturalWidth * k + "px";
     drawGrid($("peekGrid"), img, k);
     $("peek").style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
-    $("peekCap").textContent = `${it.src ? it.cork : job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
+    $("peekCap").textContent = `${it.src ? it.cap || it.cork : job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
     $("peekZooms").innerHTML = ["fit", 2, 3, 4].map(z => `<button class="btn small ${z == PEEK.zoom ? "on" : ""}" data-peekzoom="${z}">${z === "fit" ? "fit" : z + "×"}</button>`).join("");
     pk.classList.remove("hidden");
     // beside the thumbnail, on whichever side has more room, clamped to the viewport
@@ -2210,7 +2415,7 @@ function showPeek(el) {
   };
   $("peekFormula").hidden = !!it.src;          // a plain image (not one of our renders) has no formula
   if (it.src) {
-    palFill($("peekPal"), "@board:" + it.board, it.cork, 64);
+    palFill($("peekPal"), it.pdir, it.pfile, 64);
     img.src = it.src;
     if (img.complete && img.naturalWidth) img.onload();
     return;
@@ -2254,6 +2459,8 @@ function initPeek() {
       PEEK.el = th;
       if (th.matches(".cork-item")) {
         PEEK.stack = corkStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.cork === th.dataset.cork));
+      } else if (th.matches(".ref[data-ref]")) {
+        PEEK.stack = refStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.ref === th.dataset.ref));
       } else {
         PEEK.stack = stackOf(th);
         PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.job === th.dataset.job && x.file === th.dataset.file));
@@ -2508,7 +2715,8 @@ function initStatus() {
 
 // ---------------- open folders in the OS file manager ----------------
 async function reveal(kind, arg) {
-  try { await api("/api/reveal", { kind, arg }); } catch (e) { showErr(e); }
+  const app = (SETUP && SETUP.setup && SETUP.setup.folder_default) || "os";
+  try { await api("/api/open", { app, target: { folder: kind, arg: arg || "" } }); } catch (e) { showErr(e); }
 }
 
 // ---------------- setup wizard: one-click fixes + pre-flight check ----------------
@@ -3268,6 +3476,8 @@ function switchTab(t) {
   $("batchPane").classList.toggle("hidden", t !== "batch");
   $("labPane").classList.toggle("hidden", t !== "lab");
   $("advPane").classList.toggle("hidden", t !== "adv");
+  $("setupPane").classList.toggle("hidden", t !== "setup");
+  if (t === "setup") loadSetup(true);
   if (t === "adv") renderAdv();
   if (t === "lab") loadLab();
   if (t === "presets") loadPresets();
@@ -3302,6 +3512,8 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initSetup();
+  initOpenWith();
   initMoodBoard();
   $("openGallery").onclick = () => reveal("gallery");
 
@@ -3346,7 +3558,7 @@ async function init() {
   $("copyCmd").onclick = e => copyText(cliFor(params()), e.currentTarget);
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
   // open a tab by URL hash (#presets, #lab, #steer, #batch, #gallery, #queue, #adv)
-  if (["presets", "lab", "steer", "batch", "gallery", "queue", "adv"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
+  if (["presets", "lab", "steer", "batch", "gallery", "queue", "adv", "setup"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
   document.addEventListener("click", e => {
     const ev = e.target.closest("[data-evo-job]");
     if (ev) {

@@ -1059,6 +1059,203 @@ def save_board_layout(board, order, sizes):
     os.replace(tmp, os.path.join(d, BOARD_LAYOUT))
 
 
+# ---------------------------------------------------------------------------
+# Setup tab: DRAW / Kaleidotron paths, "open with" programs for images and folders
+# ---------------------------------------------------------------------------
+SETUP_FILE = os.path.expanduser("~/pixelmon-gallery/gui-setup.json")
+IS_WIN, IS_MAC = sys.platform.startswith("win"), sys.platform == "darwin"
+
+
+def load_setup():
+    s = _read_json(SETUP_FILE, {}) if os.path.exists(SETUP_FILE) else {}
+    s.setdefault("draw", "")
+    s.setdefault("kaleidotron", "")
+    s.setdefault("image_apps", [])        # [{name, exec, args}] — args: "{}" = the file, else appended
+    s.setdefault("folder_apps", [])
+    s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
+    return s
+
+
+def _clean_app(a):
+    return {"name": str(a.get("name") or "")[:60], "exec": str(a.get("exec") or "")[:500], "args": str(a.get("args") or "{}")[:300]}
+
+
+def save_setup(body):
+    s = load_setup()
+    for k in ("draw", "kaleidotron"):
+        if k in body:
+            s[k] = str(body[k] or "").strip()[:500]
+    for k in ("image_apps", "folder_apps"):
+        if isinstance(body.get(k), list):
+            s[k] = [_clean_app(a) for a in body[k][:40] if isinstance(a, dict) and (a.get("exec") or "").strip()]
+    if "folder_default" in body:
+        s["folder_default"] = str(body["folder_default"] or "os")[:20]
+    os.makedirs(os.path.dirname(SETUP_FILE), exist_ok=True)
+    _write_json(SETUP_FILE, s)
+    return s
+
+
+def _desktop_entries():
+    """Linux: every installed app's .desktop entry (name, exec, mime types, categories)."""
+    dirs = [os.path.expanduser("~/.local/share/applications"), "/usr/local/share/applications", "/usr/share/applications",
+            os.path.expanduser("~/.local/share/flatpak/exports/share/applications"),
+            "/var/lib/flatpak/exports/share/applications", "/var/lib/snapd/desktop/applications"]
+    seen, out = set(), []
+    for d in dirs:
+        for f in sorted(glob.glob(os.path.join(d, "*.desktop"))):
+            base = os.path.basename(f)
+            if base in seen:
+                continue
+            seen.add(base)
+            e, sect = {}, None
+            try:
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if line.startswith("["):
+                            sect = line
+                        elif sect == "[Desktop Entry]" and "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            e.setdefault(k.strip(), v.strip())
+            except OSError:
+                continue
+            if e.get("Type") != "Application" or e.get("NoDisplay", "").lower() == "true" or e.get("Hidden", "").lower() == "true" \
+                    or not e.get("Exec"):
+                continue
+            out.append(e)
+    return out
+
+
+def _desktop_app(e):
+    """A .desktop Exec line -> {name, exec, args} with the file placeholder as '{}'."""
+    try:
+        parts = shlex.split(e["Exec"])
+    except ValueError:
+        return None
+    parts = [p for p in parts if p not in ("%i", "%c", "%k")]
+    args = ["{}" if p in ("%f", "%F", "%u", "%U") else p for p in parts[1:]]
+    if "{}" not in args:
+        args.append("{}")
+    return {"name": e.get("Name", parts[0]), "exec": parts[0], "args": shlex.join(args).replace("'{}'", "{}")}
+
+
+def _mac_app(name, bundle):
+    for root in ("/Applications", os.path.expanduser("~/Applications"), "/System/Applications"):
+        for app in glob.glob(os.path.join(root, bundle)):
+            return {"name": name, "exec": "open", "args": f"-a {shlex.quote(os.path.splitext(os.path.basename(app))[0])} {{}}"}
+    return None
+
+
+def _win_app(name, *patterns):
+    roots = [os.environ.get(v, "") for v in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "ProgramW6432")]
+    for pat in patterns:
+        if not any(ch in pat for ch in "\\/*"):
+            w = shutil.which(pat)
+            if w:
+                return {"name": name, "exec": w, "args": "{}"}
+            continue
+        for r in [x for x in roots if x]:
+            hits = sorted(glob.glob(os.path.join(r, pat)))
+            if hits:
+                return {"name": name, "exec": hits[-1], "args": "{}"}
+    return None
+
+
+def detect_programs():
+    """What's installed on this OS: image programs and file managers for the Setup tab's 'Add program'."""
+    img, fold = [], []
+    if IS_MAC:
+        for n, b in (("Preview", "Preview.app"), ("Adobe Photoshop", "Adobe Photoshop*/Adobe Photoshop*.app"),
+                     ("Adobe Illustrator", "Adobe Illustrator*/Adobe Illustrator*.app"), ("Pixelmator Pro", "Pixelmator Pro.app"),
+                     ("Affinity Photo", "Affinity Photo*.app"), ("GIMP", "GIMP*.app"), ("Krita", "krita.app"),
+                     ("Aseprite", "Aseprite.app"), ("LibreSprite", "LibreSprite.app"), ("Inkscape", "Inkscape.app"),
+                     ("Pixelorama", "Pixelorama.app")):
+            a = _mac_app(n, b)
+            if a:
+                img.append(a)
+        fold.append({"name": "Finder", "exec": "open", "args": "{}"})
+        for n, b in (("ForkLift", "ForkLift.app"), ("Path Finder", "Path Finder.app"), ("VS Code", "Visual Studio Code.app")):
+            a = _mac_app(n, b)
+            if a:
+                fold.append(a)
+    elif IS_WIN:
+        for n, *pats in (("Paint", "mspaint"), ("Adobe Photoshop", r"Adobe\Adobe Photoshop*\Photoshop.exe"),
+                         ("Adobe Illustrator", r"Adobe\Adobe Illustrator*\Support Files\Contents\Windows\Illustrator.exe"),
+                         ("Paint.NET", r"paint.net\paintdotnet.exe"), ("GIMP", r"GIMP*\bin\gimp-*.exe"),
+                         ("Krita", r"Krita (x64)\bin\krita.exe"), ("Aseprite", r"Aseprite\Aseprite.exe", r"Steam\steamapps\common\Aseprite\Aseprite.exe"),
+                         ("Inkscape", r"Inkscape\bin\inkscape.exe"), ("Pixelorama", r"Pixelorama\Pixelorama.exe")):
+            a = _win_app(n, *pats)
+            if a:
+                img.append(a)
+        fold.append({"name": "Explorer", "exec": "explorer", "args": "{}"})
+        for n, *pats in (("Total Commander", r"totalcmd\TOTALCMD64.EXE"), ("Directory Opus", r"GPSoftware\Directory Opus\dopus.exe"),
+                         ("VS Code", "code")):
+            a = _win_app(n, *pats)
+            if a:
+                fold.append(a)
+    else:
+        for e in _desktop_entries():
+            mimes = [m for m in e.get("MimeType", "").split(";") if m]
+            cats = e.get("Categories", "")
+            a = _desktop_app(e)
+            if not a:
+                continue
+            if any(m in ("image/png", "image/gif", "image/bmp", "image/jpeg") for m in mimes):
+                img.append(a)
+            if "inode/directory" in mimes or "FileManager" in cats:
+                fold.append(a)
+        have = {a["exec"] for a in img}
+        for n, x in (("Aseprite", "aseprite"), ("LibreSprite", "libresprite"), ("Pixelorama", "pixelorama")):
+            if x not in have and shutil.which(x):
+                img.append({"name": n, "exec": x, "args": "{}"})
+    # DRAW and Kaleidotron have their own built-in entries; don't offer them twice
+    builtin = lambda a: a["name"].lower() in ("draw", "kaleidotron") or \
+        os.path.basename(a["exec"]).lower() in ("draw", "draw.run", "draw.exe", "kaleidotron", "kaleidotron.exe")
+    key = lambda a: a["name"].lower()
+    return (sorted({a["name"]: a for a in img if not builtin(a)}.values(), key=key),
+            sorted({a["name"]: a for a in fold if not builtin(a)}.values(), key=key))
+
+
+def detect_draw():
+    names = ["DRAW.exe"] if IS_WIN else ["DRAW.run", "DRAW"]
+    for d in ("~/git/DRAW", "~/DRAW", "~/Apps/DRAW", "~/Applications/DRAW"):
+        for n in names:
+            f = os.path.expanduser(os.path.join(d, n))
+            if os.path.isfile(f):
+                return f
+    return shutil.which("DRAW") or ""
+
+
+def detect_kaleidotron():
+    return shutil.which("kaleidotron") or next((f for f in (os.path.expanduser(p) for p in (
+        "~/git/kaleidotron/target/release/kaleidotron" + (".exe" if IS_WIN else ""), "~/.cargo/bin/kaleidotron")) if os.path.isfile(f)), "")
+
+
+def os_opener(is_dir):
+    if IS_MAC:
+        return {"name": "Finder" if is_dir else "system default", "exec": "open", "args": "{}"}
+    if IS_WIN:
+        return {"name": "Explorer" if is_dir else "system default", "exec": "explorer", "args": "{}"}
+    return {"name": "file manager" if is_dir else "system default", "exec": "xdg-open", "args": "{}"}
+
+
+def launch(app, path, cwd=None):
+    """Start app on path. args template: '{}' marks the path, else it's appended. Never waits."""
+    exe = os.path.expanduser(app["exec"])
+    try:
+        args = shlex.split(app.get("args") or "{}", posix=not IS_WIN)
+    except ValueError as e:
+        raise ValueError(f"bad arguments for {app.get('name')}: {e}")
+    args = [a.replace("{}", path) for a in args] if any("{}" in a for a in args) else args + [path]
+    if os.sep in exe and not os.path.isfile(exe):
+        raise ValueError(f"{app.get('name') or exe}: program not found at {exe} — fix it in the Setup tab")
+    if os.sep not in exe and not shutil.which(exe):
+        raise ValueError(f"{app.get('name') or exe}: '{exe}' isn't installed or isn't on PATH")
+    subprocess.Popen([exe] + args, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     stdin=subprocess.DEVNULL, start_new_session=True)
+    return exe
+
+
 def list_boards():
     os.makedirs(os.path.join(BOARDS, "favorites"), exist_ok=True)
     out = []
@@ -1404,6 +1601,53 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _resolve_image(self, t):
+        """An image the GUI shows -> its absolute path (renders, corkboard items, preset pictures, LAB inputs, refs)."""
+        if t.get("src"):
+            return self.jobs.gallery_path(t["src"])
+        if t.get("board"):
+            d = board_dir(t["board"])
+            f = os.path.realpath(os.path.join(d, os.path.basename(str(t.get("file") or ""))))
+            if not f.startswith(os.path.realpath(d) + os.sep) or not os.path.isfile(f):
+                raise ValueError("not on that board")
+            return f
+        if t.get("preset"):
+            folder, name, pdir = preset_loc(t["preset"])
+            rec = _read_json(os.path.join(pdir, name + ".json"), {})
+            f = os.path.join(pdir, rec.get("image") or "")
+            if not rec.get("image") or not os.path.isfile(f):
+                raise ValueError("that preset has no picture")
+            return f
+        if t.get("lab"):
+            return lab_path(t["lab"])
+        if t.get("ref"):
+            return ref_path(t["ref"])
+        raise ValueError("nothing to open")
+
+    def _resolve_folder(self, kind, arg=""):
+        """A folder the GUI knows about -> its absolute path."""
+        if kind == "job":
+            target = os.path.join(self.gallery, safe_name(arg, 64))
+        elif kind == "gallery":
+            target = self.gallery
+        elif kind == "refs":
+            target = os.path.join(REFS, safe_name(arg)) if arg else REFS
+        elif kind == "presets":
+            target = preset_dir(arg) if arg else PRESETS
+        elif kind == "board":
+            target = board_dir(arg)
+        elif kind == "backups":
+            target = BACKUPS
+        elif kind == "lab":
+            target = LAB
+        elif kind == "dir":
+            target = home_path(arg)
+        else:
+            raise ValueError("unknown folder")
+        if not os.path.isdir(target):
+            raise ValueError(f"folder doesn't exist yet: {target}")
+        return target
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path in ("/", "/index.html"):
@@ -1424,8 +1668,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
             d, f = q.get("dir", [""])[0], q.get("file", [""])[0]
-            if d == "@presets" or d.startswith("@board:"):   # a preset's sample picture / a corkboard image
-                root = PRESETS if d == "@presets" else os.path.join(BOARDS, safe_name(d[len("@board:"):]))
+            if d in ("@presets", "@refs") or d.startswith("@board:"):   # preset picture / steering ref / corkboard image
+                root = PRESETS if d == "@presets" else REFS if d == "@refs" else os.path.join(BOARDS, safe_name(d[len("@board:"):]))
                 path = os.path.realpath(os.path.join(root, f))
                 if not path.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(path):
                     return self._json({"error": "image not found"}, 404)
@@ -1460,6 +1704,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
         if u.path == "/api/presets":
             return self._json({"presets": list_presets(), "folders": list_folders()})
+        if u.path == "/api/setup":
+            img, fold = detect_programs()
+            return self._json({"setup": load_setup(), "detected": {"draw": detect_draw(), "kaleidotron": detect_kaleidotron(),
+                                                                    "image_apps": img, "folder_apps": fold},
+                               "os": "windows" if IS_WIN else "macos" if IS_MAC else "linux"})
+        if u.path.startswith("/setup-img/"):
+            full = os.path.realpath(os.path.join(HERE, "img", os.path.basename(u.path)))
+            if not os.path.isfile(full):
+                return self._json({"error": "not found"}, 404)
+            return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path == "/api/presets/folder/export":
             try:
                 body, fname = export_folder(urllib.parse.parse_qs(u.query).get("folder", [""])[0], self.gallery)
@@ -1610,6 +1864,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._upload(urllib.parse.parse_qs(u.query), lab=True)
         if u.path == "/api/refs/upload":            # raw image bytes; ?collection=&filename=
             return self._upload(urllib.parse.parse_qs(u.query))
+        if not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
+            return self._json({"error": "expected application/json"}, 415)
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(n) or b"{}")
@@ -1651,29 +1907,45 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 found = [r for r in body.get("paths") or []
                          if os.path.isfile(export_target({"export": {"dir": base, "path": r}}) or "")]
                 return self._json({"exists": found})
+            if u.path == "/api/setup":
+                s = save_setup(body)
+                return self._json({"setup": s})
+            if u.path == "/api/open":
+                # open an image or a folder in DRAW / Kaleidotron / a program saved in the Setup tab / the OS default.
+                # Only programs saved in Setup can be launched (the request names one, it can't supply a command).
+                setup, app, key = load_setup(), None, str(body.get("app") or "os")
+                t = body.get("target") or {}
+                is_dir = "folder" in t
+                path = self._resolve_folder(t["folder"], t.get("arg") or "") if is_dir else self._resolve_image(t)
+                cwd = None
+                if key == "draw":
+                    if is_dir:
+                        raise ValueError("DRAW opens images, not folders")
+                    exe = setup["draw"] or detect_draw()
+                    if not exe:
+                        raise ValueError("DRAW isn't set up — add its path in the Setup tab")
+                    app, cwd = {"name": "DRAW", "exec": exe, "args": "{}"}, os.path.dirname(os.path.expanduser(exe))
+                elif key == "kaleidotron":
+                    exe = setup["kaleidotron"] or detect_kaleidotron()
+                    if not exe:
+                        raise ValueError("Kaleidotron isn't set up — add its path in the Setup tab")
+                    app = {"name": "Kaleidotron", "exec": exe, "args": "--folder {}" if is_dir else "--view {}"}
+                elif key.startswith(("img:", "dir:")):
+                    lst = setup["folder_apps" if key.startswith("dir:") else "image_apps"]
+                    i = int(key.split(":", 1)[1]) if key.split(":", 1)[1].isdigit() else -1
+                    if not 0 <= i < len(lst):
+                        raise ValueError("that program isn't in the Setup tab any more")
+                    app = lst[i]
+                elif key == "os":
+                    app = os_opener(is_dir)
+                else:
+                    raise ValueError(f"unknown program {key!r}")
+                launch(app, path, cwd)
+                return self._json({"opened": path, "with": app.get("name")})
             if u.path == "/api/reveal":
                 # open a folder in the desktop file manager (on the machine running this server)
-                kind, arg = body.get("kind"), body.get("arg") or ""
-                if kind == "job":
-                    target = os.path.join(self.gallery, safe_name(arg, 64))
-                elif kind == "gallery":
-                    target = self.gallery
-                elif kind == "refs":
-                    target = os.path.join(REFS, safe_name(arg)) if arg else REFS
-                elif kind == "presets":
-                    target = PRESETS
-                elif kind == "backups":
-                    target = BACKUPS
-                elif kind == "board":
-                    target = board_dir(arg)
-                elif kind == "dir":
-                    target = home_path(arg)
-                else:
-                    raise ValueError("unknown folder")
-                if not os.path.isdir(target):
-                    raise ValueError(f"folder doesn't exist yet: {target}")
-                subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True)
+                target = self._resolve_folder(body.get("kind"), body.get("arg") or "")
+                launch(os_opener(True), target)
                 return self._json({"opened": target})
             if u.path == "/api/lab/segment":
                 # "select by words": CLIPSeg (CPU, the model pixelmon's --animate uses) on the adjusted input
