@@ -216,6 +216,16 @@ select.advset { border-color: var(--accent); }
 
 /* ---- LAB ---- */
 .lab { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
+.labzoom { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px 10px; }
+.labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
+.lz-views { display: grid; grid-template-columns: 3fr 2fr 1fr; gap: 10px; margin-top: 8px; height: var(--lz-h, 420px);
+  resize: vertical; overflow: hidden; min-height: 160px; }
+.lz-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lz-cap { font: 11px var(--mono); color: var(--dim); margin-bottom: 3px; }
+.lz-scroll { flex: 1; overflow: auto; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px;
+  border: 1px solid var(--line); cursor: grab; } .lz-scroll.drag { cursor: grabbing; }
+.lz-scroll img { display: block; max-width: none; image-rendering: pixelated; }
+.lz-view[data-z="0.5"] .lz-scroll img { image-rendering: auto; }
 @media (max-width: 1300px) { .lab { grid-template-columns: 1fr; } }
 .lab-col { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
 .lab-col h3 { margin: 0 0 8px; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
@@ -371,6 +381,9 @@ fieldset.closed { padding-bottom: 2px; }
 .evo-btn { position: absolute; top: 4px; right: 4px; border: 1px solid var(--line); background: rgba(0,0,0,.7);
   border-radius: 4px; padding: 1px 5px; cursor: pointer; font-size: 14px; opacity: .8; }
 .evo-btn:hover { opacity: 1; border-color: var(--accent2); }
+.evo-btn.refine-btn { right: 36px; } .evo-btn.refine-btn:hover { border-color: var(--accent); }
+.refine-note { border: 1px solid var(--accent); border-radius: 4px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: var(--text); }
+.refine-note .row2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 .lineage img { width: 80px; image-rendering: pixelated; border: 1px solid var(--line); cursor: pointer; vertical-align: middle; }
 #evoBox.on { border-color: var(--accent2); }
 
@@ -712,12 +725,20 @@ fieldset.closed { padding-bottom: 2px; }
             <label id="editWhatLbl">What should be there?</label>
             <input type="text" id="editWhat" placeholder="a red skull">
             <div class="hint" id="hEdit"></div>
+            <div class="refine-note hidden" id="refineNote"></div>
             <button type="button" class="btn primary" id="editGo" style="width:100%">✏️ Apply edit</button>
           </div>
           <button type="button" class="btn" id="labSave" style="width:100%;margin-top:10px"
             title="save everything — input, adjustments, steering, and the style in the left panel — as a preset">💾 Save LAB preset</button></div>
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
       </div>
+      <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50%
+          <span class="dim">(scroll or drag inside a view — the others follow; drag the bottom edge to make it taller)</span></summary>
+        <div class="lz-views" id="lzViews">
+          <div class="lz-view" data-z="3"><div class="lz-cap">300%</div><div class="lz-scroll"><img alt=""></div></div>
+          <div class="lz-view" data-z="2"><div class="lz-cap">200%</div><div class="lz-scroll"><img alt=""></div></div>
+          <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><img alt=""></div></div>
+        </div></details>
     </div>
     <div class="pane hidden" id="batchPane">
       <div class="steer-top">
@@ -1274,6 +1295,8 @@ const HELP = {
     <ul><li><b>change it to…</b>: replace it — "a red skull"</li><li><b>erase it</b>: remove it; say what's behind — "night sky", "stone wall"</li>
     <li><b>add…</b>: paint roughly where it goes, say what — "a dragon flying"</li>
     <li><b>subtle tweak</b>: keep what's there, just nudge it (lower strength)</li></ul>
+    <b>🎯 Refine</b>: like one of the results? Click 🎯 on it. It becomes the input (mask and text kept) and the next
+    edit is a subtle tweak that steers toward it — each round a bit gentler, so the results converge on your pick.
     The style comes from the left panel (LoRA, palette…). Describe just the new thing, and make a few results — small
     edits vary a lot between seeds. Drag a result onto the input to keep editing it.`,
   crop: `<span class="tipk">Crop</span>: use only part of your input. Click <b>✂ crop</b>, then drag a box on the image —
@@ -2135,6 +2158,43 @@ function initSliders() {
   Object.keys(READOUTS).concat(Object.keys(ADJ0).map(k => "v" + k)).forEach(id => { const el = $(id); if (el) { el.classList.add("readout"); el.title = tip; } });
 }
 
+
+// ---------------- LAB zoom pane: the input at 300% / 200% / 50%, scrolled together ----------------
+function labZoomUpdate() {
+  const views = document.querySelectorAll("#lzViews .lz-view");
+  if (!LABS.file) { views.forEach(v => { const i = v.querySelector("img"); i.removeAttribute("src"); i.style.width = "0"; }); return; }
+  const src = labSrcUrl();
+  views.forEach(v => { const img = v.querySelector("img"), z = +v.dataset.z;
+    img.onload = () => { img.style.width = Math.round(img.naturalWidth * z) + "px"; };
+    if (img.getAttribute("src") !== src) img.src = src; else if (img.naturalWidth) img.onload(); });
+}
+function initLabZoom() {
+  const box = $("lzViews"), scrolls = [...box.querySelectorAll(".lz-scroll")];
+  box.style.setProperty("--lz-h", (store.get("lzH", 420)) + "px");
+  if ("ResizeObserver" in window) new ResizeObserver(() => { if (box.offsetHeight) store.set("lzH", box.offsetHeight); }).observe(box);
+  $("labZoom").open = store.get("lzOpen", true);
+  $("labZoom").addEventListener("toggle", () => store.set("lzOpen", $("labZoom").open));
+  let syncing = false;
+  const sync = from => {                       // same spot (as a fraction of the picture) in every view
+    if (syncing) return; syncing = true;
+    const fx = (from.scrollLeft + from.clientWidth / 2) / Math.max(1, from.scrollWidth),
+          fy = (from.scrollTop + from.clientHeight / 2) / Math.max(1, from.scrollHeight);
+    for (const s of scrolls) if (s !== from) { s.scrollLeft = fx * s.scrollWidth - s.clientWidth / 2; s.scrollTop = fy * s.scrollHeight - s.clientHeight / 2; }
+    requestAnimationFrame(() => (syncing = false));
+  };
+  scrolls.forEach(s => {
+    s.addEventListener("scroll", () => sync(s));
+    s.addEventListener("pointerdown", e => {   // drag to pan
+      if (e.button !== 0) return; e.preventDefault(); s.classList.add("drag"); s.setPointerCapture(e.pointerId);
+      const x0 = e.clientX, y0 = e.clientY, l0 = s.scrollLeft, t0 = s.scrollTop;
+      const mv = ev => { s.scrollLeft = l0 - (ev.clientX - x0); s.scrollTop = t0 - (ev.clientY - y0); };
+      const up = () => { s.classList.remove("drag"); s.removeEventListener("pointermove", mv); s.removeEventListener("pointerup", up); };
+      s.addEventListener("pointermove", mv); s.addEventListener("pointerup", up);
+    });
+  });
+  labZoomUpdate();
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -2712,7 +2772,7 @@ function initPeek() {
     if (!$("lb").classList.contains("hidden")) return;
     if (e.target.closest("#peek")) { clearTimeout(PEEK.hideTimer); return; }
     const th = e.target.closest(PEEK_SEL);
-    if (!th || e.target.closest(".evo-btn, [data-cork-x], [data-cork-rs]")) return;
+    if (!th || e.target.closest(".evo-btn, [data-cork-x], [data-cork-rs]")) return;   // (🎯 is an .evo-btn too)
     clearTimeout(PEEK.hideTimer);
     // the same image again (e.g. the queue re-rendered it under the pointer): keep the open preview as it is
     if (!$("peek").classList.contains("hidden") && peekKey(th) === PEEK.key) { PEEK.el = th; return; }
@@ -3232,7 +3292,39 @@ function renderEditBox() {
     ? (E.strength < 0.5 ? "light touch — mostly keeps what's there" : "noticeable change, same basic shapes")
     : "draws something new inside the mask; everything outside stays exactly the same";
   $("maskSize").value = LABS.brush || 16; $("maskSizeVal").textContent = LABS.brush || 16;
+  const dropped = (readForm().styles || []).filter(x => EDIT_FRAMING.includes(x));
+  if (dropped.length) $("hEdit").textContent += ` · leaves out the framing style${dropped.length > 1 ? "s" : ""} ${dropped.join(", ")} (they'd paint a whole scene into the mask)`;
+  const R = LABS.refine, rn = $("refineNote");
+  rn.classList.toggle("hidden", !R);
+  if (R) rn.innerHTML = `🎯 <b>Refining round ${R.round}</b> — the input is your pick (seed ${esc(R.seed ?? "?")}). Each round keeps the
+      inside of the mask closer to it: lower strength = closer.
+      <div class="row2"><label class="inline" style="margin:0"><input type="checkbox" id="refineSteerOn" ${R.steer > 0 ? "checked" : ""}> steer toward it</label>
+        <input type="range" id="refineSteer" min="0.1" max="1.2" step="0.05" value="${R.steer > 0 ? R.steer : 0.5}" style="flex:1"><b id="refineSteerVal">${(R.steer > 0 ? R.steer : 0.5).toFixed(2)}</b>
+        <button type="button" class="btn small" id="refineStop" title="stop refining (keeps the current input and mask)">✕</button></div>`;
 }
+// 🎯 refine: the chosen LAB result becomes the input (mask + edit text kept); the edit switches to a subtle tweak
+// that gets gentler every round and steers toward the pick — so each round converges on it
+async function labRefine(job, o) {
+  const mask = LABS.mask, isEdit = !!job.params.inpaint;
+  let r; try { r = await api("/api/lab/import", { src: { dir: job.dir, file: o.file } }); } catch (e) { return showErr(e); }
+  const prev = LABS.refine, round = prev ? prev.round + 1 : 1;
+  LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.adj = { ...ADJ0 }; LABS.group = null;
+  LABS.mask = isEdit ? mask : null; maskCanvas.width = 0;           // same picture size: the mask still lines up
+  if (isEdit) {
+    const E = LABS.edit || (LABS.edit = { action: "change", strength: 1, what: "" });
+    E.strength = E.action === "tweak" ? Math.max(0.3, +(E.strength - 0.1).toFixed(2)) : 0.6;
+    E.action = "tweak";
+    LABS.refine = { dir: job.dir, file: o.file, seed: o.seed, round, steer: prev ? prev.steer : 0.5 };
+  } else {                                                           // a conversion: keep going from it with img2img
+    LABS.init = true; LABS.denoise = Math.max(0.3, +((prev ? LABS.denoise : 0.6) - (prev ? 0.1 : 0)).toFixed(2));
+    LABS.refine = null;
+  }
+  store.set("lab", LABS); await loadLab(); renderLab();
+  $("labPane").scrollTo({ top: 0, behavior: "smooth" });
+  ok(isEdit ? `🎯 round ${round}: seed ${o.seed ?? "?"} is the input now — subtle tweak at ${LABS.edit.strength.toFixed(2)}, steering toward it. Apply edit.`
+            : `🎯 seed ${o.seed ?? "?"} is the input now — convert again (img2img change ${LABS.denoise.toFixed(2)}) to keep refining`);
+}
+const EDIT_FRAMING = ["scene", "painterlyscene", "solo", "item", "portrait"];
 async function editApply() {
   if (!LABS.file || !LABS.mask) return showErr("Paint a mask first (✏️ mask).");
   const E = LABS.edit, what = (E.what || "").trim();
@@ -3241,12 +3333,20 @@ async function editApply() {
   // edit at the input's own size (pixel art stays 1:1); big photos use the LAB width
   const c = LABS.adj.crop, iw = Math.round(LABS.size[0] * (c ? c[2] : 1)), ih = Math.round(LABS.size[1] * (c ? c[3] : 1));
   const [w, h] = Math.max(iw, ih) <= 640 ? [iw, ih] : labOut();
-  const form = { ...f, subject: what, outW: w, outH: h, n: 1 };
+  // An edit fills a small area inside an existing picture: keep the LOOK styles (r3tr0, ega, darkest…) but never the
+  // FRAMING ones — "scene" asks for a whole environment with ground and sky (it painted a tiny game level into a face),
+  // "solo"/"item"/"portrait" ask for an isolated subject — and no "game sprite, solid background" suffix either.
+  const styles = (f.styles || []).filter(x => !EDIT_FRAMING.includes(x));
+  const blend = E.action === "erase" ? what : `${what}, seamlessly part of the surrounding picture, matching its lighting, colors and style`;
+  const form = { ...f, subject: blend, styles, kind: "", outW: w, outH: h, n: 1, no_sprite_suffix: true };
   const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
                  inpaint: { file: LABS.file, mask: LABS.mask, mode: E.action === "tweak" ? "blend" : "fill" },
                  lab_init: LABS.file, lab_denoise: E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  const R = LABS.refine;
+  if (R && R.steer > 0) Object.assign(base, { parent: { dir: R.dir, file: R.file }, evolve_init: false, evolve_steer: R.steer,
+    evolve_weight_type: "style and composition", evolve_steer_start: 0, evolve_steer_end: 1 });
   if (!(await preflight(base))) return;
   LABS.group = `lab-edit-${Date.now()}`;
   const seed0 = Math.floor(Math.random() * 2 ** 31);
@@ -3313,6 +3413,13 @@ function initMask() {
   $("editStrength").oninput = e => { LABS.edit.strength = +e.target.value; store.set("lab", LABS); renderEditBox(); };
   $("editWhat").oninput = e => { LABS.edit.what = e.target.value; store.set("lab", LABS); };
   $("editGo").onclick = editApply;
+  $("refineNote").addEventListener("input", e => {
+    if (e.target.id === "refineSteer" && LABS.refine) { LABS.refine.steer = +e.target.value; $("refineSteerVal").textContent = (+e.target.value).toFixed(2); store.set("lab", LABS); }
+  });
+  $("refineNote").addEventListener("change", e => {
+    if (e.target.id === "refineSteerOn" && LABS.refine) { LABS.refine.steer = e.target.checked ? +$("refineSteer").value : 0; store.set("lab", LABS); }
+  });
+  $("refineNote").addEventListener("click", e => { if (e.target.id === "refineStop") { LABS.refine = null; store.set("lab", LABS); renderEditBox(); } });
 }
 function initCrop() {
   let drag = null;   // {mode: move|nw|ne|sw|se|new, sx, sy, r0}
@@ -3360,7 +3467,7 @@ function initCrop() {
 let adjTimer = null;
 function adjUpdate() {   // debounced: sliders fire many events
   clearTimeout(adjTimer);
-  adjTimer = setTimeout(() => { const i = $("labDrop").querySelector("img"); if (i && LABS.file) i.src = labSrcUrl(); }, 180);
+  adjTimer = setTimeout(() => { const i = $("labDrop").querySelector("img"); if (i && LABS.file) i.src = labSrcUrl(); labZoomUpdate(); }, 180);
 }
 function renderAdj() {
   document.querySelectorAll("[data-adj]").forEach(el => {
@@ -3375,6 +3482,7 @@ function renderAdj() {
 }
 function renderLab() {
   renderAdj();
+  if (typeof labZoomUpdate === "function") setTimeout(labZoomUpdate, 0);
   $("labDrop").innerHTML = LABS.file ? `<div class="cropwrap"><img src="${labSrcUrl()}" alt=""></div>`
     : `<span>Drop an image here, or click to pick one —<br>or drag in any render, corkboard item or steering ref.</span>`;
   document.querySelectorAll("#labRecent img").forEach(i => i.classList.toggle("on", i.dataset.labfile === LABS.file));
@@ -3417,7 +3525,7 @@ function renderLab() {
     if (jobs.length) { $("labOut").innerHTML = jobCard(jobs.length > 1 ? jobs : [jobs[0]]); fillPalettes($("labOut")); }
   }
 }
-async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.refine = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
   const subject = (LABS.subject || "the subject").trim();
@@ -3591,6 +3699,8 @@ function thumbHtml(job, o, scale, caption) {
   return `<div class="thumb" data-job="${job.id}" data-file="${o.file}">
     <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
     <button class="evo-btn" data-evo-job="${job.id}" data-evo-file="${esc(o.file)}" title="evolve: breed children from this">🧬</button>
+    ${job.params && (job.params.inpaint || job.params.control) ? `<button class="evo-btn refine-btn" data-refine-job="${job.id}" data-refine-file="${esc(o.file)}"
+      title="🎯 refine: make this the LAB input and edit it again — each round stays closer to it">🎯</button>` : ""}
     <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div></div>`;
 }
 // placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
@@ -3799,6 +3909,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initLabZoom();
   initSliders();
   initGalleryTools();
   initSetup();
@@ -3850,6 +3961,13 @@ async function init() {
   // open a tab by URL hash (#presets, #lab, #steer, #batch, #gallery, #queue, #adv)
   if (["presets", "lab", "steer", "batch", "gallery", "queue", "adv", "setup"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
   document.addEventListener("click", e => {
+    const rf = e.target.closest("[data-refine-job]");
+    if (rf) {
+      const job = JOBS[rf.dataset.refineJob] || GALLERY.find(j => j.id === rf.dataset.refineJob);
+      const o = job && job.outputs.find(x => x.file === rf.dataset.refineFile);
+      if (o) labRefine(job, o);
+      return;
+    }
     const ev = e.target.closest("[data-evo-job]");
     if (ev) {
       const job = JOBS[ev.dataset.evoJob] || GALLERY.find(j => j.id === ev.dataset.evoJob);
