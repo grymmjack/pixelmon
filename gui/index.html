@@ -16,9 +16,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.4 system-ui, sans-serif; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { text-transform: uppercase; letter-spacing: .04em; }
-.app { display: grid; grid-template-columns: 420px minmax(0, 1fr); height: calc(100vh - 30px); }
-.app.cork-open { grid-template-columns: 420px minmax(0, 1fr) var(--cork-w, 300px); }
-@media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: 1fr; height: auto; } }
+.app { display: grid; grid-template-columns: var(--form-w, 420px) minmax(0, 1fr); height: calc(100vh - 30px); }
+.app.cork-open { grid-template-columns: var(--form-w, 420px) minmax(0, 1fr) var(--cork-w, 300px); }
+@media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: 1fr; height: auto; } .form-resize, .cork-resize { display: none; } }
 
 /* ---- corkboard ---- */
 .cork { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; position: relative; }
@@ -155,7 +155,9 @@ select.advset { border-color: var(--accent); }
 .err { color: var(--bad); font-size: 12px; min-height: 16px; margin-top: 4px; }
 
 /* ---- results panel ---- */
-.main { display: flex; flex-direction: column; min-height: 0; }
+.main { display: flex; flex-direction: column; min-height: 0; position: relative; }
+.form-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 4; }
+.form-resize:hover, .form-resize.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
 .tabs { display: flex; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
 .tabs .btn { white-space: nowrap; flex-shrink: 0; }
 .tab { white-space: nowrap; flex-shrink: 0; padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
@@ -604,6 +606,7 @@ fieldset.closed { padding-bottom: 2px; }
 
   <!-- ================= RESULTS ================= -->
   <div class="main">
+    <div class="form-resize" id="formResize" title="drag to resize the settings pane · double-click to reset"></div>
     <div class="tabs">
       <div class="tab" data-tab="presets">Presets</div>
       <div class="tab" data-tab="lab">⚗ Lab</div>
@@ -2732,6 +2735,22 @@ function initCork() {
     window.open(`/boards/${encodeURIComponent(CORK.board)}/${encodeURIComponent(it.dataset.cork)}`, "_blank");
   });
   $("corkToggle").onclick = () => { CORK.open = !CORK.open; renderCork(); if (CORK.open) loadBoards(); };
+  // drag the settings pane's right edge the same way (remembered); double-click resets
+  const setFormW = w => $("app").style.setProperty("--form-w", w + "px");
+  const corkW = () => (CORK.open ? $("cork").getBoundingClientRect().width : 0);
+  const clampF = w => Math.round(Math.max(300, Math.min(w, innerWidth - corkW() - 480)));   // keep ≥480px for the middle
+  setFormW(clampF(store.get("formW", 420)));
+  $("formResize").addEventListener("pointerdown", e => {
+    e.preventDefault(); const h = e.currentTarget; h.setPointerCapture(e.pointerId);
+    h.classList.add("drag"); document.body.classList.add("cork-dragging");
+    const left = $("app").getBoundingClientRect().left;
+    const move = ev => setFormW(clampF(ev.clientX - left));
+    const up = ev => { h.releasePointerCapture(e.pointerId); h.classList.remove("drag"); document.body.classList.remove("cork-dragging");
+      h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up);
+      store.set("formW", clampF(ev.clientX - left)); };
+    h.addEventListener("pointermove", move); h.addEventListener("pointerup", up);
+  });
+  $("formResize").addEventListener("dblclick", () => { store.set("formW", 420); setFormW(420); });
   // drag the corkboard's left edge to make it wider / narrower (remembered); double-click resets
   const setCorkW = w => { $("app").style.setProperty("--cork-w", w + "px"); };
   const clampW = w => Math.round(Math.max(180, Math.min(w, innerWidth - 420 - 480)));   // keep ≥480px for the middle
