@@ -295,12 +295,16 @@ fieldset.closed { padding-bottom: 2px; }
 
 /* ---- presets tab ---- */
 .pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  display: flex; flex-direction: column; }
 .pcard img { width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #000; image-rendering: pixelated; display: block; }
 .pcard .noimg { aspect-ratio: 16/10; display: grid; place-items: center; color: var(--dim); background: var(--panel2); }
-.pcard .body { padding: 8px 10px; } .pcard h4 { margin: 0 0 3px; font-size: 14px; }
+.pcard .body { padding: 8px 10px; flex: 1; display: flex; flex-direction: column; } .pcard h4 { margin: 0 0 3px; font-size: 14px; }
 .pcard .note { font-size: 12px; color: var(--dim); min-height: 16px; }
-.pcard .acts { display: flex; gap: 6px; margin-top: 8px; }
+.pcard .acts { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; }   /* pinned to the card's bottom */
+.pcard .acts .btn { flex: 1; min-width: 0; padding: 5px 0; font-size: 15px; line-height: 1; text-align: center; }
+.pcard .acts .btn.go { border-color: var(--accent); }
+.pcard .acts .btn.del:hover { border-color: var(--bad); }
 
 /* ---- presets + evolve ---- */
 .presetbar { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px; margin-bottom: 12px; }
@@ -1761,11 +1765,11 @@ async function loadPresets(select) {
       <div class="body"><h4>${esc(p.name)}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
         ${p.image ? `<div class="pal" data-pdir="@presets" data-pfile="${esc(p.image)}"></div>` : ""}
-        <div class="acts"><button class="btn small" data-pload="${esc(p.name)}">Load</button>
-          <button class="btn small" data-prender="${esc(p.name)}">Load + render</button>
+        <div class="acts"><button class="btn small" data-pload="${esc(p.name)}" title="load this preset" aria-label="load">📥</button>
+          <button class="btn small go" data-prender="${esc(p.name)}" title="load this preset and render it" aria-label="load and render">▶</button>
           <a class="btn small" href="/api/presets/export?name=${encodeURIComponent(p.name)}" download
-             title="download this preset + all its images as a .zip">⬇ zip</a>
-          <button class="btn small" data-pdel="${esc(p.name)}">Delete</button></div></div></div>`;
+             title="download this preset + all its images as a .zip" aria-label="download zip">⬇</a>
+          <button class="btn small del" data-pdel="${esc(p.name)}" title="delete this preset" aria-label="delete">🗑</button></div></div></div>`;
   }).join("")}</div><div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>` : `<div class="empty">No presets yet — set things up and hit “Save…”, or save one from any image's lightbox.</div>`);
   fillPalettes($("presetsPane"));
 }
