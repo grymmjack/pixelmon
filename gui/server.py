@@ -342,7 +342,7 @@ def load_adv_lists():
         return _ADV_CACHE["v"]
     info, url = {}, server_url()
     if url:
-        for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader"):
+        for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader", "UNETLoader"):
             try:
                 with urllib.request.urlopen(f"{url.rstrip('/')}/object_info/{node}", timeout=4) as r:
                     info.update(json.load(r))
@@ -355,12 +355,13 @@ def load_adv_lists():
          "controlnets": _combo(info, "ControlNetLoader", "control_net_name"),
          "ipadapters": _combo(info, "IPAdapterModelLoader", "ipadapter_file"),
          "clip_visions": _combo(info, "CLIPVisionLoader", "clip_name"),
+         "inpaint_models": [u for u in _combo(info, "UNETLoader", "unet_name") if "inpaint" in u.lower()],
          "live": bool(info)}
     _ADV_CACHE.update(t=time.time(), v=v)
     return v
 
 
-def adv_argv(adv, art, has_control, has_mask):
+def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
     """The Advanced tab: extra pixelmon flags. Blank / missing = pixelmon's own default. Validated like the rest."""
     adv = adv if isinstance(adv, dict) else {}
     out = []
@@ -451,6 +452,14 @@ def adv_argv(adv, art, has_control, has_mask):
                 raise ValueError("advanced: canny low threshold must be below the high one")
             out += ["--canny-low", f"{lo:g}", "--canny-high", f"{hi:g}"]
     if has_mask:
+        # LAB edits that paint something NEW use the SDXL inpainting model when the server has one
+        # ("off" = use the checkpoint like any other render)
+        choice_im = str(adv.get("inpaint_model") or "auto")
+        if choice_im != "off" and (adv.get("mask_mode") or mask_mode) == "fill":
+            have = lists.get("inpaint_models") or []
+            pick = choice_im if choice_im in have else (have[0] if have else None)
+            if pick:
+                out += ["--inpaint-model", pick]
         v = num("mask_grow", int, 0, 64)
         if v is not None:
             out += ["--mask-grow", str(v)]
@@ -666,7 +675,7 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         if not (0 <= st <= 2 and 0 < en <= 1):
             raise ValueError("control strength must be 0..2 and end in (0, 1]")
         argv += ["--control", control, "--control-mode", mode, "--control-strength", f"{st:g}", "--control-end", f"{en:g}"]
-    extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init))
+    extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init), str((p.get("inpaint") or {}).get("mode") or "fill"))
     extra = [x for i, x in enumerate(extra) if not (x == "--control-end" or (i and extra[i - 1] == "--control-end"))]
     if "--custom-hex" in extra and "--palette" in argv:              # custom colors = the Custom palette
         argv[argv.index("--palette") + 1] = "Custom"

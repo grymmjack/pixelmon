@@ -165,6 +165,7 @@ def print_help():
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
         opt("--canny-low/--canny-high F", "canny edge thresholds (lower = more edges)", "0.3 / 0.7"),
+        opt("--inpaint-model FILE", "with --mask: an SDXL inpainting UNet (models/unet/) — paints new things far better"),
         opt("--mask IMG", "inpaint with --init: redraw only the mask's white area"),
         opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
@@ -351,6 +352,12 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
     # Each LoraLoader patches both the model and the text encoder (clip), so we
     # thread the "current" source through and wire the sampler/prompts to the end.
     model_src, clip_src = ["4", 0], ["4", 1]
+    inpaint_model = bool(getattr(a, "inpaint_model", None) and getattr(a, "mask", None) and getattr(a, "init", None))
+    if inpaint_model:
+        # a dedicated SDXL inpainting UNet (trained to paint new things into a hole); the checkpoint still
+        # supplies the text encoders and VAE, and LoRAs patch the inpainting UNet as usual
+        g["60"] = {"class_type": "UNETLoader", "inputs": {"unet_name": a.inpaint_model, "weight_dtype": "default"}}
+        model_src = ["60", 0]
     if not a.no_lora and not a.art:  # art mode never applies the pixel-art LoRA
         g["15"] = {"class_type": "LoraLoader",
                    "inputs": {"model": model_src, "clip": clip_src, "lora_name": a.lora,
@@ -451,6 +458,13 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["3"]["inputs"]["positive"] = ["55", 0]
         g["3"]["inputs"]["negative"] = ["55", 1]
 
+    if inpaint_model:
+        # the inpainting UNet needs the picture + mask as conditioning; its latent replaces the masked one
+        g["61"] = {"class_type": "InpaintModelConditioning",
+                   "inputs": {"positive": g["3"]["inputs"]["positive"], "negative": g["3"]["inputs"]["negative"],
+                              "vae": ["4", 2], "pixels": ["41", 0], "mask": ["47", 0], "noise_mask": True}}
+        g["3"]["inputs"]["positive"], g["3"]["inputs"]["negative"] = ["61", 0], ["61", 1]
+        g["3"]["inputs"]["latent_image"] = ["61", 2]
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
     g["3"]["inputs"]["model"] = model_src
@@ -960,6 +974,9 @@ def main():
                    help="with --control-mode canny: low edge threshold 0.01..0.99 (lower = more faint edges). default 0.3")
     p.add_argument("--canny-high", dest="canny_high", type=float, default=0.7, metavar="F",
                    help="with --control-mode canny: high edge threshold 0.01..0.99 (lower = more strong edges). default 0.7")
+    p.add_argument("--inpaint-model", dest="inpaint_model", default=None, metavar="FILE",
+                   help="with --mask: use this SDXL inpainting UNet (in the server's models/unet/, e.g. "
+                        "sdxl-inpainting-0.1.fp16.safetensors) — far better at painting NEW things into the mask")
     p.add_argument("--control-end", dest="control_end", type=float, default=0.8, metavar="F",
                    help="fraction of the steps the control applies for; the rest are free for style. default 0.8")
     p.add_argument("--control-model", dest="control_model", default="controlnet-union-sdxl-promax.safetensors",

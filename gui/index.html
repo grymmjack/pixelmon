@@ -1624,6 +1624,8 @@ const ADV_GROUPS = [
   { title: "LAB edit · inpainting", note: "Used when you paint a mask in LAB edit.", fields: [
     { k: "mask_mode", label: "Mask mode", type: "select", options: ["fill", "blend"], def: "from the edit action", flag: "--mask-mode",
       why: "fill starts the area blank (new content); blend starts from what's there (subtle). Normally the edit action picks this." },
+    { k: "inpaint_model", label: "Inpainting model", type: "select", list: "inpaint_models_off", def: "auto (the server's SDXL inpainting model)", flag: "--inpaint-model",
+      why: "Edits that paint something new (change / add / erase) use a dedicated SDXL inpainting model when the render server has one — it blends new things in seamlessly. 'off' uses the checkpoint instead." },
     { k: "mask_grow", label: "Mask grow (px)", type: "number", min: 0, max: 64, step: 1, def: "6", flag: "--mask-grow",
       why: "Blend margin around the mask so the seam disappears. Raise it if an edge shows." },
     { k: "inpaint_crop", label: "Crop around small masks", type: "check", def: "on", on: true, flag: "--no-inpaint-crop (when off)",
@@ -1688,6 +1690,7 @@ function advList(f) {
   const L = (META && META.adv_lists) || {};
   if (f.options) return f.options;
   if (f.list === "loras") return (META && META.loras) || [];
+  if (f.list === "inpaint_models_off") return ["off", ...((META && META.adv_lists && META.adv_lists.inpaint_models) || [])];
   return L[f.list] || [];
 }
 function advCli(adv, art, q) {
