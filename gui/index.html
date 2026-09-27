@@ -218,8 +218,16 @@ select.advset { border-color: var(--accent); }
 .lab { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
 .labzoom { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px 10px; }
 .labzoom summary { cursor: pointer; color: var(--accent); font-weight: 600; } .labzoom summary .dim { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--dim); }
-.lz-views { display: grid; grid-template-columns: 3fr 2fr 1fr; gap: 10px; margin-top: 8px; height: var(--lz-h, 420px);
-  resize: vertical; overflow: hidden; min-height: 160px; }
+.lz-views { display: grid; grid-template-columns: var(--lz-c0, 3fr) 8px var(--lz-c1, 2fr) 8px var(--lz-c2, 1fr); margin-top: 8px;
+  height: var(--lz-h, 420px); overflow: hidden; }
+.lz-div { cursor: col-resize; } .lz-div:hover, .lz-div.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
+.lz-grip { height: 9px; margin-top: 4px; cursor: row-resize; border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 18px, transparent 18px 24px) center / 60px 3px no-repeat; }
+.lz-grip:hover, .lz-grip.drag { background-color: rgba(85,255,255,.15); }
+.lz-stage { position: relative; } .lz-stage img { width: 100%; }
+.lz-mask { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; pointer-events: none; image-rendering: pixelated; }
+.lz-dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent); border-radius: 50%;
+  box-shadow: 0 0 0 1px #000; pointer-events: none; display: none; } .lz-hover .lz-dot { display: block; }
 .lz-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .lz-cap { font: 11px var(--mono); color: var(--dim); margin-bottom: 3px; }
 .lz-scroll { flex: 1; overflow: auto; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px;
@@ -733,12 +741,15 @@ fieldset.closed { padding-bottom: 2px; }
         <div class="lab-col lab-out"><h3>3 · Output</h3><div id="labOut"><div class="empty" style="padding:30px 0">Results appear here.</div></div></div>
       </div>
       <details class="labzoom" id="labZoom" open><summary>🔍 Zoom — the input at 300% · 200% · 50%
-          <span class="dim">(scroll or drag inside a view — the others follow; drag the bottom edge to make it taller)</span></summary>
+          <span class="dim">(follows your pointer over the input · scroll or drag a view and the others follow · drag the bars to resize)</span></summary>
         <div class="lz-views" id="lzViews">
-          <div class="lz-view" data-z="3"><div class="lz-cap">300%</div><div class="lz-scroll"><img alt=""></div></div>
-          <div class="lz-view" data-z="2"><div class="lz-cap">200%</div><div class="lz-scroll"><img alt=""></div></div>
-          <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><img alt=""></div></div>
-        </div></details>
+          <div class="lz-view" data-z="3"><div class="lz-cap">300%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          <div class="lz-div" data-div="0" title="drag to resize the views · double-click to reset"></div>
+          <div class="lz-view" data-z="2"><div class="lz-cap">200%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+          <div class="lz-div" data-div="1" title="drag to resize the views · double-click to reset"></div>
+          <div class="lz-view" data-z="0.5"><div class="lz-cap">50%</div><div class="lz-scroll"><div class="lz-stage"><img alt=""><canvas class="lz-mask"></canvas><i class="lz-dot"></i></div></div></div>
+        </div>
+        <div class="lz-grip" id="lzGrip" title="drag to make the zoom pane taller or shorter · double-click to reset"></div></details>
     </div>
     <div class="pane hidden" id="batchPane">
       <div class="steer-top">
@@ -2159,19 +2170,69 @@ function initSliders() {
 }
 
 
+
+// the mask, mirrored into the zoom views
+function lzMask() {
+  const ov = $("labDrop").querySelector("canvas.maskc");
+  document.querySelectorAll("#lzViews .lz-mask").forEach(c => {
+    if (!ov) { c.width = 0; return; }
+    c.width = ov.width; c.height = ov.height; c.getContext("2d").drawImage(ov, 0, 0);
+  });
+}
+// center every zoom view on a spot of the input (fractions 0..1)
+function lzFocus(fx, fy) {
+  document.querySelectorAll("#lzViews .lz-view").forEach(v => {
+    const sc = v.querySelector(".lz-scroll"), st = v.querySelector(".lz-stage"), dot = v.querySelector(".lz-dot");
+    dot.style.left = fx * 100 + "%"; dot.style.top = fy * 100 + "%";
+    sc.dataset.follow = "1";
+    sc.scrollLeft = fx * st.offsetWidth - sc.clientWidth / 2; sc.scrollTop = fy * st.offsetHeight - sc.clientHeight / 2;
+  });
+}
+function initLabZoomFollow() {
+  const drop = $("labDrop"), views = $("lzViews");
+  drop.addEventListener("pointermove", e => {
+    const img = drop.querySelector(".cropwrap img"); if (!img || !$("labZoom").open) return;
+    const b = img.getBoundingClientRect();
+    const fx = (e.clientX - b.left) / b.width, fy = (e.clientY - b.top) / b.height;
+    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return views.classList.remove("lz-hover");
+    views.classList.add("lz-hover"); lzFocus(fx, fy);
+  });
+  drop.addEventListener("pointerleave", () => views.classList.remove("lz-hover"));
+  const grip = $("lzGrip");
+  grip.addEventListener("pointerdown", e => {
+    e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
+    const h0 = views.offsetHeight, y0 = e.clientY;
+    const mv = ev => views.style.setProperty("--lz-h", Math.max(140, Math.min(2000, h0 + ev.clientY - y0)) + "px");
+    const up = () => { grip.classList.remove("drag"); grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); store.set("lzH", views.offsetHeight); };
+    grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up);
+  });
+  grip.addEventListener("dblclick", () => { views.style.setProperty("--lz-h", "420px"); store.set("lzH", 420); });
+  const setCols = c => c.forEach((v, i) => views.style.setProperty(`--lz-c${i}`, v + "fr"));
+  let cols = store.get("lzCols", [3, 2, 1]); setCols(cols);
+  views.querySelectorAll(".lz-div").forEach(d => {
+    d.addEventListener("pointerdown", e => {
+      e.preventDefault(); d.setPointerCapture(e.pointerId); d.classList.add("drag");
+      const i = +d.dataset.div, w = [...views.querySelectorAll(".lz-view")].map(v => v.offsetWidth), x0 = e.clientX, pair = w[i] + w[i + 1];
+      const mv = ev => { const a = Math.max(60, Math.min(pair - 60, w[i] + ev.clientX - x0)), nw = [...w];
+        nw[i] = a; nw[i + 1] = pair - a; cols = nw.map(x => +(x / 100).toFixed(3)); setCols(cols); };
+      const up = () => { d.classList.remove("drag"); d.removeEventListener("pointermove", mv); d.removeEventListener("pointerup", up); store.set("lzCols", cols); };
+      d.addEventListener("pointermove", mv); d.addEventListener("pointerup", up);
+    });
+    d.addEventListener("dblclick", () => { cols = [3, 2, 1]; setCols(cols); store.set("lzCols", cols); });
+  });
+}
 // ---------------- LAB zoom pane: the input at 300% / 200% / 50%, scrolled together ----------------
 function labZoomUpdate() {
   const views = document.querySelectorAll("#lzViews .lz-view");
-  if (!LABS.file) { views.forEach(v => { const i = v.querySelector("img"); i.removeAttribute("src"); i.style.width = "0"; }); return; }
+  if (!LABS.file) { views.forEach(v => { const i = v.querySelector("img"); i.removeAttribute("src"); v.querySelector(".lz-stage").style.width = "0"; }); return; }
   const src = labSrcUrl();
   views.forEach(v => { const img = v.querySelector("img"), z = +v.dataset.z;
-    img.onload = () => { img.style.width = Math.round(img.naturalWidth * z) + "px"; };
+    img.onload = () => { v.querySelector(".lz-stage").style.width = Math.round(img.naturalWidth * z) + "px"; lzMask(); };
     if (img.getAttribute("src") !== src) img.src = src; else if (img.naturalWidth) img.onload(); });
 }
 function initLabZoom() {
   const box = $("lzViews"), scrolls = [...box.querySelectorAll(".lz-scroll")];
   box.style.setProperty("--lz-h", (store.get("lzH", 420)) + "px");
-  if ("ResizeObserver" in window) new ResizeObserver(() => { if (box.offsetHeight) store.set("lzH", box.offsetHeight); }).observe(box);
   $("labZoom").open = store.get("lzOpen", true);
   $("labZoom").addEventListener("toggle", () => store.set("lzOpen", $("labZoom").open));
   let syncing = false;
@@ -2183,7 +2244,7 @@ function initLabZoom() {
     requestAnimationFrame(() => (syncing = false));
   };
   scrolls.forEach(s => {
-    s.addEventListener("scroll", () => sync(s));
+    s.addEventListener("scroll", () => { if (s.dataset.follow) { delete s.dataset.follow; return; } sync(s); });
     s.addEventListener("pointerdown", e => {   // drag to pan
       if (e.button !== 0) return; e.preventDefault(); s.classList.add("drag"); s.setPointerCapture(e.pointerId);
       const x0 = e.clientX, y0 = e.clientY, l0 = s.scrollLeft, t0 = s.scrollTop;
@@ -2192,6 +2253,7 @@ function initLabZoom() {
       s.addEventListener("pointermove", mv); s.addEventListener("pointerup", up);
     });
   });
+  initLabZoomFollow();
   labZoomUpdate();
 }
 
@@ -3270,12 +3332,13 @@ function maskLoad(url, w, h) {   // (re)build the paint canvas from a stored/seg
 function drawMaskOverlay() {
   const wrap = $("labDrop").querySelector(".cropwrap"); if (!wrap) return;
   let ov = wrap.querySelector("canvas.maskc");
-  if (!LABS.mask && !maskEdit) { if (ov) ov.remove(); return; }
+  if (!LABS.mask && !maskEdit) { if (ov) ov.remove(); lzMask(); return; }
   if (!ov) { ov = document.createElement("canvas"); ov.className = "maskc"; wrap.appendChild(ov); }
   ov.width = maskCanvas.width; ov.height = maskCanvas.height;
   const g = ov.getContext("2d"); g.clearRect(0, 0, ov.width, ov.height);
   g.drawImage(maskCanvas, 0, 0); g.globalCompositeOperation = "source-in"; g.fillStyle = "#ff2266"; g.fillRect(0, 0, ov.width, ov.height);
   g.globalCompositeOperation = "source-over";
+  lzMask();
 }
 function renderEditBox() {
   const has = !!LABS.mask;
