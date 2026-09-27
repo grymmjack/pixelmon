@@ -12,6 +12,9 @@ pixelmon "a goblin" -n 8 --fast                # 8 quick variations
 pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 ```
 
+# GUI
+<img width="3840" height="1978" alt="image" src="https://github.com/user-attachments/assets/d9030441-db14-4a07-8872-fac22e25568b" />
+
 <p>
   <img src="examples/knight.png" width="180" alt="knight sprite">
   <img src="examples/wizard-endesga.png" width="180" alt="wizard sprite, ENDESGA-32 palette">
