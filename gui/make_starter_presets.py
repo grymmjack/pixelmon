@@ -314,6 +314,33 @@ STYLE_SPECS = [
 ]
 SPECS += STYLE_SPECS
 
+# ---- the user's own presets, promoted to the factory set exactly as made in the GUI ----
+DEFAULT_NEG_PLAIN = DEFAULT_NEG            # these keep pixelmon's unweighted default negative, as saved
+ISO_SUBJECT = ("((isometric:2.0)) view of a small ((stone)) dungeon room with a treasure chest, torches and a wooden door, "
+               "((perfect lines)) and ((pixel perfect)) ((highly detailed:2.0))")
+ISO_NEG = DEFAULT_NEG_PLAIN + ", ((vegetation:1.7)), ((character:1.5))"
+USER_SPECS = [
+    ("APPLE-SIERRA", "Apple II lo-res palette with wide 2x1 pixels: a Sierra-on-the-Apple-II village. Outlines ≤2, light angles.",
+     {"subject": "a small village with a cottage, fences and trees", "lora_strength": 0.85, "negative": DEFAULT_NEG_PLAIN,
+      "no_sprite_suffix": True, "palette": "APPLE2-LORES", "dither_amount": 0, "despeckle": 2, "pixel_angles": 0.5,
+      "pixel_size": "2x1", "thin_lines": "2", "styles": ["scene"]}),
+    ("EGA-ISO-DUNGEON-CHUNK", "Isometric dungeon room: Pixel Art XL at 0.4 on the EGA palette, isometric angle grid, 2x2 Bayer, "
+     "heavy emphasis on clean lines. Seed locked, 5 per render.",
+     {"subject": ISO_SUBJECT, "lora": "pixel-art-xl.safetensors", "lora_strength": 0.4, "genre": "role-playing game",
+      "era": "1990s DOS game", "negative": ISO_NEG, "dither": "bayer2", "dither_amount": 0.15, "despeckle": 3,
+      "pixel_angles": 2, "angle_grid": "isometric", "thin_lines": "4", "seed": 1709864019, "seedLock": True, "n": 5, "cfg": 7,
+      "styles": ["scene"]}),
+    ("VGA-ISO-DUNGEON-CHUNK", "The same dungeon room in 256-color VGA: juggernautXL checkpoint, dpmpp_2m_sde_gpu + karras "
+     "(see ⚙ Advanced). Seed locked, 5 per render.",
+     {"subject": ISO_SUBJECT, "lora": "pixel-art-xl.safetensors", "lora_strength": 0.7, "genre": "role-playing game",
+      "era": "1990s DOS game", "negative": ISO_NEG, "no_sprite_suffix": True, "palette": "VGA", "dither_amount": 0.2,
+      "despeckle": 0, "pixel_angles": 0, "seed": 675632800, "seedLock": True, "n": 5, "cfg": 7, "styles": ["scene"]}),
+]
+SPECS += USER_SPECS
+# Advanced-tab overrides per preset (saved into the snapshot and used for the sample)
+ADV_OF = {"VGA-ISO-DUNGEON-CHUNK": {"sampler": "dpmpp_2m_sde_gpu", "scheduler": "karras", "base": "juggernautXL_v9.safetensors",
+                                    "smooth": "mode", "filter": "nearest"}}
+
 # the sample image's seed, picked from candidates (--try); anything not listed uses 1000 + 7 * its index
 SEEDS = {
     "cga-4-color-bayer": 1164,
@@ -360,6 +387,9 @@ SEEDS = {
     "style-painterly": 1521,
     "style-mario": 1503,
     "style-outline": 1217,
+    "APPLE-SIERRA": 801432292,              # the user's own renders these presets were saved from
+    "EGA-ISO-DUNGEON-CHUNK": 1709864019,
+    "VGA-ISO-DUNGEON-CHUNK": 675632800,
     "style-painterlyscene": 1427,
     "style-ega": 1444,
 }
@@ -386,11 +416,13 @@ def params_of(f):
             "pixel_angles": f["pixel_angles"], "angle_grid": f["angle_grid"]}
 
 
-def render(form, seed, out):
+def render(form, seed, out, adv=None):
     """One sample on the render server -> path of the image (or raises with pixelmon's output)."""
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     p = params_of(form)
+    if adv:
+        p["adv"] = adv
     p["seed"] = seed                               # the SAMPLE is reproducible; the preset stays unlocked
     argv = server.build_argv(p) + ["--output-to", out]
     r = subprocess.run(argv, capture_output=True, text=True, env=dict(os.environ, NO_COLOR="1"))
@@ -419,7 +451,7 @@ def main(argv):
                 seed = 1000 + idx * 7 + k * 101
                 t = time.time()
                 try:
-                    img, _ = render(form, seed, os.path.join(WORK, f"{name}-{seed}"))
+                    img, _ = render(form, seed, os.path.join(WORK, f"{name}-{seed}"), ADV_OF.get(name))
                 except RuntimeError as e:
                     print(f"FAILED {name} s{seed}: {e}")
                     continue
@@ -429,13 +461,13 @@ def main(argv):
             continue
         t = time.time()
         try:
-            img, cmd = render(form, base, os.path.join(WORK, name))
+            img, cmd = render(form, base, os.path.join(WORK, name), ADV_OF.get(name))
         except RuntimeError as e:
             print(f"FAILED {name}: {e}")
             continue
         shutil.copy2(img, os.path.join(PRESETS, name + ".png"))
         rec = {"name": name, "saved": time.time(), "note": f"{note}  (sample: seed {base})",
-               "snapshot": {"form": form, "steer": dict(STEER_OFF), "evo": evo}, "image": name + ".png",
+               "snapshot": {"form": form, "steer": dict(STEER_OFF), "evo": evo, "adv": dict(ADV_OF.get(name, {}))}, "image": name + ".png",
                "sample_command": server.shlex.join(["pixelmon"] + cmd[1:-2])}
         with open(os.path.join(PRESETS, name + ".json"), "w", encoding="utf-8") as fh:
             json.dump(rec, fh, indent=1)
