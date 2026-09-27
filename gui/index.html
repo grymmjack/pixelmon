@@ -1872,10 +1872,11 @@ async function openWith(app, target) {
     setTimeout(() => { $("err").textContent = ""; $("err").style.color = ""; }, 2500);
   } catch (e) { showErr(e); }
 }
-function openMenu(x, y, target) {
+function openMenu(x, y, target, extras = []) {
   closeOpenMenu();
-  const isDir = !!target.folder, S = (SETUP && SETUP.setup) || {}, items = [];
-  if (isDir) {
+  const isDir = !!(target && target.folder), S = (SETUP && SETUP.setup) || {}, items = [];
+  if (!target) { /* arrange actions only */ }
+  else if (isDir) {
     items.push(["os", "📂 File manager (system)"]);
     if (ktPath()) items.push(["kaleidotron", "🌀 Kaleidotron"]);
     (S.folder_apps || []).forEach((a, i) => items.push([`dir:${i}`, a.name]));
@@ -1886,12 +1887,16 @@ function openMenu(x, y, target) {
     items.push(["os", "System default"]);
   }
   const m = document.createElement("div"); m.id = "openMenu"; m.setAttribute("role", "menu");
-  m.innerHTML = `<div class="om-h">${isDir ? "Open folder in" : "Open image in"}</div>`
-    + items.map(([k, n]) => `<button type="button" role="menuitem" data-open-app="${esc(k)}">${esc(n)}</button>`).join("")
-    + `<hr><button type="button" data-open-setup>🛠 Set up programs…</button>`;
+  m.innerHTML = (extras.length ? `<div class="om-h">Arrange</div>` + extras.map(([label], i) =>
+        `<button type="button" role="menuitem" data-extra="${i}">${esc(label)}</button>`).join("") + (target ? "<hr>" : "") : "")
+    + (target ? `<div class="om-h">${isDir ? "Open folder in" : "Open image in"}</div>`
+      + items.map(([k, n]) => `<button type="button" role="menuitem" data-open-app="${esc(k)}">${esc(n)}</button>`).join("")
+      + `<hr><button type="button" data-open-setup>🛠 Set up programs…</button>` : "");
   document.body.appendChild(m);
   m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
   m.addEventListener("click", e => {
+    const x = e.target.closest("[data-extra]");
+    if (x) { closeOpenMenu(); return extras[+x.dataset.extra][1](); }
     const b = e.target.closest("[data-open-app]");
     if (b) { closeOpenMenu(); openWith(b.dataset.openApp, target); }
     if (e.target.closest("[data-open-setup]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("setup"); }
@@ -1902,8 +1907,13 @@ function closeOpenMenu() { const m = $("openMenu"); if (m) m.remove(); }
 function initOpenWith() {
   document.addEventListener("contextmenu", e => {
     if (e.target.closest("#openMenu")) return e.preventDefault();
-    const t = imageTargetOf(e.target) || folderTargetOf(e.target); if (!t) return;
-    e.preventDefault(); hidePeek(); openMenu(e.clientX, e.clientY, t);
+    const extras = arrangeActions(e.target);
+    let t = imageTargetOf(e.target) || folderTargetOf(e.target);
+    const card = e.target.closest(".pcard[data-pid]");
+    if (card && !t) { const p = presetById(card.dataset.pid); if (p && p.image) t = { preset: p.id }; }   // anywhere on the card
+    if (!t && !extras.length) return;
+    if (e.target.closest("input, textarea, select")) return;        // keep the normal menu in text fields
+    e.preventDefault(); hidePeek(); openMenu(e.clientX, e.clientY, t, extras);
   });
   document.addEventListener("pointerdown", e => { if (!e.target.closest("#openMenu")) closeOpenMenu(); }, true);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeOpenMenu(); });
@@ -1912,6 +1922,56 @@ function initOpenWith() {
   $("lbOpenIn").onclick = e => lbItem && openMenu(...at(e.currentTarget), { src: { dir: lbItem.job.dir, file: lbItem.o.file } });
   $("peekDraw").onclick = e => { e.stopPropagation(); const t = peekTarget(); if (t) openWith("draw", t); };
   $("peekOpenIn").onclick = e => { e.stopPropagation(); const t = peekTarget(); if (t) openMenu(...at(e.currentTarget), t); };
+}
+
+
+// ---------------- move to top / bottom (presets, corkboard) + auto-scroll while dragging ----------------
+function arrangeActions(el) {
+  if (!el || !el.closest) return [];
+  const card = el.closest(".pcard[data-pid]");
+  if (card) {
+    const p = presetById(card.dataset.pid); if (!p) return [];
+    const where = p.folder ? ` of ${p.folder}` : "";
+    return [[`⤒ Move to top${where}`, () => presetMoveTo(p.id, "top")], [`⤓ Move to bottom${where}`, () => presetMoveTo(p.id, "bottom")]];
+  }
+  const ci = el.closest(".cork-item");
+  if (ci) return [["⤒ Move to top of the board", () => corkMoveTo(ci.dataset.cork, "top")],
+                  ["⤓ Move to bottom of the board", () => corkMoveTo(ci.dataset.cork, "bottom")]];
+  return [];
+}
+async function presetMoveTo(id, where) {
+  const p = presetById(id); if (!p) return;
+  const names = PRESETS.filter(x => x.folder === p.folder && x.id !== id).map(x => x.name);
+  where === "top" ? names.unshift(p.name) : names.push(p.name);
+  try { await api("/api/presets/order", { folder: p.folder, order: names }); } catch (e) { return showErr(e); }
+  await loadPresets($("presetSel").value);
+  const c = [...document.querySelectorAll(".pcard[data-pid]")].find(x => x.dataset.pid === id);   // show where it went
+  if (c) c.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+function corkMoveTo(file, where) {
+  const b = curBoard(), items = b.items.filter(f => f !== file);
+  where === "top" ? items.unshift(file) : items.push(file);
+  b.items = items; renderCork(); saveCorkLayout();
+  const c = [...document.querySelectorAll(".cork-item")].find(x => x.dataset.cork === file);
+  if (c) c.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+// dragging near the top/bottom edge of a scrolling list scrolls it (faster the closer you get)
+function scrollParentOf(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight + 2) return n;
+  }
+  return null;
+}
+function initDragScroll() {
+  document.addEventListener("dragover", e => {
+    const sc = scrollParentOf(e.target); if (!sc) return;
+    const r = sc.getBoundingClientRect(), edge = Math.min(90, r.height / 4);
+    let d = 0;
+    if (e.clientY < r.top + edge) d = -(r.top + edge - e.clientY);
+    else if (e.clientY > r.bottom - edge) d = e.clientY - (r.bottom - edge);
+    if (d) sc.scrollTop += Math.sign(d) * Math.min(40, 6 + Math.abs(d) * 0.5);
+  });
 }
 
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
@@ -3524,6 +3584,7 @@ async function init() {
   initPaneTools();
   initSetup();
   initOpenWith();
+  initDragScroll();
   initMoodBoard();
   $("openGallery").onclick = () => reveal("gallery");
 
