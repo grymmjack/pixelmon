@@ -70,6 +70,7 @@ label { display: block; font-size: 12px; color: var(--dim); margin: 6px 0 3px; }
 input[type=text], input[type=number], select, textarea {
   width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
 textarea { resize: vertical; min-height: 64px; }
+textarea.short { min-height: 34px; }        /* one line to start; drag the corner down for more */
 input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
@@ -706,7 +707,7 @@ fieldset.closed { padding-bottom: 2px; }
           </details></div>
         <div class="lab-col"><h3>2 · Steering</h3>
           <label>What is it? <span style="color:var(--dim)">(helps the model keep the subject)</span><i class="help" data-help="labsubject">i</i></label>
-          <input type="text" id="labSubject" placeholder="a dog sitting on grass">
+          <textarea id="labSubject" class="short" rows="1" placeholder="a dog sitting on grass"></textarea>
           <label>Keep the input's<i class="help" data-help="labmode">i</i></label>
           <select id="labMode"><option value="canny">shape — follow its outlines (most restyle)</option>
             <option value="tile">layout + colors — closer to the input</option></select>
@@ -731,7 +732,7 @@ fieldset.closed { padding-bottom: 2px; }
                 <option value="add">add…</option><option value="tweak">subtle tweak</option></select></div>
               <div><label>Strength <b id="editStrVal"></b></label><input type="range" id="editStrength" min="0.3" max="1" step="0.05"></div></div>
             <label id="editWhatLbl">What should be there?</label>
-            <input type="text" id="editWhat" placeholder="a red skull">
+            <textarea id="editWhat" class="short" rows="1" placeholder="a red skull"></textarea>
             <div class="hint" id="hEdit"></div>
             <div class="refine-note hidden" id="refineNote"></div>
             <button type="button" class="btn primary" id="editGo" style="width:100%">✏️ Apply edit</button>
@@ -2255,6 +2256,29 @@ function initLabZoom() {
   });
   initLabZoomFollow();
   labZoomUpdate();
+}
+
+
+// ---------------- every text box: drag its corner down for more room; the size is remembered ----------------
+function initTextareaSizes() {
+  const sizes = store.get("taSizes", {});
+  const all = () => [...document.querySelectorAll("textarea[id]")];
+  all().forEach(t => { if (sizes[t.id]) t.style.height = sizes[t.id] + "px"; });
+  if (!("ResizeObserver" in window)) return;
+  let timer = null;
+  const ro = new ResizeObserver(entries => {
+    for (const e of entries) {
+      const t = e.target, h = Math.round(t.getBoundingClientRect().height);
+      if (!h || !t.style.height) continue;          // hidden, or never resized by hand
+      sizes[t.id] = h;
+    }
+    clearTimeout(timer); timer = setTimeout(() => store.set("taSizes", sizes), 300);
+  });
+  // a hand-drag sets style.height; only then do we start remembering that box
+  all().forEach(t => {
+    ro.observe(t);
+    t.addEventListener("mouseup", () => { const h = Math.round(t.getBoundingClientRect().height); if (h && t.style.height) { sizes[t.id] = h; store.set("taSizes", sizes); } });
+  });
 }
 
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
@@ -3972,6 +3996,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initTextareaSizes();
   initLabZoom();
   initSliders();
   initGalleryTools();
