@@ -16,12 +16,15 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.4 system-ui, sans-serif; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { text-transform: uppercase; letter-spacing: .04em; }
-.app { display: grid; grid-template-columns: 420px 1fr; height: calc(100vh - 30px); }
-.app.cork-open { grid-template-columns: 420px 1fr 300px; }
+.app { display: grid; grid-template-columns: 420px minmax(0, 1fr); height: calc(100vh - 30px); }
+.app.cork-open { grid-template-columns: 420px minmax(0, 1fr) var(--cork-w, 300px); }
 @media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: 1fr; height: auto; } }
 
 /* ---- corkboard ---- */
-.cork { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.cork { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; position: relative; }
+.cork-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 4; }
+.cork-resize:hover, .cork-resize.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 5px, transparent 5px); }
+body.cork-dragging { cursor: col-resize; user-select: none; }
 .cork-head { display: flex; gap: 6px; align-items: center; padding: 10px 10px 6px; }
 .cork-head b { white-space: nowrap; } .cork-head select { flex: 1; min-width: 0; }
 .cork-actions { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
@@ -114,8 +117,9 @@ select.advset { border-color: var(--accent); }
 
 /* ---- results panel ---- */
 .main { display: flex; flex-direction: column; min-height: 0; }
-.tabs { display: flex; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); }
-.tab { padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
+.tabs { display: flex; gap: 2px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.tabs .btn { white-space: nowrap; flex-shrink: 0; }
+.tab { white-space: nowrap; flex-shrink: 0; padding: 7px 14px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; color: var(--dim); }
 .tab.on { background: var(--panel); border-color: var(--line); color: var(--text); }
 .pane { flex: 1; overflow-y: auto; padding: 14px; }
 .hidden { display: none !important; }
@@ -682,6 +686,7 @@ fieldset.closed { padding-bottom: 2px; }
   </div>
 
   <aside class="cork hidden" id="cork">
+    <div class="cork-resize" id="corkResize" title="drag to resize the corkboard · double-click to reset"></div>
     <div class="cork-head"><b>📌</b><select id="boardSel" title="board"></select>
       <button class="btn small" id="boardNew" title="new board">+</button></div>
     <div class="cork-actions">
@@ -1893,14 +1898,21 @@ function initGridOverlay() {
 
 // ---------------- hover peek: blown-up preview of a thumbnail ----------------
 let PEEK = { el: null, stack: [], idx: 0, zoom: 3, timer: null, hideTimer: null };
+const PEEK_SEL = ".thumb[data-file], .bthumb, .cork-item";
 function peekFind(item) {   // the on-screen thumbnail for a stack item
+  if (item.cork) return [...document.querySelectorAll(".cork-item")].find(x => x.dataset.cork === item.cork);
   return [...document.querySelectorAll(".thumb[data-file], .bthumb")]
     .find(x => x.dataset.job === item.job && x.dataset.file === item.file);
 }
+function corkStack() {   // the current board: renders keep their full preview; other images preview as plain pictures
+  const b = curBoard();
+  return b.items.map(f => { const hit = boardJobOf(f);
+    return hit ? { ...hit, cork: f } : { cork: f, board: b.name, src: `/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}` }; });
+}
 function showPeek(el) {
   const it = PEEK.stack[PEEK.idx] || {};
-  const job = JOBS[it.job] || GALLERY.find(j => j.id === it.job);
-  const o = job && job.outputs.find(x => x.file === it.file); if (!o) return;
+  const job = it.src ? null : JOBS[it.job] || GALLERY.find(j => j.id === it.job);
+  const o = job && job.outputs.find(x => x.file === it.file); if (!o && !it.src) return;
   document.querySelectorAll(".peeking").forEach(x => x.classList.remove("peeking"));
   if (el) (el.matches("img") ? el : el.querySelector("img") || el).classList.add("peeking");
   const pk = $("peek"), img = $("peekImg");
@@ -1911,7 +1923,7 @@ function showPeek(el) {
     img.style.width = img.naturalWidth * k + "px";
     drawGrid($("peekGrid"), img, k);
     $("peek").style.minWidth = Math.min(360, innerWidth - 16) + "px";   // room for the formula under small sprites
-    $("peekCap").textContent = `${job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
+    $("peekCap").textContent = `${it.src ? it.cork : job.label || `seed ${o.seed ?? "?"}`} · ${k}×${PEEK.stack.length > 1 ? ` · ${PEEK.idx + 1}/${PEEK.stack.length}` : ""}`;
     $("peekZooms").innerHTML = ["fit", 2, 3, 4].map(z => `<button class="btn small ${z == PEEK.zoom ? "on" : ""}" data-peekzoom="${z}">${z === "fit" ? "fit" : z + "×"}</button>`).join("");
     pk.classList.remove("hidden");
     // beside the thumbnail, on whichever side has more room, clamped to the viewport
@@ -1920,6 +1932,13 @@ function showPeek(el) {
     pk.style.left = left + "px";
     pk.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2)) + "px";
   };
+  $("peekFormula").hidden = !!it.src;          // a plain image (not one of our renders) has no formula
+  if (it.src) {
+    palFill($("peekPal"), "@board:" + it.board, it.cork, 64);
+    img.src = it.src;
+    if (img.complete && img.naturalWidth) img.onload();
+    return;
+  }
   const p = job.params, bits = [
     ["prompt", (p.form && p.form.subject) || p.prompt],
     ["LoRA", p.lora === "(none)" ? "none" : `${(p.lora || "default").replace(".safetensors", "")} @ ${p.lora_strength || 1}`],
@@ -1952,18 +1971,23 @@ function initPeek() {
   document.addEventListener("mouseover", e => {
     if (!$("lb").classList.contains("hidden")) return;
     if (e.target.closest("#peek")) { clearTimeout(PEEK.hideTimer); return; }
-    const th = e.target.closest(".thumb[data-file], .bthumb");
-    if (!th || e.target.closest(".evo-btn")) return;
+    const th = e.target.closest(PEEK_SEL);
+    if (!th || e.target.closest(".evo-btn, [data-cork-x]")) return;
     clearTimeout(PEEK.hideTimer); clearTimeout(PEEK.timer);
     PEEK.timer = setTimeout(() => {
-      PEEK.el = th; PEEK.stack = stackOf(th);
-      PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.job === th.dataset.job && x.file === th.dataset.file));
+      PEEK.el = th;
+      if (th.matches(".cork-item")) {
+        PEEK.stack = corkStack(); PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.cork === th.dataset.cork));
+      } else {
+        PEEK.stack = stackOf(th);
+        PEEK.idx = Math.max(0, PEEK.stack.findIndex(x => x.job === th.dataset.job && x.file === th.dataset.file));
+      }
       showPeek(th);
     }, 280);
   });
   document.addEventListener("mouseout", e => {
-    const from = e.target.closest(".thumb[data-file], .bthumb, #peek"); if (!from) return;
-    const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".thumb[data-file], .bthumb, #peek");
+    const from = e.target.closest(PEEK_SEL + ", #peek"); if (!from) return;
+    const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(PEEK_SEL + ", #peek");
     if (to) return;
     clearTimeout(PEEK.timer); PEEK.hideTimer = setTimeout(hidePeek, 220);   // grace period to reach the peek
   });
@@ -1973,7 +1997,9 @@ function initPeek() {
     if (e.target.closest("#peekFormula, .gpl")) return;   // twirl / select / copy / GPL — not "open the lightbox"
     const z = e.target.closest("[data-peekzoom]");
     if (z) { PEEK.zoom = z.dataset.peekzoom === "fit" ? "fit" : +z.dataset.peekzoom; store.set("peekZoom", PEEK.zoom); return showPeek(PEEK.el); }
-    const it = PEEK.stack[PEEK.idx]; hidePeek(); if (it) openLb(it.job, it.file, PEEK.stack);
+    const it = PEEK.stack[PEEK.idx]; hidePeek(); if (!it) return;
+    if (it.src) return window.open(it.src, "_blank");
+    openLb(it.job, it.file, PEEK.stack.filter(x => !x.src));
   });
   document.addEventListener("keydown", e => {
     if ($("peek").classList.contains("hidden") || !$("lb").classList.contains("hidden")) return;
@@ -1988,7 +2014,7 @@ function initPeek() {
     }
   });
   // clicking a thumbnail opens the lightbox — drop the peek first
-  document.addEventListener("click", e => { if (e.target.closest(".thumb[data-file], .bthumb")) hidePeek(); }, true);
+  document.addEventListener("click", e => { if (e.target.closest(PEEK_SEL)) hidePeek(); }, true);
 }
 
 // ---------------- corkboard: collect images into board folders ----------------
@@ -2013,7 +2039,7 @@ function renderCork() {
   const b = curBoard();
   $("corkN").textContent = b.items.length ? `(${b.items.length})` : "";
   $("corkBody").innerHTML = (b.items.length ? `<div class="cork-grid">${b.items.map(f =>
-      `<div class="cork-item" data-cork="${esc(f)}" title="${esc(f)}"><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
+      `<div class="cork-item" data-cork="${esc(f)}"><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
         <button class="x" data-cork-x="${esc(f)}" title="remove from board (deletes only the board's copy)">×</button></div>`).join("")}</div>` : "")
     + `<div class="cork-hint" style="margin-top:${b.items.length ? 10 : 0}px">Drag images here — renders, gallery, steering refs, the lightbox, or files from your desktop.</div>`;
   store.set("corkOpen", CORK.open); store.set("corkBoard", CORK.board);
@@ -2062,6 +2088,21 @@ function initCork() {
     window.open(`/boards/${encodeURIComponent(CORK.board)}/${encodeURIComponent(it.dataset.cork)}`, "_blank");
   });
   $("corkToggle").onclick = () => { CORK.open = !CORK.open; renderCork(); if (CORK.open) loadBoards(); };
+  // drag the corkboard's left edge to make it wider / narrower (remembered); double-click resets
+  const setCorkW = w => { $("app").style.setProperty("--cork-w", w + "px"); };
+  const clampW = w => Math.round(Math.max(180, Math.min(w, innerWidth - 420 - 480)));   // keep ≥480px for the middle
+  setCorkW(clampW(store.get("corkW", 300)));
+  $("corkResize").addEventListener("pointerdown", e => {
+    e.preventDefault(); const h = e.currentTarget; h.setPointerCapture(e.pointerId);
+    h.classList.add("drag"); document.body.classList.add("cork-dragging");
+    const right = $("app").getBoundingClientRect().right;
+    const move = ev => setCorkW(clampW(right - ev.clientX));
+    const up = ev => { h.releasePointerCapture(e.pointerId); h.classList.remove("drag"); document.body.classList.remove("cork-dragging");
+      h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up);
+      store.set("corkW", clampW(right - ev.clientX)); };
+    h.addEventListener("pointermove", move); h.addEventListener("pointerup", up);
+  });
+  $("corkResize").addEventListener("dblclick", () => { store.set("corkW", 300); setCorkW(300); });
   $("boardSel").onchange = e => { CORK.board = e.target.value; renderCork(); };
   $("boardNew").onclick = async () => {
     const name = prompt("New board name:"); if (!name) return;

@@ -1199,10 +1199,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
             d, f = q.get("dir", [""])[0], q.get("file", [""])[0]
-            if d == "@presets":                     # a preset's sample picture (preset cards)
-                path = os.path.realpath(os.path.join(PRESETS, f))
-                if not path.startswith(os.path.realpath(PRESETS) + os.sep) or not os.path.isfile(path):
-                    return self._json({"error": "preset image not found"}, 404)
+            if d == "@presets" or d.startswith("@board:"):   # a preset's sample picture / a corkboard image
+                root = PRESETS if d == "@presets" else os.path.join(BOARDS, safe_name(d[len("@board:"):]))
+                path = os.path.realpath(os.path.join(root, f))
+                if not path.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(path):
+                    return self._json({"error": "image not found"}, 404)
             else:
                 try:
                     path = self.jobs.gallery_path({"dir": d, "file": f})
