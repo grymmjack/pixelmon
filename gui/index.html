@@ -195,6 +195,8 @@ select.advset { border-color: var(--accent); }
   font: 11px var(--mono); background: var(--panel2); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
 .cap { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumbpick { display: inline-flex; gap: 5px; align-items: center; margin: 3px 0 0; font: 11px var(--mono); color: var(--dim); cursor: pointer; }
+.thumbpick:has(input:checked) { color: var(--accent); }
 .empty { color: var(--dim); text-align: center; padding: 60px 0; }
 
 /* ---- style samples ---- */
@@ -2331,6 +2333,18 @@ function initBrushCursor() {
   ["maskPaint", "maskErase", "maskBtn"].forEach(id => $(id).addEventListener("click", () => { cur.classList.toggle("erase", !!maskErase); if (!maskEdit) cur.style.display = "none"; }));
 }
 
+
+// ☑ use as thumbnail (LAB results): one at a time; SAVE LAB PRESET takes it
+function initThumbPick() {
+  document.addEventListener("click", e => { if (e.target.closest(".thumbpick")) e.stopPropagation(); }, true);   // not the lightbox
+  document.addEventListener("change", e => {
+    const c = e.target.closest("[data-thumbpick-dir]"); if (!c) return;
+    LABS.thumb = c.checked ? { dir: c.dataset.thumbpickDir, file: c.dataset.thumbpickFile } : null;
+    document.querySelectorAll("[data-thumbpick-dir]").forEach(x => { if (x !== c) x.checked = false; });
+    store.set("lab", LABS);
+  });
+}
+
 // ---------------- per-tab clear / reset buttons, gallery backup, the ⚡ reset-everything ----------------
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
@@ -3753,7 +3767,7 @@ async function labLayered(f) {
   ok(`${f.name}: ${I.art_layer ? `art from layer “${I.art_layer}”` : "art = all visible layers"}${I.mask_layer ? `, mask from layer “${I.mask_layer}”` :
      " — no layer named “mask”, so no mask (layers: " + (I.layers || []).join(", ") + ")"}`);
 }
-async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.refine = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.refine = null; LABS.thumb = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
   const subject = (LABS.subject || "the subject").trim();
@@ -3852,7 +3866,8 @@ function initLab() {
   $("labSave").onclick = () => {
     const jobs = Object.values(JOBS).filter(j => j.group === LABS.group && j.outputs.length).sort((a, b) => b.created - a.created);
     const pj = LABS.prevJob && JOBS[LABS.prevJob];
-    const img = jobs.length ? { dir: jobs[0].dir, file: jobs[0].outputs[0].file }
+    const img = LABS.thumb ? { ...LABS.thumb }                      // ☑ use as thumbnail wins
+              : jobs.length ? { dir: jobs[0].dir, file: jobs[0].outputs[0].file }
               : pj && pj.outputs.length ? { dir: pj.dir, file: pj.outputs[0].file } : null;
     savePreset(snapshot(true), `lab-${(LABS.subject || "preset").slice(0, 24)}`, img);
   };
@@ -3930,7 +3945,10 @@ function thumbHtml(job, o, scale, caption) {
     <button class="evo-btn" data-evo-job="${job.id}" data-evo-file="${esc(o.file)}" title="evolve: breed children from this">🧬</button>
     ${job.params && (job.params.inpaint || job.params.control) ? `<button class="evo-btn refine-btn" data-refine-job="${job.id}" data-refine-file="${esc(o.file)}"
       title="🎯 refine: make this the LAB input and edit it again — each round stays closer to it">🎯</button>` : ""}
-    <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div></div>`;
+    <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div>
+    ${job.params && (job.params.inpaint || job.params.control) && !job.params.preview ? `<label class="thumbpick" title="SAVE LAB PRESET uses this picture as the preset's thumbnail">
+      <input type="checkbox" data-thumbpick-dir="${esc(job.dir)}" data-thumbpick-file="${esc(o.file)}"
+        ${LABS.thumb && LABS.thumb.dir === job.dir && LABS.thumb.file === o.file ? "checked" : ""}> use as thumbnail</label>` : ""}</div>`;
 }
 // placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
 function tileSize(job) {
@@ -4138,6 +4156,7 @@ async function init() {
   initPresets();
   initBatch();
   initPaneTools();
+  initThumbPick();
   initBrushCursor();
   initTextareaSizes();
   initLabZoom();
