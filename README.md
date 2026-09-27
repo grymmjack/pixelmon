@@ -291,7 +291,9 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
-| `--out N\|WxH` | exact final canvas size (sampling still follows `--size`, which defaults to `--out`); also forces the size with `--snap-pixels` | `--size` |
+| `--out N\|WxH` | exact final canvas size, up to 4096 (sampling still follows `--size`, which defaults to `--out`); also forces the size with `--snap-pixels`. Pixel art past 1024 is made at 1/2–1/16 of the size and enlarged by exactly that factor (crisp square pixels) | `--size` |
+| `--art` | digital art instead of pixel art — see [Art mode](#art-mode---art) | off |
+| `--palette-strength F` | with `--art` and a `--palette`: how far colors move toward the palette, 0–1 (1 = exact palette colors) | `0.6` |
 | `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (picks its own grid; add `--out` for an exact size) | off |
 | `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
@@ -391,6 +393,25 @@ Knobs: `--anim-fps` (speed), `--anim-hold`, `--anim-frames`, `--anim-denoise`,
 > often misread. For production sprites, render a **static** image and hand-animate
 > it. Fully opt-in: nothing runs unless you pass `--animate`.
 
+### Art mode (`--art`)
+
+A full-resolution painting instead of pixel art: no pixel LoRA, no pixelation.
+
+```bash
+pixelmon "a spaceship above a ringed planet" --art --out 1024x576
+pixelmon "…" --art --out 256x224 --palette PINEAPPLE-32 --palette-strength 0.6     # tinted by a palette
+pixelmon "…" --art --out 3840x2160 --palette 1BIT --palette-strength 1 --dither bayer8   # dithered 4K wallpaper
+```
+
+- **Size:** SDXL paints at 1024 on the long side. A smaller `--out` is a smooth resize of that
+  picture (SDXL can't draw at 256 px — it makes abstract blobs); a bigger one (wallpapers up to
+  4096) is painted at about 1 megapixel in that shape and resized up, so it's a little soft.
+- **Palette:** `--palette` pulls every color toward its nearest palette color without pixelating.
+  `--palette-strength` 0.4–0.7 keeps smooth shading in the palette's colors; `1` = only exact
+  palette colors, a posterized painting you can open in DRAW with the palette.
+- **Dither:** `--dither` / `--dither-amount` work with the palette too (strongest at strength 1):
+  bayer is instant, error diffusion takes ~7 s per megapixel.
+
 ### Batches & organizing output
 
 By default files stay in `~/ComfyUI/output/pixelmon/`. To organize a run into a
@@ -437,6 +458,10 @@ machine, port 8188). Type a `servers.json` name, `host`, `host:port` or URL, and
 whether it answers. A comma list (`gpubox,local`) spreads batches across several. The choice is
 saved in `gui-setup.json`; `--server` or `PIXELMON_SERVER` override it for one run.
 
+If the render server stops answering, the center pane blacks out with a notice (check now /
+setup / hide) and clears by itself when it's back; a `local` ComfyUI that isn't running yet
+just starts with your first render.
+
 **📖 DOCS** (top of the form) opens the [settings atlas](docs/settings-atlas.html):
 every GUI control, CLI flag and ComfyUI node input with its range, default and an
 example, plus a picture-by-picture walkthrough of how a render is built. The GUI also
@@ -449,9 +474,13 @@ serves it locally at `/docs/settings-atlas.html`.
   🕘 recalls old ones. Weighting like `(castle:1.3)` works in both prompts (see the ⓘ).
 - **Setup check:** a yellow box warns when settings fight each other (a style that bans
   a word in your subject, outlines too thick for a small sprite…) with one-click fixes.
-- **Canvas / palette / dither:** exact output size, pixel size (1×1, 2×1 wide pixels…),
-  palette with swatches, dither method + amount, despeckle, 1-px outlines, pixel-art
-  angles with DRAW's grids (pixel, square, diagonal, isometric, hex, triangle).
+- **Canvas / palette / dither:** exact output size from grouped presets — DOS screens,
+  text-mode grids, squares, **retro computers** (Apple II, C64, ZX Spectrum, Amiga,
+  Atari 400/800; `@` presets also set the machine's pixel shape, like C64 multicolor's 2×1)
+  and **wallpapers & displays** up to 4K — pixel size (1×1, 2×1 wide pixels…), palette with
+  swatches, dither method + amount, despeckle, 1-px outlines, pixel-art angles with DRAW's
+  grids (pixel, square, diagonal, isometric, hex, triangle). In **art mode** the palette,
+  **Palette strength** and dither tint the painting instead.
 - **Seed & batch:** lock / reroll seeds, `-n` counts, steps / CFG / sampler / scheduler /
   checkpoint, and **sweeps**: the same seed across several values of one setting, side by side.
 
@@ -465,7 +494,13 @@ serves it locally at `/docs/settings-atlas.html`.
   whole folder exports/imports as a `.zip`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
   adjust the source first (brightness, contrast, posterize, crop…), and **edit** part of an
-  image by painting a mask or selecting by words (inpainting).
+  image (inpainting): paint the mask with brush / line / rectangle / ellipse / polygon tools
+  (undo, brush-shaped cursor), select by words, or load a layered `.draw` / `.ora` / `.psd`
+  whose `mask` layer is the mask and `art` layer the input. Edits can keep the picture's
+  colors, light & shadow, and shape; the edit box shows (and picks) which model draws the
+  edit — the SDXL inpainting model or your checkpoint. **🎯 Refine** makes a result the new
+  target, a docked **zoom loupe** (300 / 200 / 50 / 33 / 10 %) follows your pointer, and
+  **use as thumbnail** picks the saved preset's picture.
 - **Steering:** push renders toward reference images (IPAdapter), with strength, weight
   type and a start/end window.
 - **Batch:** a list of prompts (`path | style | size | prompt`) queued in one go.
@@ -533,6 +568,7 @@ OPTIONS
   --size N|WxH        square N, or non-square WxH e.g. 32x48  [128]
   --out N|WxH         exact final canvas size (default: --size); also with --snap-pixels
   --art               DIGITAL ART (not pixels): full-res illustration, no downscale  [1024]
+  --palette-strength F --art + --palette: pull colors toward the palette, 1 = exact (+ --dither)  [0.6]
   --palette NAME      none / random / a name (--list-palettes)  [none]
   --style NAMES       append proven style guide(s) — see --list-styles
   --transparent       cut out background -> transparent PNG
@@ -577,6 +613,7 @@ ADVANCED
   --init IMG          img2img: start from an image (keeps its composition)
   --control IMG       ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)
   --canny-low/--canny-high F canny edge thresholds (lower = more edges)  [0.3 / 0.7]
+  --inpaint-model FILE with --mask: an SDXL inpainting UNet (models/unet/) — paints new things far better
   --mask IMG          inpaint with --init: redraw only the mask's white area
   --denoise F         with --init: how much to change, 0..1  [0.6]
   --steer-strength N  how strongly the refs influence the result  [0.7]

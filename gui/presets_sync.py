@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_PRESETS = os.path.join(REPO, "presets")
@@ -36,9 +37,22 @@ def export(folders):
         if not os.path.isdir(src):
             print(f"  ✗ no preset folder “{folder}”"); continue
         dst = os.path.join(REPO_PRESETS, folder)
-        shutil.rmtree(dst, ignore_errors=True)            # the repo copy mirrors the gallery folder exactly
+        # the repo copy mirrors the gallery folder exactly — except an image a preset still uses that's gone
+        # from this machine (a steering ref deleted since): the previously exported copy is kept, not lost
+        old = tempfile.mkdtemp(prefix="pm-presets-")
+        if os.path.isdir(os.path.join(dst, "_assets")):
+            shutil.copytree(os.path.join(dst, "_assets"), os.path.join(old, "_assets"))
+        shutil.rmtree(dst, ignore_errors=True)
         os.makedirs(dst)
-        missing = []
+        missing, kept = [], []
+
+        def keep_old(rel):
+            src_old = os.path.join(old, rel)
+            if os.path.isfile(src_old):
+                os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
+                shutil.copy2(src_old, os.path.join(dst, rel))
+                return True
+            return False
         for name in _presets(src):
             with open(os.path.join(src, name + ".json"), encoding="utf-8") as fh:
                 rec = json.load(fh)
@@ -53,6 +67,8 @@ def export(folders):
                 if os.path.isfile(f):
                     os.makedirs(os.path.join(dst, "_assets", "steering", os.path.dirname(ref)), exist_ok=True)
                     shutil.copy2(f, os.path.join(dst, "_assets", "steering", ref))
+                elif keep_old(os.path.join("_assets", "steering", ref)):
+                    kept.append(f"{name}: steering ref {ref}")
                 else:
                     missing.append(f"{name}: steering ref {ref}")
             lab = (snap.get("lab") or {}).get("file")
@@ -61,6 +77,8 @@ def export(folders):
                 if os.path.isfile(f):
                     os.makedirs(os.path.join(dst, "_assets", "lab-input"), exist_ok=True)
                     shutil.copy2(f, os.path.join(dst, "_assets", "lab-input", os.path.basename(lab)))
+                elif keep_old(os.path.join("_assets", "lab-input", os.path.basename(lab))):
+                    kept.append(f"{name}: LAB input {lab}")
                 else:
                     missing.append(f"{name}: LAB input {lab}")
             if (snap.get("evo") or {}).get("parent"):
@@ -70,12 +88,15 @@ def export(folders):
         order = os.path.join(src, ".order.json")
         if os.path.isfile(order):
             shutil.copy2(order, os.path.join(dst, ".order.json"))
+        shutil.rmtree(old, ignore_errors=True)
         if not _presets(dst):                              # nothing to ship
             shutil.rmtree(dst)
             print(f"  – {folder}: empty, skipped")
             continue
         n_assets = sum(len(fs) for _, _, fs in os.walk(os.path.join(dst, "_assets")))
         print(f"  ✓ {folder}: {len(_presets(dst))} presets, {n_assets} referenced images")
+        for m in kept:
+            print(f"    · kept the repo's copy of {m} (gone from this machine)")
         for m in missing:
             print(f"    ! missing {m}")
 
