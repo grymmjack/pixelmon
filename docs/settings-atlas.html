@@ -379,9 +379,9 @@ const S = [
   ["Skip existing", [G], { gui: "skip existing" }, "on / off", "on", "—", "Doesn't re-render rows whose output already exists."],
   ["Batch subjects", [C], { cli: "--batch \"a,b,c\"" }, "comma list", "—", "<code>--batch \"bat,skeleton\" -n 4</code>", "Round-robin subjects, N of each, a folder each."],
   ["Output folders", [C], { cli: "--output-to DIR · --move-to-dirs · --create-dirs · --no-subdirs · --name" }, "paths", "~/ComfyUI/output/pixelmon/", "<code>--output-to out --create-dirs</code>", "Where files go and how they're named."],
-  ["Sweep", [G], { gui: "sweep: field + values" },
-   "LoRA strength, dither method, dither amount, palette, LoRA, style guides, steps, CFG, despeckle, output size, steering strength, steering end, steering start, pixel-art angles, grid, pixel size, 1-px outlines", "—", "<code>LoRA strength: 0.6, 0.8, 1.0</code>",
-   "Renders the same seed across several values of one setting, side by side."],
+  ["Sweep", [G], { gui: "sweep: setting + values (tick them, or type) · sweep samplers / schedulers / checkpoints buttons" },
+   "sampler, scheduler, checkpoint, LoRA strength, dither method, dither amount, palette, LoRA, style guides, steps, CFG, despeckle, output size, steering strength, steering end, steering start, pixel-art angles, grid, pixel size, 1-px outlines; up to 64 renders", "—", "<code>LoRA strength: 0.6, 0.8, 1.0</code> · one click: every sampler",
+   "Renders the same seed across several values of one setting, side by side. Settings with a fixed list show every option to tick (with all / none), so nothing has to be typed. The sweep samplers / schedulers / checkpoints buttons (in the Sampler section and the Sweep box) render one of each the server has."],
  ]},
  { id: "anim", title: "Animation", note: "CLI only, experimental. Looping portrait gestures as a GIF.", rows: [
   ["Gesture", [G, C], { gui: "⚙ Advanced › Gesture", cli: "--animate GESTURE" }, "blink · talk · glow · smoke · breathe, or free text", "—", "<code>--animate \"smoke from cigar\"</code>", "What moves."],

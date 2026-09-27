@@ -2102,7 +2102,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/sweep":
                 # same settings + one fixed seed, varying a single field across values
                 base, field, values = body.get("params") or {}, body.get("field"), body.get("values") or []
-                if field not in ("lora_strength", "dither", "dither_amount", "palette", "styles", "lora",
+                if field not in ("sampler", "scheduler", "base", "lora_strength", "dither", "dither_amount", "palette", "styles", "lora",
                                  "steps", "cfg", "despeckle", "out", "steer_strength",
                                  "steer_start", "steer_end", "pixel_angles", "angle_grid", "pixel_size", "thin_lines"):
                     raise ValueError(f"can't sweep {field!r}")
@@ -2113,10 +2113,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     base["seed"] = random.randint(0, 2**31 - 1)
                 base["n"] = 1
                 group = f"sweep-{int(time.time())}"
-                for v in values[:24]:
+                for v in values[:64]:
                     p = dict(base)
-                    p[field] = [s for s in str(v).split("+") if s] if field == "styles" else v
-                    self.jobs.add(p, group=group, label=f"{field}={v}")
+                    if field in ("sampler", "scheduler", "base"):          # Advanced settings: one override per render
+                        p["adv"] = {**(p.get("adv") or {}), field: v}
+                        label = f"{'checkpoint' if field == 'base' else field}={str(v).replace('.safetensors', '')}"
+                    else:
+                        p[field] = [s for s in str(v).split("+") if s] if field == "styles" else v
+                        label = f"{field}={v}"
+                    self.jobs.add(p, group=group, label=label)
                 return self._json({"group": group, "seed": base["seed"]})
             if u.path == "/api/batch/read":
                 f = home_path(body.get("path"))
