@@ -686,7 +686,9 @@ def stitch_inpaint(a, sprite):
     ow, oh = st["out"]
     fw, fh = st["src"]
     x0, y0, cw, ch = st["box"]
-    full = Image.open(os.path.expanduser(st["init"])).convert(mode).resize((ow, oh), Image.NEAREST)
+    full = Image.open(os.path.expanduser(st["init"])).convert(mode)
+    if full.size != (ow, oh):
+        full = full.resize((ow, oh), Image.LANCZOS if a.art else Image.NEAREST)
     px, py = round(x0 * ow / fw), round(y0 * oh / fh)
     full.paste(part.convert(mode), (px, py))
     full.save(sprite)
@@ -1385,7 +1387,7 @@ def main():
     # continues the surroundings. Cut out the mask's neighbourhood (with context), render THAT at full
     # size — the edit gets real detail and follows the prompt — and paste it back afterwards.
     a._stitch = None
-    if a.mask and a.init and a.inpaint_crop and not a.art:
+    if a.mask and a.init and a.inpaint_crop:     # art mode too: it renders at full size now, so the crop works there
         a._stitch = prepare_inpaint_crop(a, _r64)
 
     # Animation mode is its own pipeline (base -> mask -> inpaint frames -> GIF).
