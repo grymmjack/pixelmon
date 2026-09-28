@@ -491,7 +491,8 @@ fieldset.closed { padding-bottom: 2px; }
 .maskcolor input[type=color] { width: 28px; height: 22px; padding: 0; border: 0; background: none; }
 .maskcolor select { width: auto; padding: 2px 4px; font-size: 12px; } .maskcolor input[type=range] { width: 80px; }
 .maskcolor.off { opacity: .45; }
-.cropwrap.picking, .cropwrap.picking * { cursor: crosshair !important; } #labDrop .cropwrap.picking #brushCur { display: none; }
+.cropwrap.picking, .cropwrap.picking * { cursor: crosshair !important; }
+.cropwrap .selbox { position: absolute; pointer-events: none; border: 1px dashed #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.7); z-index: 3; } #labDrop .cropwrap.picking #brushCur { display: none; }
 .cropwrap canvas.sketchc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 #brushCur.color { border-style: solid; }
 .editrough { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
@@ -827,6 +828,8 @@ fieldset.closed { padding-bottom: 2px; }
               <button type="button" class="btn small" data-mtool="rect" title="filled rectangle (R) · shift = square">▭</button>
               <button type="button" class="btn small" data-mtool="ellipse" title="filled ellipse (O) · shift = circle">◯</button>
               <button type="button" class="btn small" data-mtool="poly" title="filled polygon (G): click points, double-click / Enter / click the first point to close · Esc cancels">⬠</button>
+              <button type="button" class="btn small" data-mtool="select" title="select (M): drag a box · drag inside it or use the arrow keys to move what's in it (shift = 10 px) · Delete clears it · Esc puts it back / deselects · Ctrl+A = everything">⬚</button>
+              <button type="button" class="btn small" data-mtool="move" title="move (V): drag to move the selection — or everything you've drawn when nothing is selected · arrow keys too">✥</button>
               <button type="button" class="btn small" id="maskUndo" title="undo (Ctrl+Z)">↶</button></span>
             size <input type="range" id="maskSize" min="2" max="200" step="1"><b id="maskSizeVal"></b>
             <button type="button" class="btn small" id="maskInvert">invert</button>
@@ -4298,12 +4301,79 @@ function initMask() {
   };
   const finish = () => { if (colorOn()) commitStroke(); else { maskSave(); if (maskErase) sketchSave(); } };
   const polyClose = () => { if (poly.length >= 3) { polyDraw(true); finish(); } else restore(); poly = []; polyHover = null; snap = null; drawMaskOverlay(); };
-  const setTool = t => { if (poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); } tool = t; store.set("maskTool", t);
+  let selHook = null;                         // set below: leaving select / move drops the selection
+  const setTool = t => { if (poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); } if (selHook) selHook(t); tool = t; store.set("maskTool", t);
     document.querySelectorAll("[data-mtool]").forEach(b => b.classList.toggle("on", b.dataset.mtool === t)); };
   setTool(tool);
   $("maskToolset").addEventListener("click", e => { const b = e.target.closest("[data-mtool]"); if (b) setTool(b.dataset.mtool); });
+  // ---- ⬚ select + ✥ move: lift what's in the box off both layers (mask + colors) as a floating piece, move it
+  // (drag / arrow keys) over anything without picking it up, and leave it where it lands
+  let sel = null, marquee = null, fl = null, dragMove = null, saveT = null;
+  const selBox = () => {
+    const wrap = drop.querySelector(".cropwrap"); if (!wrap) return;
+    let b = wrap.querySelector(".selbox");
+    if (!sel || !maskCanvas.width) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement("div"); b.className = "selbox"; wrap.appendChild(b); }
+    const W = maskCanvas.width, H = maskCanvas.height;
+    Object.assign(b.style, { left: sel.x / W * 100 + "%", top: sel.y / H * 100 + "%", width: sel.w / W * 100 + "%", height: sel.h / H * 100 + "%" });
+  };
+  const norm = (a, b) => { const x = Math.round(Math.min(a.x, b.x)), y = Math.round(Math.min(a.y, b.y));
+    return { x, y, w: Math.round(Math.max(a.x, b.x)) - x, h: Math.round(Math.max(a.y, b.y)) - y }; };
+  const inSel = p => sel && p.x >= sel.x && p.x < sel.x + sel.w && p.y >= sel.y && p.y < sel.y + sel.h;
+  const saveSoon = () => { clearTimeout(saveT); saveT = setTimeout(() => { maskSave(); sketchSave(); }, 250); };
+  const lift = () => {
+    if (fl || !sel) return;
+    ensureLayers(); pushUndo();
+    const before = grab();
+    const cut = src => { const c = document.createElement("canvas"); c.width = Math.max(1, sel.w); c.height = Math.max(1, sel.h);
+      if (src.width) c.getContext("2d").drawImage(src, sel.x, sel.y, sel.w, sel.h, 0, 0, sel.w, sel.h); return c; };
+    const m = cut(maskCanvas), sk = cut(sketchCanvas);
+    g().clearRect(sel.x, sel.y, sel.w, sel.h); sketchCanvas.getContext("2d").clearRect(sel.x, sel.y, sel.w, sel.h);
+    fl = { m, sk, base: grab(), before };
+  };
+  const placeFloat = () => {
+    if (!fl) return;
+    put(fl.base); g().drawImage(fl.m, sel.x, sel.y); sketchCanvas.getContext("2d").drawImage(fl.sk, sel.x, sel.y);
+    drawMaskOverlay(); selBox();
+  };
+  const nudge = (dx, dy) => { if (!sel) return; lift(); sel.x += dx; sel.y += dy; placeFloat(); saveSoon(); };
+  const dropFloat = () => { if (!fl) return; fl = null; clearTimeout(saveT); maskSave(); sketchSave(); };
+  const deselect = () => { dropFloat(); sel = null; selBox(); };
+  const selectAll = () => { dropFloat(); if (!maskCanvas.width) return; sel = { x: 0, y: 0, w: maskCanvas.width, h: maskCanvas.height }; selBox(); };
+  selHook = t => { if (!["select", "move"].includes(t)) deselect(); };
+  const selPointerDown = (e, p) => {         // true = handled
+    if (tool !== "select" && tool !== "move") return false;
+    drop.setPointerCapture(e.pointerId);
+    if (sel && sel.auto && tool === "select") deselect();           // the move tool's everything-selection isn't a real one
+    if (tool === "move" && !sel) { selectAll(); sel.auto = true; }   // nothing selected: move everything, just for this drag
+    if (tool === "move" || inSel(p)) { lift(); dragMove = { p0: p, x0: sel.x, y0: sel.y }; return true; }
+    dropFloat(); sel = null; marquee = p; selBox(); return true;
+  };
+  const selPointerMove = e => {
+    if (dragMove) { const p = at(e); sel.x = dragMove.x0 + Math.round(p.x - dragMove.p0.x); sel.y = dragMove.y0 + Math.round(p.y - dragMove.p0.y); placeFloat(); return true; }
+    if (marquee) { sel = norm(marquee, at(e)); selBox(); return true; }
+    return false;
+  };
+  const selPointerUp = () => {
+    if (dragMove) { dragMove = null; clearTimeout(saveT); maskSave(); sketchSave(); if (sel && sel.auto) deselect(); return true; }
+    if (marquee) { marquee = null; if (!sel || sel.w < 2 || sel.h < 2) sel = null; selBox(); return true; }
+    return false;
+  };
+  const selKey = e => {                        // arrows / Delete / Esc / Ctrl+A — true = handled
+    const k = e.key;
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "a") { e.preventDefault(); if (!["select", "move"].includes(tool)) setTool("select"); selectAll(); return true; }
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+    if (!sel && d && tool === "move") { selectAll(); if (sel) sel.auto = true; }   // move tool, nothing selected: arrows move everything
+    if (!sel) return false;
+    if (d) { e.preventDefault(); const st = e.shiftKey ? 10 : 1; nudge(d[0] * st, d[1] * st); return true; }
+    if (k === "Delete" || k === "Backspace") { e.preventDefault(); lift(); put(fl.base); fl = null; drawMaskOverlay(); maskSave(); sketchSave(); return true; }
+    if (k === "Escape") { e.preventDefault(); if (fl) { put(fl.before); fl = null; undo.pop(); drawMaskOverlay(); maskSave(); sketchSave(); } sel = null; selBox(); return true; }
+    if (k === "Enter") { e.preventDefault(); deselect(); return true; }
+    return false;
+  };
   $("maskUndo").onclick = () => { if (poly.length) { restore(); poly = []; snap = null; strokeLive = false; drawMaskOverlay(); return; }
-    const d = undo.pop(); if (d) { put(d); drawMaskOverlay(); maskSave(); sketchSave(); } };
+    fl = null; dragMove = null; sel = null;               // undo also drops the selection (it may point at nothing now)
+    const d = undo.pop(); if (d) { put(d); drawMaskOverlay(); maskSave(); sketchSave(); } selBox(); };
   drop.addEventListener("pointerdown", e => {
     if (e.button === 0 && e.target.closest(".cropwrap") && (PICK || (maskEdit && e.altKey))) {   // 💧 sample the picture
       e.preventDefault(); e.stopImmediatePropagation();
@@ -4315,6 +4385,7 @@ function initMask() {
     if (!maskEdit || !e.target.closest(".cropwrap") || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const p = at(e);
+    if (selPointerDown(e, p)) return;
     if (tool === "poly") {
       if (!poly.length) { pushUndo(); snap = grab(); }
       const f = poly[0];
@@ -4327,12 +4398,14 @@ function initMask() {
     start = p; snap = grab();
   });
   drop.addEventListener("pointermove", e => {
+    if (maskEdit && selPointerMove(e)) return;
     if (tool === "poly" && poly.length && maskEdit) { polyHover = at(e); return polyDraw(false); }
     if (!painting) return;
     if (tool === "brush") return stroke(at(e));
     restore(); shape(start, at(e), e.shiftKey); drawMaskOverlay();
   });
   drop.addEventListener("pointerup", e => {
+    if (selPointerUp()) return;
     if (!painting) return;
     painting = false; last = null;
     if (tool !== "brush" && start) { restore(); shape(start, at(e), e.shiftKey); drawMaskOverlay(); start = null; snap = null; }
@@ -4343,6 +4416,7 @@ function initMask() {
     if (!LABS.file) return;
     if (!maskEdit && cropEdit) { cropEdit = false; }
     maskEdit = !maskEdit;
+    if (!maskEdit) deselect();
     const img = drop.querySelector(".cropwrap img");
     if (maskEdit && img && img.naturalWidth && maskCanvas.width !== img.naturalWidth) { maskLoad(LABS.mask, img.naturalWidth, img.naturalHeight); sketchLoad(LABS.sketch, img.naturalWidth, img.naturalHeight); }
     renderLab();
@@ -4387,10 +4461,11 @@ function initMask() {
   };
   document.addEventListener("keydown", e => {
     if (!maskEdit || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (selKey(e)) return;
     if (e.key === "p" || e.key === "P") $("maskPaint").click();
     if (e.key === "e" || e.key === "E") $("maskErase").click();
     if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey) $("maskColorBtn").click();
-    const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly" }[e.key.toLowerCase()];
+    const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly", m: "select", v: "move" }[e.key.toLowerCase()];
     if (tk && !e.ctrlKey && !e.metaKey) setTool(tk);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("maskUndo").click(); }
     if (e.key === "Enter" && tool === "poly" && poly.length) { e.preventDefault(); polyClose(); }
