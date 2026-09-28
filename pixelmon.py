@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 # pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
 # target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
@@ -122,6 +122,7 @@ def print_help():
         opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
         opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact (+ --dither)", "0.6"),
+        opt("--post-sweep SPEC", "render once, save every combination: 'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
@@ -301,6 +302,75 @@ def final_prompts(a, subject):
     return prompt, negative
 
 
+# --post-sweep: settings the palette node applies after the model is done, so any number of them can be
+# tried on ONE render. name on the command line -> the node's input name
+POST_FIELDS = {"angle_grid": str, "dither": str, "dither_amount": float, "pixel_angles": float,
+               "thin_lines": int, "despeckle": int, "palette": str}
+POST_NODE_INPUT = {"dither": "dithering"}
+
+
+def post_tag(combo):
+    """a short filename tag for one combination, e.g. g-hex_d-bayer4-0.5"""
+    short = {"angle_grid": "g", "dither": "d", "pixel_angles": "a", "thin_lines": "t", "despeckle": "s", "palette": "p"}
+    parts = []
+    for f, v in combo.items():
+        if f == "dither_amount":
+            continue
+        tag = f"{short.get(f, f)}-{v}"
+        if f == "dither" and v != "none" and "dither_amount" in combo:
+            tag += f"-{combo['dither_amount']:g}"
+        parts.append(re.sub(r"[^A-Za-z0-9.=+-]", "", tag))
+    if "dither_amount" in combo and "dither" not in combo:
+        parts.append(f"amt-{combo['dither_amount']:g}")
+    return "_".join(parts)[:80]
+
+
+def post_label(combo):
+    bits = []
+    for f, v in combo.items():
+        if f == "dither_amount" and combo.get("dither") not in (None, "none"):
+            continue
+        if f == "dither" and v != "none" and "dither_amount" in combo:
+            bits.append(f"dither {v} @ {combo['dither_amount']:g}")
+        elif f == "dither_amount" and "dither" in combo:
+            continue
+        else:
+            bits.append(f"{f.replace('angle_grid', 'grid').replace('_', ' ')} {v:g}" if isinstance(v, float) else
+                        f"{f.replace('angle_grid', 'grid').replace('_', ' ')} {v}")
+    return " · ".join(bits)
+
+
+def parse_post_sweep(spec, p):
+    """'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1' -> every combination (dither 'none' once:
+    its amount changes nothing)"""
+    import itertools
+    fields = []
+    for part in [x for x in str(spec).split(";") if x.strip()]:
+        if "=" not in part:
+            p.error(f"--post-sweep: expected field=a,b,c, got {part!r}")
+        f, vals = part.split("=", 1)
+        f = f.strip()
+        if f not in POST_FIELDS:
+            p.error(f"--post-sweep: {f!r} isn't post-processing; use {', '.join(POST_FIELDS)}")
+        try:
+            vs = [POST_FIELDS[f](v.strip()) for v in vals.split(",") if v.strip()]
+        except ValueError:
+            p.error(f"--post-sweep: bad value in {part!r}")
+        if not vs:
+            p.error(f"--post-sweep: no values for {f}")
+        fields.append((f, vs))
+    combos, seen = [], set()
+    for vals in itertools.product(*[vs for _, vs in fields]):
+        c = dict(zip([f for f, _ in fields], vals))
+        key = tuple(sorted((k, v) for k, v in c.items() if not (k == "dither_amount" and c.get("dither") == "none")))
+        if key not in seen:
+            seen.add(key)
+            combos.append(c)
+    if len(combos) > 2000:
+        p.error(f"--post-sweep: {len(combos)} combinations is too many (max 2000)")
+    return combos
+
+
 def build_graph(a, seed, palette=None, subject=None, server=None):
     palette = palette or a.palette
     subject = subject if subject is not None else a.prompt
@@ -354,6 +424,16 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
             g["12"] = {"class_type": "SaveImage",
                        "inputs": {"filename_prefix": prefix + "_preview", "images": ["10", 1]}}
+        if getattr(a, "post_combos", None):
+            # --post-sweep: the model renders ONCE; every combination is just another palette step on that
+            # same picture (grid / dither / amount are post-processing), each saved under its own name
+            base = g.pop("10")
+            g.pop("11", None); g.pop("12", None)
+            for k, combo in enumerate(a.post_combos):
+                node = {"class_type": "PixelArtPalette", "inputs": {**base["inputs"], **{POST_NODE_INPUT.get(f, f): v for f, v in combo.items()}}}
+                g[f"p{k}"] = node
+                g[f"s{k}"] = {"class_type": "SaveImage",
+                              "inputs": {"filename_prefix": f"{prefix}_v{k:03d}-{post_tag(combo)}_sprite", "images": [f"p{k}", 0]}}
 
     # Chain LoRAs onto the base: SDXL -> [Pixel Art XL] -> [LCM if --fast].
     # Each LoraLoader patches both the model and the text encoder (clip), so we
@@ -1115,6 +1195,10 @@ def main():
                    help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no pixel "
                         "downscale. Saves SDXL's full-res image (default 1024px; a smaller --out is a "
                         "smooth resize). --palette pulls its colors toward a palette (--palette-strength).")
+    p.add_argument("--post-sweep", dest="post_sweep", default=None, metavar="SPEC",
+                   help="render once, then save every combination of post-processing settings, e.g. "
+                        "'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1' (fields: "
+                        "angle_grid, dither, dither_amount, pixel_angles, thin_lines, despeckle, palette)")
     p.add_argument("--palette-strength", dest="palette_strength", type=float, default=0.6, metavar="F",
                    help="--art with a --palette: how far colors move toward the palette, 0..1 "
                         "(1 = every pixel exactly a palette color, posterized; ~0.4-0.7 keeps smooth shading). default 0.6")
@@ -1209,6 +1293,11 @@ def main():
         p.error("--steer-start/--steer-end must satisfy 0 <= start < end <= 1")
     if not 0.0 <= a.palette_strength <= 1.0:
         p.error("--palette-strength must be 0..1")
+    a.post_combos = None
+    if a.post_sweep:
+        if a.art or a.animate or a.mask:
+            p.error("--post-sweep works on pixel-art renders (not --art, --animate or LAB edits)")
+        a.post_combos = parse_post_sweep(a.post_sweep, p)
     if a.mask and not a.init:
         p.error("--mask needs --init (the image to edit)")
     if a.mask and not os.path.isfile(os.path.expanduser(a.mask)):
@@ -1380,7 +1469,9 @@ def main():
 
     t0 = time.time()
     first_open = None
-    if len(POOL) > 1:
+    if len(POOL) > 1 and a.post_combos:
+        print("   note: --post-sweep renders on one server — using the first in the list")
+    if len(POOL) > 1 and not a.post_combos:
         # Render farm: fan the whole work list out across all the GPUs in the pool.
         run_farm(a, work)
     else:
@@ -1390,7 +1481,8 @@ def main():
         if total > 1:
             print(f"   queued {total} jobs; generating...")
         for i, (subj, seed, pal, d, pid, g) in enumerate(jobs, 1):
-            outs = wait(pid, resubmit=lambda fresh, g=g: submit(fresh_copy(g) if fresh else g))
+            outs = wait(pid, timeout=600 + 5 * len(a.post_combos or []),       # a combo sweep runs many palette steps
+                        resubmit=lambda fresh, g=g: submit(fresh_copy(g) if fresh else g))
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             if REMOTE:
                 # Files live on the remote server's disk — download them here over HTTP.
@@ -1406,6 +1498,16 @@ def main():
                             shutil.move(f, tgt)
                             moved.append(tgt)
                     files = moved
+            if a.post_combos:                     # one render, a picture per combination
+                shots = sorted(f for f in files if "_sprite_" in f)
+                for j, f in enumerate(shots, 1):
+                    enlarge_output(a, f)
+                    m = re.search(r"_v(\d{3})-", os.path.basename(f))
+                    k = int(m.group(1)) if m else -1
+                    lab = post_label(a.post_combos[k]) if 0 <= k < len(a.post_combos) else ""
+                    print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={seed}  ->  {f}")
+                first_open = first_open or (shots[0] if shots else None)
+                continue
             sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)

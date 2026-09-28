@@ -599,6 +599,16 @@ def list_refs():
     return cols
 
 
+def combo_count(ps):
+    """how many pictures a combo sweep makes (dither 'none' once per grid: its amount changes nothing)"""
+    if not isinstance(ps, dict):
+        return 0
+    g = len(ps.get("angle_grid") or []) or 1
+    d = ps.get("dither") or []
+    a = len(ps.get("dither_amount") or []) or 1
+    return g * ((1 if "none" in d else 0) + len([x for x in d if x != "none"]) * a) if d else g * a
+
+
 def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
@@ -740,6 +750,19 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     seed = num("seed", int, -1, 2**31 - 1, -1)
     if seed is not None and seed >= 0:
         argv += ["--seed", str(seed)]
+    ps = p.get("post_sweep")
+    if ps:                                       # combo sweep: one render, every combination of post-processing
+        if not isinstance(ps, dict):
+            raise ValueError("bad combo sweep")
+        parts = []
+        for f in ("angle_grid", "dither", "dither_amount"):
+            vals = [str(v).strip() for v in (ps.get(f) or []) if re.fullmatch(r"[\w.+-]{1,32}", str(v).strip())]
+            if vals:
+                parts.append(f"{f}={','.join(vals)}")
+        if not parts:
+            raise ValueError("tick at least one grid, dither or amount for the combo sweep")
+        argv += ["--post-sweep", ";".join(parts)]
+        p = {**p, "n": 1}
     n = num("n", int, 1, 32, 1)
     if n and n > 1:
         argv += ["-n", str(n)]
@@ -830,7 +853,7 @@ class JobQueue:
         export = export_target(params)
         job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
-               "total": int(params.get("n") or 1), "export": export, "exported": None,
+               "total": combo_count(params.get("post_sweep")) or int(params.get("n") or 1), "export": export, "exported": None,
                "created": time.time(), "started": None, "finished": None, "dir": dirname}
         with self.lock:
             self.jobs[jid] = job
@@ -929,7 +952,11 @@ class JobQueue:
                             job["full_prompt"][key] = pm.group(2).strip()
                         m = DONE_LINE.search(line)
                         if m:
-                            job["outputs"].append({"seed": int(m.group(1)), "file": os.path.basename(m.group(2).strip())})
+                            o = {"seed": int(m.group(1)), "file": os.path.basename(m.group(2).strip())}
+                            lab = re.search(r"✅\s*\[\d+/\d+\]\s+(\S.*?)\s+seed=", line)   # a combo sweep names each picture
+                            if lab and job["params"].get("post_sweep"):
+                                o["label"] = lab.group(1).strip()
+                            job["outputs"].append(o)
                 rc = self.proc.wait()
             except Exception as e:
                 rc = -1

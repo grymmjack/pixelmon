@@ -1,0 +1,96 @@
+{
+ "name": "TUNED-R3TRO-SCENE-4K",
+ "saved": 1790544398.7022507,
+ "note": "",
+ "snapshot": {
+  "form": {
+   "subject": "a walled city gate in the rain",
+   "lora": "retro-game-art.safetensors",
+   "lora_strength": "0.5",
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": "3840",
+   "outH": "2160",
+   "snap_pixels": false,
+   "transparent": false,
+   "art": true,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "palette_strength": "0",
+   "dither": "bayer8",
+   "dither_amount": "1",
+   "despeckle": "2",
+   "pixel_angles": "0",
+   "angle_grid": "pixel",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": 955732036,
+   "seedLock": true,
+   "n": "4",
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "r3tr0",
+    "scene"
+   ]
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": null,
+   "size": [
+    0,
+    0
+   ],
+   "subject": "",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": false,
+   "denoise": 0.7,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "active": false
+  },
+  "adv": {}
+ },
+ "image": "TUNED-R3TRO-SCENE-4K.png"
+}

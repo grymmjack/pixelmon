@@ -1,0 +1,97 @@
+{
+ "name": "TUNED-EGA-PORTRAIT",
+ "saved": 1790554053.9530768,
+ "note": "Descended from pixelmon factory default EGA portrait",
+ "snapshot": {
+  "form": {
+   "subject": "a (grizzled dwarf warrior:1.3), (braided beard:1.2), horned helmet, stern face",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": "0.7",
+   "kind": "character portrait",
+   "genre": "role-playing game",
+   "era": "1980s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)",
+   "outW": "128",
+   "outH": "128",
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "palette_strength": "0.6",
+   "dither": "bayer16",
+   "dither_amount": "0.2",
+   "despeckle": "6",
+   "pixel_angles": "2",
+   "angle_grid": "diagonal",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": 1637782352,
+   "seedLock": true,
+   "n": "1",
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": []
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": null,
+   "size": [
+    0,
+    0
+   ],
+   "subject": "",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": false,
+   "denoise": 0.7,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "active": false
+  },
+  "adv": {
+   "sampler": "dpmpp_2s_ancestral_cfg_pp",
+   "scheduler": "ddim_uniform",
+   "base": "juggernautXL_v9.safetensors"
+  }
+ },
+ "image": "TUNED-EGA-PORTRAIT.png"
+}
