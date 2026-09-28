@@ -499,12 +499,14 @@ serves it locally at `/docs/settings-atlas.html`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
   adjust the source first (brightness, contrast, posterize, crop…), and **edit** part of an
   image (inpainting): paint the mask with brush / line / rectangle / ellipse / polygon tools
-  (undo, brush-shaped cursor) — or **🎨 paint in color** (color picker, hard / soft tip, opacity) to
-  rough in what you want, e.g. a brown cigar with an orange lit tip, select by words, or load a layered `.draw` / `.ora` / `.psd`
+  (undo, brush-shaped cursor) — or **🎨 paint in color** (color picker + 💧 screen picker, hard / soft
+  tip, opacity) to rough in what you want, e.g. a brown cigar with an orange lit tip; **⬚ select, ✥ move
+  and ⤡ transform** (scale / rotate around an anchored or free pivot) what you've drawn; select by words, or load a layered `.draw` / `.ora` / `.psd`
   whose `mask` layer is the mask and `art` layer the input. Edits can keep the picture's
   colors, light & shadow, and shape, and **paint it in first** (fill the mask with the new
   thing's color — guessed from your words — so a masked eye becomes a patch instead of coming
-  back as an eye); the edit box shows (and picks) which model draws the
+  back as an eye); the edit box has an **avoid** field (edit-only negative) and **checkpoint / sampler / scheduler
+  overrides**, and shows (and picks) which model draws the
   edit — the SDXL inpainting model or your checkpoint. **🎯 Refine** makes a result the new
   target, a docked **zoom loupe** (600 / 300 / 200 / 50 / 33 / 10 %) follows your pointer, and
   **use as thumbnail** picks the saved preset's picture.
