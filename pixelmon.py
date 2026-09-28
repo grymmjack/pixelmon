@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 # pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
 # target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
