@@ -348,6 +348,8 @@ const S = [
    "This edit only: a different checkpoint, sampler or scheduler than the rest of your settings — highlighted when set."],
   ["Edit: the thing counts most", [G], { gui: "automatic (change / add)" }, "—", "weight 1.3", "<code>(a lit cigar:1.3)</code>",
    "What you ask to change or add is weighted, unless you wrote your own ( ) weighting."],
+  ["Adjust source › apply now", [G], { gui: "LAB › Adjust source › ✓ apply now · ↶ · ↷" }, "—", "—", "contrast +30 → apply → brightness −20 → apply",
+   "Bakes the sliders in and resets them, so adjustments stack: to the whole picture (saved as a new LAB input, name__adj1, __adj2… — the original stays) or only your 🎨 strokes. The crop isn't baked, so the mask and strokes keep lining up. ↶ / ↷ undo and redo applies."],
   ["Adjust source › apply to", [G], { gui: "LAB › Adjust source › apply to" }, "the whole picture · only my 🎨 strokes", "the whole picture", "contrast +30 on your strokes only",
    "Only my strokes: brightness / contrast / gamma / saturation / hue / grayscale / invert tune just your color strokes (previewed live on them); the picture keeps only the crop."],
   ["Paint it in first", [G], { gui: "LAB edit › ☑ paint it in first + color" }, "on (auto color) · off · any color", "on, color from your words",

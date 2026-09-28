@@ -876,6 +876,9 @@ fieldset.closed { padding-bottom: 2px; }
               <label class="inline" style="margin:0;color:var(--text)" title="tune the whole picture, or only your 🎨 color strokes (e.g. darker, more contrast on what you drew)">apply to
                 <select id="adjScope" style="width:auto;padding:2px 6px"><option value="all">the whole picture</option><option value="strokes">only my 🎨 strokes</option></select></label>
               <button type="button" class="btn small" id="adjReset">↺ reset</button>
+              <button type="button" class="btn small" id="adjApply" title="apply now: bake these adjustments in (into the picture, or only your 🎨 strokes) and reset the sliders — so you can stack another adjustment on top">✓ apply now</button>
+              <button type="button" class="btn small" id="adjUndo" title="undo the last apply">↶</button>
+              <button type="button" class="btn small" id="adjRedo" title="redo">↷</button>
             </div>
           </details></div>
         <div class="lab-col"><h3>2 · Steering</h3>
@@ -4722,7 +4725,48 @@ let adjTimer = null;
 function adjUpdate() {   // debounced: sliders fire many events
   clearTimeout(adjTimer);
   if (strokesOnly()) drawMaskOverlay();       // the strokes' preview follows the sliders right away
+  adjHistButtons();
   adjTimer = setTimeout(() => { const i = $("labDrop").querySelector("img"); if (i && LABS.file) i.src = labSrcUrl(); labZoomUpdate(); }, 180);
+}
+// "apply now": bake the sliders into the picture (a new LAB input — the old one stays) or into the 🎨 strokes, then reset
+// the sliders; every apply can be undone / redone
+const tonesTouched = () => Object.keys(ADJ0).some(k => k !== "crop" && LABS.adj[k] !== undefined && LABS.adj[k] != ADJ0[k]);
+function adjHistButtons() {
+  const h = LABS.adjHist || [], r = LABS.adjRedo || [];
+  $("adjUndo").disabled = !h.length; $("adjRedo").disabled = !r.length; $("adjApply").disabled = !tonesTouched() || !LABS.file;
+  $("adjUndo").title = h.length ? `undo the last apply (${h.length} applied)` : "nothing applied yet";
+  $("adjRedo").title = r.length ? `redo (${r.length})` : "nothing to redo";
+}
+function adjSwap(entry, forward) {           // put the picture / the strokes to one side of an apply
+  if (entry.kind === "file") { LABS.file = forward ? entry.to : entry.from; LABS.size = forward ? entry.toSize : entry.fromSize; loadLab(); }
+  else {
+    LABS.sketch = forward ? entry.after : entry.before;
+    const img = $("labDrop").querySelector(".cropwrap img");
+    if (img && img.naturalWidth) sketchLoad(LABS.sketch, img.naturalWidth, img.naturalHeight);
+  }
+  store.set("lab", LABS); renderEditBox(); labSchedule();
+}
+async function adjApply() {
+  if (!LABS.file || !tonesTouched()) return;
+  const adj = Object.fromEntries(Object.entries(LABS.adj).filter(([k]) => k !== "crop"));
+  $("adjApply").textContent = "…";
+  try {
+    let entry;
+    if (strokesOnly()) {
+      if (!LABS.sketch) throw new Error("there are no 🎨 strokes to apply it to — paint some, or apply to the whole picture");
+      const r = await api("/api/lab/bake", { sketch: LABS.sketch, adj });
+      entry = { kind: "sketch", before: LABS.sketch, after: r.sketch };
+    } else {
+      const r = await api("/api/lab/bake", { file: LABS.file, adj });
+      entry = { kind: "file", from: LABS.file, fromSize: LABS.size, to: r.file, toSize: r.size };
+    }
+    (LABS.adjHist = LABS.adjHist || []).push(entry); LABS.adjRedo = [];
+    if (LABS.adjHist.length > 30) LABS.adjHist.shift();
+    LABS.adj = { ...ADJ0, crop: LABS.adj.crop };            // sliders back to defaults (the crop stays)
+    adjSwap(entry, true); renderAdj(); adjUpdate();
+    note(entry.kind === "file" ? `applied to the picture → ${entry.to}` : "applied to your 🎨 strokes");
+  } catch (e) { showErr(e); }
+  $("adjApply").textContent = "✓ apply now"; adjHistButtons();
 }
 function renderAdj() {
   document.querySelectorAll("[data-adj]").forEach(el => {
@@ -4734,6 +4778,7 @@ function renderAdj() {
   });
   $("adjEdges").checked = !!LABS.edges;
   $("adjScope").value = LABS.adjScope || "all";
+  adjHistButtons();
   $("adjBox").querySelector("summary").childNodes[0].nodeValue = adjTouched() ? "Adjust source (tuned) " : "Adjust source ";
 }
 function renderLab() {
@@ -4799,7 +4844,7 @@ async function labLayered(f) {
   ok(`${f.name}: ${I.art_layer ? `art from layer “${I.art_layer}”` : "art = all visible layers"}${I.mask_layer ? `, mask from layer “${I.mask_layer}”` :
      " — no layer named “mask”, so no mask (layers: " + (I.layers || []).join(", ") + ")"}`);
 }
-async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.sketch = null; LABS.refine = null; LABS.thumb = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.sketch = null; LABS.adjHist = []; LABS.adjRedo = []; LABS.refine = null; LABS.thumb = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
   const subject = (LABS.subject || "the subject").trim();
@@ -4885,7 +4930,7 @@ function initLab() {
     loadLab();
   }, true);
   $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
-    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; LABS.sketch = null; maskCanvas.width = 0; sketchCanvas.width = 0; renderLab(); labSchedule(); };
+    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; LABS.sketch = null; LABS.adjHist = []; LABS.adjRedo = []; maskCanvas.width = 0; sketchCanvas.width = 0; renderLab(); labSchedule(); };
   $("labSubject").oninput = e => { LABS.subject = e.target.value; store.set("lab", LABS); labSchedule(); };
   $("labMode").onchange = e => { LABS.mode = e.target.value; renderLab(); labSchedule(); };
   $("labStrength").oninput = e => { LABS.strength = +e.target.value; renderLab(); labSchedule(); };
@@ -4900,6 +4945,9 @@ function initLab() {
   });
   $("adjEdges").onchange = e => { LABS.edges = e.target.checked; renderAdj(); adjUpdate(); store.set("lab", LABS); };
   $("adjReset").onclick = () => { LABS.adj = { ...ADJ0 }; renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule(); };
+  $("adjApply").onclick = adjApply;
+  $("adjUndo").onclick = () => { const e = (LABS.adjHist || []).pop(); if (!e) return; (LABS.adjRedo = LABS.adjRedo || []).push(e); adjSwap(e, false); adjHistButtons(); };
+  $("adjRedo").onclick = () => { const e = (LABS.adjRedo || []).pop(); if (!e) return; (LABS.adjHist = LABS.adjHist || []).push(e); adjSwap(e, true); adjHistButtons(); };
   $("labPSeed").onclick = () => { LABS.pseed = Math.floor(Math.random() * 2 ** 31); labSchedule(); };
   $("labN").oninput = e => { LABS.n = Math.max(1, Math.min(8, +e.target.value || 1)); store.set("lab", LABS); };
   $("labGo").onclick = labConvert;

@@ -2388,6 +2388,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 m.convert("L").save(buf, "PNG")
                 return self._json({"mask": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
                                    "size": m.size})
+            if u.path == "/api/lab/bake":
+                # "apply now": bake the adjust sliders into the picture (a new LAB input; the old one stays for undo)
+                # or into the 🎨 strokes. The crop isn't baked, so the mask and strokes keep lining up.
+                adj = {k: v for k, v in (body.get("adj") or {}).items() if k != "crop"}
+                if adjust_is_default(adj):
+                    raise ValueError("nothing to apply: the sliders are at their defaults")
+                from PIL import Image
+                if body.get("sketch"):
+                    data = str(body["sketch"])
+                    raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
+                    sk = Image.open(io.BytesIO(raw)).convert("RGBA")
+                    flat = Image.new("RGB", sk.size, (128, 128, 128))      # mid-grey pivot, like the edit does
+                    flat.paste(sk.convert("RGB"), (0, 0), sk.getchannel("A").point(lambda v: 255 if v else 0))
+                    rgb = adjust_tone(flat, adj)
+                    rgb.putalpha(sk.getchannel("A"))
+                    b = io.BytesIO(); rgb.save(b, "PNG")
+                    return self._json({"sketch": "data:image/png;base64," + base64.b64encode(b.getvalue()).decode()})
+                src = lab_path(body.get("file"))
+                stem = re.sub(r"(__adj\d+)+$", "", os.path.splitext(os.path.basename(src))[0])
+                n = 1 + max([int(m.group(1)) for f in os.listdir(LAB) for m in [re.match(re.escape(stem) + r"__adj(\d+)\.png$", f)] if m] or [0])
+                out = os.path.join(LAB, f"{stem}__adj{n}.png")
+                adjust_tone(Image.open(src).convert("RGB"), adj).save(out)
+                return self._json({"file": os.path.basename(out), "size": image_size(out)})
             if u.path == "/api/lab/import":
                 # bring a render / steering ref / corkboard item into the LAB as an input
                 if body.get("ref"):
