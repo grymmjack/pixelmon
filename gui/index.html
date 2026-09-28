@@ -501,6 +501,11 @@ fieldset.closed { padding-bottom: 2px; }
 .cropwrap .selbox { position: absolute; pointer-events: none; border: 1px dashed #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.7); z-index: 3; } #labDrop .cropwrap.picking #brushCur { display: none; }
 .cropwrap canvas.sketchc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 #brushCur.color { border-style: solid; }
+.editavoid { margin: 6px 0 2px; } .editavoid label { font-size: 12.5px; }
+.editovr { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; margin: 6px 0 2px; color: var(--dim); }
+.editovr label { display: inline-flex; gap: 4px; align-items: center; margin: 0; color: var(--dim); }
+.editovr select { width: auto; max-width: 150px; padding: 2px 4px; font-size: 12px; }
+.editovr select.set { border-color: var(--accent2); color: var(--accent2); }
 .editrough { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
 .editrough label { margin: 0; color: var(--text); } .editrough input[type=color] { width: 30px; height: 20px; padding: 0; border: 0; background: none; }
 .editrough .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editrough .uses b { color: var(--accent); } .editkeep label { margin: 0; color: var(--text); }
@@ -868,6 +873,8 @@ fieldset.closed { padding-bottom: 2px; }
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="gray"> grayscale</label>
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="invert"> invert</label>
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="adjEdges"> 👁 what the AI sees<i class="help" data-help="edges">i</i></label>
+              <label class="inline" style="margin:0;color:var(--text)" title="tune the whole picture, or only your 🎨 color strokes (e.g. darker, more contrast on what you drew)">apply to
+                <select id="adjScope" style="width:auto;padding:2px 6px"><option value="all">the whole picture</option><option value="strokes">only my 🎨 strokes</option></select></label>
               <button type="button" class="btn small" id="adjReset">↺ reset</button>
             </div>
           </details></div>
@@ -911,6 +918,13 @@ fieldset.closed { padding-bottom: 2px; }
               <input type="color" id="editRoughColor" title="the color to rough it in with (pick one to override the automatic guess)">
               <button type="button" class="btn small" id="editRoughPick" title="pick the color from anywhere on screen (or the picture)">💧</button>
               <span class="uses" id="editRoughWhy"></span></div>
+            <div class="editavoid"><label>avoid<i class="help" data-help="editavoid">i</i></label>
+              <textarea id="editAvoid" class="short" rows="1" placeholder="tongue, blob, smear (added to the negative prompt, this edit only)"></textarea></div>
+            <div class="editovr" title="this edit only — leave on 'as set' to use the Sampler section / ⚙ Advanced">
+              <span>override:</span>
+              <label>checkpoint <select id="editBase"></select></label>
+              <label>sampler <select id="editSampler"></select></label>
+              <label>scheduler <select id="editScheduler"></select></label></div>
             <div class="editmodel"><span>model:</span>
               <select data-advmirror="inpaint_model" title="which model draws the edit — the same setting as ⚙ Advanced › Inpainting model"></select>
               <span class="uses" id="editUses"></span></div>
@@ -1532,6 +1546,8 @@ const HELP = {
     burnt-looking. Leave empty for the default.`,
   fast: `<span class="tipk">Fast (LCM)</span>: about 5× quicker, slightly softer. Great for trying ideas, then turn it off
     for the keeper.`,
+  editavoid: `<span class="tipk">Avoid</span> (this edit only): things the edit must not draw, added to the negative prompt —
+    e.g. <code>tongue, blob, smear</code> when a cigar keeps coming out wrong. Weighting works: <code>(tongue:1.4)</code>.`,
   sweep: `<span class="tipk">Sweep</span>: renders the SAME picture (same seed) several times, changing just one setting
     — e.g. LoRA strength 0.5, 0.7, 0.9 — shown side by side, so you can see exactly what that setting does.
     Settings with a list (sampler, scheduler, checkpoint, palette, style…) show every option to tick — no typing names.
@@ -3969,9 +3985,18 @@ function labOut() {   // LAB's height follows the input's proportions, rounded t
   return [w, h];
 }
 const adjTouched = () => Object.keys(ADJ0).some(k => k === "crop" ? !!LABS.adj.crop : LABS.adj[k] !== undefined && LABS.adj[k] != ADJ0[k]);
+// "apply to: only my 🎨 strokes": the picture keeps just the crop; the tones preview on the strokes as a CSS filter
+const strokesOnly = () => LABS.adjScope === "strokes";
+function strokeFilter() {
+  const a = { ...ADJ0, ...LABS.adj };
+  return [a.brightness ? `brightness(${1 + a.brightness / 100})` : "", a.contrast ? `contrast(${1 + a.contrast / 100})` : "",
+          a.saturation != 100 ? `saturate(${a.saturation / 100})` : "", a.hue ? `hue-rotate(${a.hue}deg)` : "",
+          a.gray ? "grayscale(1)" : "", a.invert ? "invert(1)" : ""].filter(Boolean).join(" ");
+}
 function labSrcUrl() {   // the (adjusted) input as the server will use it — or its edge view
   // while drawing the crop box, show the whole image (adjusted, but uncropped)
-  const adj = cropEdit ? { ...LABS.adj, crop: null } : LABS.adj;
+  const base = strokesOnly() ? { ...ADJ0, crop: LABS.adj.crop } : LABS.adj;
+  const adj = cropEdit ? { ...base, crop: null } : base;
   const touched = Object.keys(ADJ0).some(k => k === "crop" ? !!adj.crop : adj[k] !== undefined && adj[k] != ADJ0[k]);
   if (!touched && !LABS.edges) return `/lab/${encodeURIComponent(LABS.file)}`;
   return `/api/lab/preview?file=${encodeURIComponent(LABS.file)}&adj=${encodeURIComponent(JSON.stringify(adj))}${LABS.edges ? "&edges=1" : ""}`;
@@ -4047,6 +4072,7 @@ function drawMaskOverlay() {
   let ov = wrap.querySelector("canvas.maskc"), sk = wrap.querySelector("canvas.sketchc");
   if (!LABS.mask && !LABS.sketch && !maskEdit) { if (ov) ov.remove(); if (sk) sk.remove(); lzMask(); return; }
   if (!sk) { sk = document.createElement("canvas"); sk.className = "sketchc"; wrap.appendChild(sk); }
+  sk.style.filter = strokesOnly() ? strokeFilter() : "";
   sk.width = sketchCanvas.width || maskCanvas.width; sk.height = sketchCanvas.height || maskCanvas.height;
   const sg = sk.getContext("2d"); sg.clearRect(0, 0, sk.width, sk.height);
   if (sketchCanvas.width) sg.drawImage(sketchCanvas, 0, 0);
@@ -4084,7 +4110,7 @@ const setRoughColor = hex => { LABS.edit.rough = hex; store.set("lab", LABS); re
 // painted-in edits: the strength slider goes up to this (0.85 = detailed, e.g. a cigar's band and burnt end; above
 // it the old pixels win — the beard grew back over the cigar)
 const PAINTIN_MAX = 0.85;
-const paintinStrength = E => Math.min(+E.strength || 1, PAINTIN_MAX).toFixed(2);
+const paintinStrength = E => Math.min(+E.strength || PAINTIN_MAX, PAINTIN_MAX).toFixed(2);
 // "paint it in first": the new thing's color, from the words — a color you named, or a sensible one for common things
 const ROUGH_COLORS = [
   [/\b(black|ebony|jet|onyx|obsidian)\b/, "#18141a"], [/\b(white|ivory|pale)\b/, "#e6e1d8"], [/\b(dark red|crimson|blood|bloody|gore)\b/, "#6e1010"],
@@ -4150,7 +4176,21 @@ function renderEditBox() {
   $("maskTools").classList.toggle("hidden", !maskEdit);
   $("maskInfo").textContent = has ? "mask set" : "";
   const E = LABS.edit || (LABS.edit = { action: "change", strength: 1, what: "" });
+  // painted-in edits: the slider shows the real strength, up to 0.85 — 0.70 by default for your 🎨 strokes (keeps their
+  // shape and place), 0.85 for the automatic color (more detail)
+  const pin = (LABS.sketch && ["change", "add"].includes(E.action)) || !!roughFor(E);
+  $("editStrength").max = pin ? PAINTIN_MAX : 1;
+  if (pin && +E.strength > PAINTIN_MAX) E.strength = LABS.sketch ? 0.7 : PAINTIN_MAX;
   $("editAction").value = E.action; $("editStrength").value = E.strength; $("editStrVal").textContent = (+E.strength).toFixed(2);
+  $("editAvoid").value = E.avoid || "";
+  { const L = (META && META.adv_lists) || {}, strip = v => String(v).replace(/\.safetensors$/, "");
+    const fill = (id, list, key, cur) => { const el = $(id), v = E[key] || "";
+      el.innerHTML = `<option value="">as set (${esc(strip(cur))})</option>` + (list || []).map(x => `<option value="${esc(x)}" ${x === v ? "selected" : ""}>${esc(strip(x))}</option>`).join("")
+        + (v && !(list || []).includes(v) ? `<option value="${esc(v)}" selected>${esc(strip(v))}</option>` : "");
+      el.classList.toggle("set", !!v); };
+    fill("editBase", L.checkpoints, "ovBase", ADV.base || "default");
+    fill("editSampler", L.samplers, "ovSampler", ADV.sampler || "default");
+    fill("editScheduler", L.schedulers, "ovScheduler", ADV.scheduler || "default"); }
   $("editWhat").value = E.what;
   if (E.keepColors === undefined) Object.assign(E, { keepColors: true, keepLight: true, keepShape: false });
   $("editKeepColors").checked = E.keepColors; $("editKeepLight").checked = E.keepLight; $("editKeepShape").checked = E.keepShape;
@@ -4211,8 +4251,12 @@ async function editApply() {
   // FRAMING ones — "scene" asks for a whole environment with ground and sky (it painted a tiny game level into a face),
   // "solo"/"item"/"portrait" ask for an isolated subject — and no "game sprite, solid background" suffix either.
   const styles = (f.styles || []).filter(x => !EDIT_FRAMING.includes(x));
-  const blend = E.action === "erase" ? what : `${what}, seamlessly part of the surrounding picture, matching its lighting, colors and style`;
-  const form = { ...f, subject: blend, styles, kind: "", outW: w, outH: h, n: 1, no_sprite_suffix: true };
+  // the thing you asked for counts most (weighted), unless you weighted it yourself
+  const thing = ["change", "add"].includes(E.action) && !/[()]/.test(what) ? `(${what}:1.3)` : what;
+  const blend = E.action === "erase" ? what : `${thing}, seamlessly part of the surrounding picture, matching its lighting, colors and style`;
+  const avoid = (E.avoid || "").trim();
+  const form = { ...f, subject: blend, styles, kind: "", outW: w, outH: h, n: 1, no_sprite_suffix: true,
+                 negative: [f.negative.trim(), avoid].filter(Boolean).join(", ") };
   const sketch = ["change", "add"].includes(E.action) ? LABS.sketch : null;   // your 🎨 colors are the paint-in
   const rough = sketch ? null : roughFor(E);   // paint it in first: start from a blob of the new thing's color and reshape it
   const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
@@ -4220,10 +4264,13 @@ async function editApply() {
                             // keep light & shadow: start from the old pixels (blend) — the strength decides how far it may go
                             mode: rough || sketch || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
                  lab_init: LABS.file,
-                 lab_denoise: rough || sketch ? Math.min(E.strength, PAINTIN_MAX)
+                 lab_denoise: rough || sketch ? Math.min(+E.strength, PAINTIN_MAX)
                    : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  if (adjTouched() && strokesOnly()) base.lab_adjust_scope = "strokes";
+  const ovr = { ...(E.ovBase ? { base: E.ovBase } : {}), ...(E.ovSampler ? { sampler: E.ovSampler } : {}), ...(E.ovScheduler ? { scheduler: E.ovScheduler } : {}) };
+  if (Object.keys(ovr).length) base.adv = { ...(base.adv || {}), ...ovr };                  // this edit's overrides
   if (E.keepShape) base.control = { file: LABS.file, mode: "canny", strength: 0.6, end: 0.6 };   // the old outlines guide the new part
   const R = LABS.refine;
   if (R && R.steer > 0) Object.assign(base, { parent: { dir: R.dir, file: R.file }, evolve_init: false, evolve_steer: R.steer,
@@ -4612,6 +4659,10 @@ function initMask() {
   };
   for (const [id, k] of [["editKeepColors", "keepColors"], ["editKeepLight", "keepLight"], ["editKeepShape", "keepShape"]])
     $(id).onchange = e => { LABS.edit[k] = e.target.checked; store.set("lab", LABS); renderEditBox(); };
+  $("editAvoid").oninput = e => { LABS.edit.avoid = e.target.value; store.set("lab", LABS); };
+  for (const [id, k] of [["editBase", "ovBase"], ["editSampler", "ovSampler"], ["editScheduler", "ovScheduler"]])
+    $(id).onchange = e => { LABS.edit[k] = e.target.value; store.set("lab", LABS); renderEditBox(); };
+  $("adjScope").onchange = e => { LABS.adjScope = e.target.value; store.set("lab", LABS); const i = $("labDrop").querySelector(".cropwrap img"); if (i && LABS.file) i.src = labSrcUrl(); drawMaskOverlay(); };
   $("editRough").onchange = e => { LABS.edit.rough = e.target.checked ? "auto" : "off"; store.set("lab", LABS); renderEditBox(); };
   $("editRoughColor").oninput = e => { LABS.edit.rough = e.target.value; store.set("lab", LABS); renderRough(LABS.edit); };
   $("editRoughColor").onchange = () => renderEditBox();
@@ -4670,6 +4721,7 @@ function initCrop() {
 let adjTimer = null;
 function adjUpdate() {   // debounced: sliders fire many events
   clearTimeout(adjTimer);
+  if (strokesOnly()) drawMaskOverlay();       // the strokes' preview follows the sliders right away
   adjTimer = setTimeout(() => { const i = $("labDrop").querySelector("img"); if (i && LABS.file) i.src = labSrcUrl(); labZoomUpdate(); }, 180);
 }
 function renderAdj() {
@@ -4681,6 +4733,7 @@ function renderAdj() {
       : k === "gamma" ? (+v).toFixed(2) : k === "saturation" ? `${v}%` : k === "hue" ? `${v}°` : (+v > 0 ? "+" : "") + v;
   });
   $("adjEdges").checked = !!LABS.edges;
+  $("adjScope").value = LABS.adjScope || "all";
   $("adjBox").querySelector("summary").childNodes[0].nodeValue = adjTouched() ? "Adjust source (tuned) " : "Adjust source ";
 }
 function renderLab() {

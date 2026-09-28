@@ -823,6 +823,11 @@ class JobQueue:
             src = lab_path(lab)
             os.makedirs(jdir, exist_ok=True)
             adj = params.get("lab_adjust") or {}
+            stroke_adj = None
+            if params.get("lab_adjust_scope") == "strokes" and (params.get("inpaint") or {}).get("sketch"):
+                # tune only the 🎨 strokes: the picture keeps just the crop, the tones go to the strokes
+                stroke_adj = {k: v for k, v in adj.items() if k != "crop"}
+                adj = {"crop": adj.get("crop")} if adj.get("crop") else {}
             if adjust_is_default(adj):
                 kept = os.path.join(jdir, "input" + os.path.splitext(src)[1].lower())
                 shutil.copy2(src, kept)
@@ -858,6 +863,13 @@ class JobQueue:
                     sketch = png(sk, "color sketch").convert("RGBA")
                     if size and sketch.size != size:
                         sketch = sketch.resize(size, Image.NEAREST)
+                    if stroke_adj and not adjust_is_default(stroke_adj):
+                        # on a mid-grey backdrop: contrast pivots on the average, and an almost-empty strokes layer
+                        # averages near black (+contrast would brighten everything); grey = the same pivot as the preview
+                        flat = Image.new("RGB", sketch.size, (128, 128, 128))
+                        flat.paste(sketch.convert("RGB"), (0, 0), sketch.getchannel("A").point(lambda v: 255 if v else 0))
+                        rgb = adjust_tone(flat, stroke_adj)
+                        rgb.putalpha(sketch.getchannel("A")); sketch = rgb
                     m = ImageChops.lighter(m, sketch.getchannel("A").point(lambda v: 255 if v > 16 else 0))
                 mask = os.path.join(jdir, "mask.png")
                 m.save(mask)
@@ -1156,6 +1168,13 @@ def adjust_image(path, adj, max_side=None):
         im = im.crop(box)
     if max_side and max(im.size) > max_side:
         im.thumbnail((max_side, max_side), Image.LANCZOS)
+    return adjust_tone(im, adj)
+
+
+def adjust_tone(im, adj):
+    """The tonal part of the LAB's source tuning (no crop) on an RGB PIL image — used on the picture, or only on
+    the 🎨 color strokes when "apply to: only my strokes" is picked."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     a = dict(ADJ_DEFAULTS, **(adj or {}))
     c = int(a["clean"])
     if c > 0:                                   # JPEG clean: median removes blocky noise, then a light blur
