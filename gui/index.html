@@ -492,6 +492,10 @@ fieldset.closed { padding-bottom: 2px; }
 .maskcolor select { width: auto; padding: 2px 4px; font-size: 12px; } .maskcolor input[type=range] { width: 80px; }
 .maskcolor.off { opacity: .45; }
 .cropwrap.picking, .cropwrap.picking * { cursor: crosshair !important; }
+.cropwrap svg.selsvg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: visible; }
+.cropwrap svg.selsvg * { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.cropwrap svg.selsvg .a0 { stroke: rgba(0,0,0,.75); stroke-width: 3; } .cropwrap svg.selsvg .a1 { stroke: #fff; stroke-width: 1; stroke-dasharray: 4 3; }
+.cropwrap svg.selsvg .reg { stroke: #33ccff; stroke-width: 1.5; stroke-dasharray: 7 4; }
 .cropwrap svg.tfsvg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: visible; }
 .tfbar { display: inline-flex; gap: 6px; align-items: center; padding: 2px 6px; border: 1px solid var(--accent2); border-radius: var(--radius); }
 .tf-anchor { display: inline-grid; grid-template-columns: repeat(3, 9px); gap: 2px; }
@@ -839,10 +843,14 @@ fieldset.closed { padding-bottom: 2px; }
               <button type="button" class="btn small" data-mtool="rect" title="filled rectangle (R) · shift = square">▭</button>
               <button type="button" class="btn small" data-mtool="ellipse" title="filled ellipse (O) · shift = circle">◯</button>
               <button type="button" class="btn small" data-mtool="poly" title="filled polygon (G): click points, double-click / Enter / click the first point to close · Esc cancels">⬠</button>
-              <button type="button" class="btn small" data-mtool="select" title="select (M): drag a box · drag inside it or use the arrow keys to move what's in it (shift = 10 px) · Delete clears it · Esc puts it back / deselects · Ctrl+A = everything">⬚</button>
+              <button type="button" class="btn small" data-mtool="select" title="select (M, again to switch box / lasso / polygon): drag a box, draw a lasso or click polygon corners · drag inside it or use the arrow keys to move what's in it (shift = 10 px) · Delete clears it · Esc puts it back / deselects · Ctrl+A = everything · Adjust source can apply to just the selection">⬚</button>
               <button type="button" class="btn small" data-mtool="move" title="move (V): drag to move the selection — or everything you've drawn when nothing is selected · arrow keys too">✥</button>
               <button type="button" class="btn small" data-mtool="transform" title="transform (T): scale (corner / edge handles, shift = keep proportions) and rotate (drag outside the box, shift = 15° steps) the selection — or everything — around a pivot · drag inside / arrows = move · Enter applies, Esc cancels">⤡</button>
               <button type="button" class="btn small" id="maskUndo" title="undo (Ctrl+Z)">↶</button></span>
+            <span class="selshapes hidden" id="selShapes" title="selection shape (M cycles)">
+              <button type="button" class="btn small" data-selshape="box" title="box: drag a rectangle">⬚ box</button>
+              <button type="button" class="btn small" data-selshape="lasso" title="lasso: hold and draw around it freehand — let go to close">➰ lasso</button>
+              <button type="button" class="btn small" data-selshape="poly" title="polygon: click the corners · double-click / Enter / click the first corner to close · Backspace = last corner off · Esc cancels">⬠ polygon</button></span>
             <span class="tfbar hidden" id="tfBar"><span class="tf-anchor" id="tfAnchor" title="pivot: a corner, an edge, the center — or drag the pivot dot anywhere (free)">
                 <button type="button" data-anchor="nw"></button><button type="button" data-anchor="n"></button><button type="button" data-anchor="ne"></button>
                 <button type="button" data-anchor="w"></button><button type="button" data-anchor="c"></button><button type="button" data-anchor="e"></button>
@@ -873,8 +881,8 @@ fieldset.closed { padding-bottom: 2px; }
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="gray"> grayscale</label>
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" data-adj="invert"> invert</label>
               <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="adjEdges"> 👁 what the AI sees<i class="help" data-help="edges">i</i></label>
-              <label class="inline" style="margin:0;color:var(--text)" title="tune the whole picture, or only your 🎨 color strokes (e.g. darker, more contrast on what you drew)">apply to
-                <select id="adjScope" style="width:auto;padding:2px 6px"><option value="all">the whole picture</option><option value="strokes">only my 🎨 strokes</option></select></label>
+              <label class="inline" style="margin:0;color:var(--text)" title="tune the whole picture, only your 🎨 color strokes (e.g. darker, more contrast on what you drew), or only the part of the picture inside the selection (⬚ box / ➰ lasso / ⬠ polygon — the dashed blue outline)">apply to
+                <select id="adjScope" style="width:auto;padding:2px 6px"><option value="all">the whole picture</option><option value="strokes">only my 🎨 strokes</option><option value="selection">the selection ⬚</option></select></label>
               <button type="button" class="btn small" id="adjReset">↺ reset</button>
               <button type="button" class="btn small" id="adjApply" title="apply now: bake these adjustments in (into the picture, or only your 🎨 strokes) and reset the sliders — so you can stack another adjustment on top">✓ apply now</button>
               <button type="button" class="btn small" id="adjUndo" title="undo the last apply">↶</button>
@@ -1561,7 +1569,10 @@ const HELP = {
     <li><b>saturation / hue</b>: stronger or weaker colors, or shift them around the color wheel</li>
     <li><b>clean</b>: smooths JPEG blockiness and grain — noisy photos give messy outlines</li>
     <li><b>sharpen</b>: crisper edges, so the "shape" mode follows them better</li>
-    <li><b>posterize</b>: fewer color levels (1–7 bits) — flatter shapes, closer to pixel art before restyling</li></ul>
+    <li><b>posterize</b>: fewer color levels — further right = fewer (128 → 2 levels per channel); flatter shapes, closer to pixel art before restyling</li></ul>
+    <b>apply to</b>: the whole picture, <b>only my 🎨 strokes</b> (every slider on all the colors you painted), or
+    <b>the selection</b> — make one with ✏️ mask → ⬚ select (box, ➰ lasso or ⬠ polygon) and only that part is tuned
+    (dashed blue outline). <b>✓ apply now</b> bakes it in and resets the sliders, so you can stack adjustments (↶ / ↷).
     Tip: turn on <b>👁 what the AI sees</b> while adjusting — you want clean, continuous outlines around your subject
     and not much speckle in the background.`,
   mask: `<span class="tipk">Mask</span>: mark the part of the picture you want to change. Click <b>✏️ mask</b>, then paint
@@ -3992,6 +4003,15 @@ const adjTouched = () => Object.keys(ADJ0).some(k => k === "crop" ? !!LABS.adj.c
 // dragging, then as the server's exact result (the same code the edit uses — sharpen / clean / gamma / posterize too)
 const strokesOnly = () => LABS.adjScope === "strokes";
 let strokePreview = null, strokePreviewT = null, strokePreviewN = 0;
+let selRedraw = () => {}, selToRegion = () => {};   // set by initMask: redraw the selection outlines / "apply to: the selection" ← the selection
+// the sliders as the server gets them. "the selection": `region` = its outline as fractions of the whole picture
+// (an empty one = nothing selected yet = no change); the other scopes never send one
+const labAdj = () => { const { region, ...a } = LABS.adj; return LABS.adjScope === "selection" ? { ...a, region: region || [] } : a; };
+function regionOutline() {   // the adjusted area in fractions of the picture as shown (the crop, if any) — for the outline
+  const R = LABS.adjScope === "selection" && LABS.adj.region; if (!R || R.length < 3) return "";
+  const c = (!cropEdit && LABS.adj.crop) || [0, 0, 1, 1];
+  return R.map(([x, y]) => `${(x - c[0]) / c[2]},${(y - c[1]) / c[3]}`).join(" ");
+}
 // "what the AI sees" includes your 🎨 strokes (painted in, tuned as the edit will use them): the server draws the outlines of
 // picture + strokes; the colored strokes are hidden meanwhile so they don't cover the lines
 let edgesT = null, edgesN = 0;
@@ -4001,7 +4021,7 @@ function refreshEdgesWithStrokes() {
   const n = ++edgesN;
   edgesT = setTimeout(async () => {
     try {
-      const r = await api("/api/lab/edges", { file: LABS.file, adj: LABS.adj, sketch: LABS.sketch, scope: LABS.adjScope || "all" });
+      const r = await api("/api/lab/edges", { file: LABS.file, adj: labAdj(), sketch: LABS.sketch, scope: LABS.adjScope || "all" });
       const img = $("labDrop").querySelector(".cropwrap img");
       if (n === edgesN && img && LABS.edges) img.src = r.image;
     } catch {}
@@ -4010,7 +4030,7 @@ function refreshEdgesWithStrokes() {
 function refreshStrokePreview() {
   clearTimeout(strokePreviewT); strokePreview = null;
   if (!strokesOnly() || !LABS.sketch || !tonesTouched()) return;
-  const n = ++strokePreviewN, adj = Object.fromEntries(Object.entries(LABS.adj).filter(([k]) => k !== "crop"));
+  const n = ++strokePreviewN, adj = Object.fromEntries(Object.entries(labAdj()).filter(([k]) => k !== "crop"));
   strokePreviewT = setTimeout(async () => {
     try {
       const r = await api("/api/lab/bake", { sketch: LABS.sketch, adj });
@@ -4027,7 +4047,7 @@ function strokeFilter() {
 }
 function labSrcUrl() {   // the (adjusted) input as the server will use it — or its edge view
   // while drawing the crop box, show the whole image (adjusted, but uncropped)
-  const base = strokesOnly() ? { ...ADJ0, crop: LABS.adj.crop } : LABS.adj;
+  const base = strokesOnly() ? { ...ADJ0, crop: LABS.adj.crop } : labAdj();
   const adj = cropEdit ? { ...base, crop: null } : base;
   const touched = Object.keys(ADJ0).some(k => k === "crop" ? !!adj.crop : adj[k] !== undefined && adj[k] != ADJ0[k]);
   if (!touched && !LABS.edges) return `/lab/${encodeURIComponent(LABS.file)}`;
@@ -4102,6 +4122,7 @@ function maskLoad(url, w, h) {   // (re)build the paint canvas from a stored/seg
 }
 function drawMaskOverlay() {
   const wrap = $("labDrop").querySelector(".cropwrap"); if (!wrap) return;
+  selRedraw();
   let ov = wrap.querySelector("canvas.maskc"), sk = wrap.querySelector("canvas.sketchc");
   if (!LABS.mask && !LABS.sketch && !maskEdit) { if (ov) ov.remove(); if (sk) sk.remove(); lzMask(); return; }
   if (!sk) { sk = document.createElement("canvas"); sk.className = "sketchc"; wrap.appendChild(sk); }
@@ -4302,7 +4323,7 @@ async function editApply() {
                  lab_denoise: rough || sketch ? Math.min(+E.strength, PAINTIN_MAX)
                    : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
-  if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  if (adjTouched()) base.lab_adjust = labAdj();
   if (adjTouched() && strokesOnly()) base.lab_adjust_scope = "strokes";
   const ovr = { ...(E.ovBase ? { base: E.ovBase } : {}), ...(E.ovSampler ? { sampler: E.ovSampler } : {}), ...(E.ovScheduler ? { scheduler: E.ovScheduler } : {}) };
   if (Object.keys(ovr).length) base.adv = { ...(base.adv || {}), ...ovr };                  // this edit's overrides
@@ -4399,32 +4420,80 @@ function initMask() {
   const polyClose = () => { if (poly.length >= 3) { polyDraw(true); finish(); } else restore(); poly = []; polyHover = null; snap = null; drawMaskOverlay(); };
   let selHook = null;                         // set below: leaving select / move drops the selection
   const setTool = t => { if (poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); } if (selHook) selHook(t); tool = t; store.set("maskTool", t);
-    document.querySelectorAll("[data-mtool]").forEach(b => b.classList.toggle("on", b.dataset.mtool === t)); };
+    document.querySelectorAll("[data-mtool]").forEach(b => b.classList.toggle("on", b.dataset.mtool === t));
+    $("selShapes").classList.toggle("hidden", t !== "select"); };
   setTool(tool);
   $("maskToolset").addEventListener("click", e => { const b = e.target.closest("[data-mtool]"); if (b) setTool(b.dataset.mtool); });
-  // ---- ⬚ select + ✥ move: lift what's in the box off both layers (mask + colors) as a floating piece, move it
-  // (drag / arrow keys) over anything without picking it up, and leave it where it lands
-  let sel = null, marquee = null, fl = null, dragMove = null, saveT = null;
-  const selBox = () => {
+  // ---- ⬚ select + ✥ move: lift what's in the selection off both layers (mask + colors) as a floating piece, move it
+  // (drag / arrow keys) over anything without picking it up, and leave it where it lands. The selection is a box, a
+  // freehand ➰ lasso or a ⬠ polygon (click the corners); `pts` (relative to x, y) is its outline when it isn't a box
+  let sel = null, marquee = null, fl = null, dragMove = null, saveT = null, lasso = null, lassoHover = null, regT = null;
+  let selShape = store.get("selShape", "box");
+  const bbox = P => { const x = Math.floor(Math.min(...P.map(q => q.x))), y = Math.floor(Math.min(...P.map(q => q.y)));
+    return { x, y, w: Math.ceil(Math.max(...P.map(q => q.x))) - x, h: Math.ceil(Math.max(...P.map(q => q.y))) - y }; };
+  const fromPts = P => { const b = bbox(P); return { ...b, pts: P.map(q => [q.x - b.x, q.y - b.y]) }; };
+  const selOutline = s => s.pts ? s.pts.map(([x, y]) => [s.x + x, s.y + y])
+    : [[s.x, s.y], [s.x + s.w, s.y], [s.x + s.w, s.y + s.h], [s.x, s.y + s.h]];
+  const selPath = (c, ox, oy) => { c.beginPath(); sel.pts.forEach(([x, y], i) => c[i ? "lineTo" : "moveTo"](x + ox, y + oy)); c.closePath(); };
+  const inPoly = (P, x, y) => { let r = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) r = !r; }
+    return r; };
+  const selBox = () => {                     // marching ants round the selection / the lasso being drawn, + the adjust area
     const wrap = drop.querySelector(".cropwrap"); if (!wrap) return;
-    let b = wrap.querySelector(".selbox");
-    if (!sel || !maskCanvas.width || tf) { if (b) b.remove(); return; }
-    if (!b) { b = document.createElement("div"); b.className = "selbox"; wrap.appendChild(b); }
-    const W = maskCanvas.width, H = maskCanvas.height;
-    Object.assign(b.style, { left: sel.x / W * 100 + "%", top: sel.y / H * 100 + "%", width: sel.w / W * 100 + "%", height: sel.h / H * 100 + "%" });
+    let sv = wrap.querySelector("svg.selsvg");
+    const W = maskCanvas.width, H = maskCanvas.height, reg = regionOutline(), out = [];
+    const ants = (el, P) => { const pts = P.map(([x, y]) => `${x / W},${y / H}`).join(" ");
+      out.push(`<${el} class="a0" points="${pts}"/><${el} class="a1" points="${pts}"/>`); };
+    if (reg) out.push(`<polygon class="reg" points="${reg}"/>`);
+    if (W && sel && !tf) ants("polygon", selOutline(sel));
+    if (W && lasso && lasso.length) ants("polyline", [...lasso, ...(lassoHover ? [lassoHover] : [])].map(q => [q.x, q.y]));
+    if (!out.length) { if (sv) sv.remove(); return; }
+    if (!sv) { sv = document.createElementNS("http://www.w3.org/2000/svg", "svg"); sv.setAttribute("class", "selsvg");
+      sv.setAttribute("viewBox", "0 0 1 1"); sv.setAttribute("preserveAspectRatio", "none"); wrap.appendChild(sv); }
+    sv.innerHTML = out.join("");
   };
+  selRedraw = selBox;
+  const regionFromSel = now => {             // "apply to: the selection" follows the selection (in whole-picture fractions)
+    clearTimeout(regT);
+    const go = () => {
+      if (LABS.adjScope !== "selection" || !sel || sel.auto || !maskCanvas.width) return;
+      const W = maskCanvas.width, H = maskCanvas.height, c = (!cropEdit && LABS.adj.crop) || [0, 0, 1, 1], r5 = v => Math.round(v * 1e5) / 1e5;
+      LABS.adj.region = selOutline(sel).map(([x, y]) => [r5(c[0] + x / W * c[2]), r5(c[1] + y / H * c[3])]);
+      store.set("lab", LABS); selBox(); adjUpdate(); labSchedule();
+    };
+    if (now) go(); else regT = setTimeout(go, 200);
+  };
+  selToRegion = regionFromSel;
+  const selClose = () => {                   // finish a lasso / polygon: its outline becomes the selection
+    const P = lasso || []; lasso = null; lassoHover = null;
+    const s = P.length >= 3 ? fromPts(P) : null;
+    sel = s && s.w >= 2 && s.h >= 2 ? s : null; selBox(); regionFromSel();
+  };
+  const selCancel = () => { if (!lasso) return; lasso = null; lassoHover = null; selBox(); };
+  const setSelShape = v => { selCancel(); selShape = v; store.set("selShape", v);
+    document.querySelectorAll("[data-selshape]").forEach(b => b.classList.toggle("on", b.dataset.selshape === v)); };
+  setSelShape(selShape);
+  $("selShapes").addEventListener("click", e => { const b = e.target.closest("[data-selshape]"); if (b) setSelShape(b.dataset.selshape); });
   const norm = (a, b) => { const x = Math.round(Math.min(a.x, b.x)), y = Math.round(Math.min(a.y, b.y));
     return { x, y, w: Math.round(Math.max(a.x, b.x)) - x, h: Math.round(Math.max(a.y, b.y)) - y }; };
-  const inSel = p => sel && p.x >= sel.x && p.x < sel.x + sel.w && p.y >= sel.y && p.y < sel.y + sel.h;
+  const inSel = p => sel && p.x >= sel.x && p.x < sel.x + sel.w && p.y >= sel.y && p.y < sel.y + sel.h
+    && (!sel.pts || inPoly(sel.pts, p.x - sel.x, p.y - sel.y));
   const saveSoon = () => { clearTimeout(saveT); saveT = setTimeout(() => { maskSave(); sketchSave(); }, 250); };
   const lift = () => {
     if (fl || !sel) return;
     ensureLayers(); pushUndo();
     const before = grab();
     const cut = src => { const c = document.createElement("canvas"); c.width = Math.max(1, sel.w); c.height = Math.max(1, sel.h);
-      if (src.width) c.getContext("2d").drawImage(src, sel.x, sel.y, sel.w, sel.h, 0, 0, sel.w, sel.h); return c; };
+      if (!src.width) return c;
+      const cg = c.getContext("2d"); cg.drawImage(src, sel.x, sel.y, sel.w, sel.h, 0, 0, sel.w, sel.h);
+      if (sel.pts) { cg.globalCompositeOperation = "destination-in"; selPath(cg, 0, 0); cg.fill(); }   // lasso / polygon: only what's inside
+      return c; };
     const m = cut(maskCanvas), sk = cut(sketchCanvas);
-    g().clearRect(sel.x, sel.y, sel.w, sel.h); sketchCanvas.getContext("2d").clearRect(sel.x, sel.y, sel.w, sel.h);
+    for (const c of [g(), sketchCanvas.getContext("2d")]) {
+      if (!sel.pts) { c.clearRect(sel.x, sel.y, sel.w, sel.h); continue; }
+      c.save(); c.globalCompositeOperation = "destination-out"; selPath(c, sel.x, sel.y); c.fill(); c.restore();
+    }
     fl = { m, sk, base: grab(), before };
   };
   const placeFloat = () => {
@@ -4432,12 +4501,13 @@ function initMask() {
     put(fl.base); g().drawImage(fl.m, sel.x, sel.y); sketchCanvas.getContext("2d").drawImage(fl.sk, sel.x, sel.y);
     drawMaskOverlay(); selBox();
   };
-  const nudge = (dx, dy) => { if (!sel) return; lift(); sel.x += dx; sel.y += dy; placeFloat(); saveSoon(); };
+  const nudge = (dx, dy) => { if (!sel) return; lift(); sel.x += dx; sel.y += dy; placeFloat(); saveSoon(); regionFromSel(); };
   const dropFloat = () => { if (!fl) return; fl = null; clearTimeout(saveT); maskSave(); sketchSave(); };
   const deselect = () => { dropFloat(); sel = null; selBox(); };
-  const selectAll = () => { dropFloat(); if (!maskCanvas.width) return; sel = { x: 0, y: 0, w: maskCanvas.width, h: maskCanvas.height }; selBox(); };
+  const selectAll = () => { dropFloat(); if (!maskCanvas.width) return; sel = { x: 0, y: 0, w: maskCanvas.width, h: maskCanvas.height }; selBox(); regionFromSel(); };
   selHook = t => {
     if (tf && t !== "transform") tfEnd(true);                 // leaving transform applies it
+    selCancel();
     if (!["select", "move", "transform"].includes(t)) deselect();
     if (t === "transform") setTimeout(() => { if (!tf && maskEdit) tfStart(); });
   };
@@ -4446,21 +4516,35 @@ function initMask() {
     if (tool === "transform") { tfStart(); if (tf) { drop.setPointerCapture(e.pointerId); tfDown(e, p); } return true; }
     if (tool !== "select" && tool !== "move") return false;
     drop.setPointerCapture(e.pointerId);
+    if (lasso && selShape === "poly") {      // ⬠ polygon on its way: another corner, or the first one again = close it
+      const f = lasso[0];
+      if (lasso.length >= 3 && Math.hypot(p.x - f.x, p.y - f.y) < 8 * p.k) selClose(); else { lasso.push(p); selBox(); }
+      return true;
+    }
     if (sel && sel.auto && tool === "select") deselect();           // the move tool's everything-selection isn't a real one
     if (tool === "move" && !sel) { selectAll(); sel.auto = true; }   // nothing selected: move everything, just for this drag
     if (tool === "move" || inSel(p)) { lift(); dragMove = { p0: p, x0: sel.x, y0: sel.y }; return true; }
-    dropFloat(); sel = null; marquee = p; selBox(); return true;
+    dropFloat(); sel = null;
+    if (tool === "select" && selShape !== "box") { lasso = [p]; lassoHover = null; } else marquee = p;
+    selBox(); return true;
   };
   const selPointerMove = e => {
     if (tf) { if (tf.drag) tfMove(e, at(e)); return true; }
     if (dragMove) { const p = at(e); sel.x = dragMove.x0 + Math.round(p.x - dragMove.p0.x); sel.y = dragMove.y0 + Math.round(p.y - dragMove.p0.y); placeFloat(); return true; }
     if (marquee) { sel = norm(marquee, at(e)); selBox(); return true; }
+    if (lasso) {
+      const p = at(e);
+      if (selShape === "poly") lassoHover = p;                     // rubber band to the pointer
+      else if (e.buttons & 1) { const q = lasso[lasso.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) >= 1.5 * p.k) lasso.push(p); }
+      selBox(); return true;
+    }
     return false;
   };
   const selPointerUp = () => {
     if (tf) { tf.drag = null; return true; }
-    if (dragMove) { dragMove = null; clearTimeout(saveT); maskSave(); sketchSave(); if (sel && sel.auto) deselect(); return true; }
-    if (marquee) { marquee = null; if (!sel || sel.w < 2 || sel.h < 2) sel = null; selBox(); return true; }
+    if (dragMove) { dragMove = null; clearTimeout(saveT); maskSave(); sketchSave(); if (sel && sel.auto) deselect(); else regionFromSel(); return true; }
+    if (marquee) { marquee = null; if (!sel || sel.w < 2 || sel.h < 2) sel = null; selBox(); regionFromSel(); return true; }
+    if (lasso) { if (selShape !== "poly") selClose(); return true; }   // a lasso closes when you let go; a polygon on a click
     return false;
   };
   const selKey = e => {                        // arrows / Delete / Esc / Ctrl+A — true = handled
@@ -4470,6 +4554,12 @@ function initMask() {
       if (d) { e.preventDefault(); const st = e.shiftKey ? 10 : 1; tf.M = new DOMMatrix().translate(d[0] * st, d[1] * st).multiply(tf.M); tfRender(); return true; }
       if (k === "Enter") { e.preventDefault(); tfEnd(true); return true; }
       if (k === "Escape") { e.preventDefault(); tfEnd(false); return true; }
+      return false;
+    }
+    if (lasso) {
+      if (k === "Enter") { e.preventDefault(); selClose(); return true; }
+      if (k === "Escape") { e.preventDefault(); selCancel(); return true; }
+      if (k === "Backspace" || k === "Delete") { e.preventDefault(); lasso.pop(); if (lasso.length) selBox(); else selCancel(); return true; }
       return false;
     }
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "a") { e.preventDefault(); if (!["select", "move"].includes(tool)) setTool("select"); selectAll(); return true; }
@@ -4534,10 +4624,9 @@ function initMask() {
   const tfEnd = apply => {                    // apply: leave it where it is (new selection = its bounding box); else put it back
     if (!tf) return;
     if (apply) {
-      const pts = ["nw", "ne", "se", "sw"].map(n => mp(tf.M, ...tfLocal(tf.r)[n]));
-      const x0 = Math.floor(Math.min(...pts.map(q => q.x))), y0 = Math.floor(Math.min(...pts.map(q => q.y)));
-      const x1 = Math.ceil(Math.max(...pts.map(q => q.x))), y1 = Math.ceil(Math.max(...pts.map(q => q.y)));
-      fl = null; tf = null; sel = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; maskSave(); sketchSave();
+      const P = selOutline(tf.r).map(([x, y]) => mp(tf.M, x, y));      // the outline where it ended up (turned, if rotated)
+      const straight = !tf.r.pts && Math.abs(tf.M.b) < 1e-6 && Math.abs(tf.M.c) < 1e-6;
+      fl = null; tf = null; sel = straight ? bbox(P) : fromPts(P); maskSave(); sketchSave(); regionFromSel();
     } else {
       if (fl) { put(fl.before); undo.pop(); } fl = null; tf = null; sel = null; drawMaskOverlay(); maskSave(); sketchSave();
     }
@@ -4624,7 +4713,8 @@ function initMask() {
     if (tool !== "brush" && start) { restore(); shape(start, at(e), e.shiftKey); drawMaskOverlay(); start = null; snap = null; }
     finish();
   });
-  drop.addEventListener("dblclick", e => { if (maskEdit && tool === "poly" && poly.length) { e.preventDefault(); poly.pop(); polyClose(); } });
+  drop.addEventListener("dblclick", e => { if (maskEdit && tool === "poly" && poly.length) { e.preventDefault(); poly.pop(); polyClose(); }
+    if (maskEdit && lasso && selShape === "poly") { e.preventDefault(); lasso.pop(); selClose(); } });
   $("maskBtn").onclick = () => {
     if (!LABS.file) return;
     if (!maskEdit && cropEdit) { cropEdit = false; }
@@ -4665,7 +4755,7 @@ function initMask() {
     const text = $("maskWords").value.trim(); if (!text || !LABS.file) return;
     $("maskSelect").textContent = "…";
     try {
-      const r = await api("/api/lab/segment", { file: LABS.file, adj: LABS.adj, text });
+      const r = await api("/api/lab/segment", { file: LABS.file, adj: labAdj(), text });
       const img = drop.querySelector(".cropwrap img");
       maskLoad(r.mask, img.naturalWidth || r.size[0], img.naturalHeight || r.size[1]);
       setTimeout(maskSave, 300);
@@ -4679,7 +4769,8 @@ function initMask() {
     if (e.key === "e" || e.key === "E") $("maskErase").click();
     if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey) $("maskColorBtn").click();
     const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly", m: "select", v: "move", t: "transform" }[e.key.toLowerCase()];
-    if (tk && !e.ctrlKey && !e.metaKey) setTool(tk);
+    if (tk === "select" && tool === "select" && !e.ctrlKey && !e.metaKey) setSelShape({ box: "lasso", lasso: "poly", poly: "box" }[selShape]);
+    else if (tk && !e.ctrlKey && !e.metaKey) setTool(tk);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("maskUndo").click(); }
     if (e.key === "Enter" && tool === "poly" && poly.length) { e.preventDefault(); polyClose(); }
     if (e.key === "Escape" && poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); }
@@ -4697,7 +4788,9 @@ function initMask() {
   $("editAvoid").oninput = e => { LABS.edit.avoid = e.target.value; store.set("lab", LABS); };
   for (const [id, k] of [["editBase", "ovBase"], ["editSampler", "ovSampler"], ["editScheduler", "ovScheduler"]])
     $(id).onchange = e => { LABS.edit[k] = e.target.value; store.set("lab", LABS); renderEditBox(); };
-  $("adjScope").onchange = e => { LABS.adjScope = e.target.value; store.set("lab", LABS); const i = $("labDrop").querySelector(".cropwrap img"); if (i && LABS.file) i.src = labSrcUrl(); refreshStrokePreview(); drawMaskOverlay(); };
+  $("adjScope").onchange = e => { LABS.adjScope = e.target.value; store.set("lab", LABS);
+    if (LABS.adjScope === "selection") { selToRegion(true);
+      if (!(LABS.adj.region || []).length) note("select the area first: ✎ mask → ⬚ select (box, ➰ lasso or ⬠ polygon) — the adjustments go only inside it"); } const i = $("labDrop").querySelector(".cropwrap img"); if (i && LABS.file) i.src = labSrcUrl(); refreshStrokePreview(); drawMaskOverlay(); };
   $("editRough").onchange = e => { LABS.edit.rough = e.target.checked ? "auto" : "off"; store.set("lab", LABS); renderEditBox(); };
   $("editRoughColor").oninput = e => { LABS.edit.rough = e.target.value; store.set("lab", LABS); renderRough(LABS.edit); };
   $("editRoughColor").onchange = () => renderEditBox();
@@ -4781,7 +4874,7 @@ function adjSwap(entry, forward) {           // put the picture / the strokes to
 }
 async function adjApply() {
   if (!LABS.file || !tonesTouched()) return;
-  const adj = Object.fromEntries(Object.entries(LABS.adj).filter(([k]) => k !== "crop"));
+  const adj = Object.fromEntries(Object.entries(labAdj()).filter(([k]) => k !== "crop"));
   $("adjApply").textContent = "…";
   try {
     let entry;
@@ -4795,18 +4888,21 @@ async function adjApply() {
     }
     (LABS.adjHist = LABS.adjHist || []).push(entry); LABS.adjRedo = [];
     if (LABS.adjHist.length > 30) LABS.adjHist.shift();
-    LABS.adj = { ...ADJ0, crop: LABS.adj.crop };            // sliders back to defaults (the crop stays)
+    LABS.adj = { ...ADJ0, crop: LABS.adj.crop, region: LABS.adj.region };   // sliders back to defaults (the crop and the selection stay)
     adjSwap(entry, true); renderAdj(); adjUpdate();
     note(entry.kind === "file" ? `applied to the picture → ${entry.to}` : "applied to your 🎨 strokes");
   } catch (e) { showErr(e); }
   $("adjApply").textContent = "✓ apply now"; adjHistButtons();
 }
+// posterize is stored as bits kept (1 = 2 levels per channel … 7 = 128), but the slider runs off → strongest:
+// position p keeps 8 − p bits, so dragging right always means "fewer colors"
+const posterizeBits = p => p ? 8 - p : 0;
 function renderAdj() {
   document.querySelectorAll("[data-adj]").forEach(el => {
     const k = el.dataset.adj, v = LABS.adj[k] ?? ADJ0[k];
-    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+    if (el.type === "checkbox") el.checked = !!v; else el.value = k === "posterize" ? posterizeBits(+v) : v;
     const out = $("v" + k);
-    if (out) out.textContent = k === "posterize" ? (+v ? `${v} bit` : "off") : k === "clean" ? (+v ? v : "off")
+    if (out) out.textContent = k === "posterize" ? (+v ? `${2 ** v} levels` : "off") : k === "clean" ? (+v ? v : "off")
       : k === "gamma" ? (+v).toFixed(2) : k === "saturation" ? `${v}%` : k === "hue" ? `${v}°` : (+v > 0 ? "+" : "") + v;
   });
   $("adjEdges").checked = !!LABS.edges;
@@ -4887,7 +4983,7 @@ function labParams() {
                  control: { file: LABS.file, mode: LABS.mode, strength: LABS.strength, end: LABS.strength >= 1 ? 0.9 : 0.8 } };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen;
   if (LABS.init) { base.lab_init = LABS.file; base.lab_denoise = LABS.denoise; }
-  if (adjTouched()) base.lab_adjust = { ...LABS.adj };
+  if (adjTouched()) base.lab_adjust = labAdj();
   return base;
 }
 // ---- live preview: one --fast image per settled change, fixed seed, only the latest one matters
@@ -4974,11 +5070,11 @@ function initLab() {
   $("labLive").onchange = e => { LABS.live = e.target.checked; renderLab(); if (LABS.live) labSchedule(); };
   $("adjBox").addEventListener("input", e => {
     const k = e.target.dataset.adj; if (!k) return;
-    LABS.adj[k] = e.target.type === "checkbox" ? e.target.checked : +e.target.value;
+    LABS.adj[k] = e.target.type === "checkbox" ? e.target.checked : k === "posterize" ? posterizeBits(+e.target.value) : +e.target.value;
     renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule();
   });
   $("adjEdges").onchange = e => { LABS.edges = e.target.checked; renderAdj(); adjUpdate(); store.set("lab", LABS); drawMaskOverlay(); };
-  $("adjReset").onclick = () => { LABS.adj = { ...ADJ0 }; renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule(); };
+  $("adjReset").onclick = () => { LABS.adj = { ...ADJ0, region: LABS.adj.region }; renderAdj(); adjUpdate(); store.set("lab", LABS); labSchedule(); };
   $("adjApply").onclick = adjApply;
   $("adjUndo").onclick = () => { const e = (LABS.adjHist || []).pop(); if (!e) return; (LABS.adjRedo = LABS.adjRedo || []).push(e); adjSwap(e, false); adjHistButtons(); };
   $("adjRedo").onclick = () => { const e = (LABS.adjRedo || []).pop(); if (!e) return; (LABS.adjHist = LABS.adjHist || []).push(e); adjSwap(e, true); adjHistButtons(); };

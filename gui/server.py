@@ -1150,40 +1150,95 @@ def adjust_is_default(adj):
                for k, v in ADJ_DEFAULTS.items() if k != "crop")
 
 
+def region_mask(size, region):
+    """ "apply to: the selection": the selection's outline ([[x, y], …] as fractions of the whole picture) as an L mask,
+    with a hair of feathering so the tuned part doesn't end in a jagged seam."""
+    from PIL import Image, ImageDraw, ImageFilter
+    W, H = size
+    m = Image.new("L", size, 0)
+    if region and len(region) >= 3:
+        ImageDraw.Draw(m).polygon([(float(x) * W, float(y) * H) for x, y in region], fill=255)
+        m = m.filter(ImageFilter.GaussianBlur(0.7))
+    return m
+
+
 def adjust_image(path, adj, max_side=None):
     """Source-image tuning for the LAB (PIL only): clean → brightness/contrast → gamma → saturation → hue →
-    sharpen → posterize → grayscale → invert. Returns an RGB PIL image."""
+    sharpen → posterize → grayscale → invert. With a `region` (the selection's outline) only the inside is tuned
+    (an empty region = nothing selected yet = nothing tuned). Returns an RGB PIL image."""
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     im = Image.open(path).convert("RGB")
+    region = (adj or {}).get("region")
+    mask = region_mask(im.size, region) if region is not None else None
     crop = (adj or {}).get("crop")
     if crop:                                    # [x, y, w, h] as fractions of the image — applied first
         x, y, w, h = (min(1.0, max(0.0, float(v))) for v in crop)
         W, H = im.size
         box = (int(x * W), int(y * H), max(int(x * W) + 1, int((x + w) * W)), max(int(y * H) + 1, int((y + h) * H)))
         im = im.crop(box)
+        mask = mask.crop(box) if mask is not None else None
     if max_side and max(im.size) > max_side:
         im.thumbnail((max_side, max_side), Image.LANCZOS)
-    return adjust_tone(im, adj)
+        mask = mask.resize(im.size, Image.LANCZOS) if mask is not None else None
+    if mask is None:
+        return adjust_tone(im, adj)
+    if not mask.getbbox():
+        return im
+    return Image.composite(adjust_tone(im, adj), im, mask)
+
+
+def _stroke_color_field(sk):
+    """The strokes' colors as a full RGB picture: painted colors where the paint is solid, and — where it's faint
+    (soft edges, whose color is unreliable) or empty — the nearby painted colors, so filters never see a fake edge."""
+    from PIL import Image, ImageFilter
+    try:
+        import numpy as np
+    except ImportError:
+        flat = Image.new("RGB", sk.size, (128, 128, 128))
+        flat.paste(sk.convert("RGB"), (0, 0), sk.getchannel("A").point(lambda v: 255 if v >= 64 else 0))
+        return flat
+    A = np.asarray(sk.getchannel("A"), dtype=np.float32)
+    C = np.asarray(sk.convert("RGB"), dtype=np.float32)
+    solid = (A >= 64).astype(np.float32)[..., None]
+    pm = Image.fromarray((C * solid).clip(0, 255).astype(np.uint8))
+    ms = Image.fromarray((solid[..., 0] * 255).astype(np.uint8))
+    pmb = np.asarray(pm.filter(ImageFilter.GaussianBlur(6)), dtype=np.float32)
+    msb = np.asarray(ms.filter(ImageFilter.GaussianBlur(6)), dtype=np.float32)[..., None] / 255
+    fill = np.where(msb > 1e-3, pmb / np.maximum(msb, 1e-3), 128)
+    return Image.fromarray(np.where(solid > 0, C, fill).clip(0, 255).astype(np.uint8), "RGB")
 
 
 def adjust_strokes(sk, adj):
-    """The LAB's tuning on the 🎨 strokes layer (RGBA). Colors: the same tone steps as the picture, pivoted on
-    mid-grey (an almost-empty layer averages near black). Edges: strokes are flat color, so sharpen and clean
-    work on their outline — sharpen hardens soft-brush edges, clean smooths ragged edges and drops specks."""
-    from PIL import Image, ImageFilter
+    """The LAB's tuning on the 🎨 strokes layer (RGBA), every slider on everything painted:
+    colors — the same steps as the picture (clean → brightness → contrast → gamma → saturation → hue → sharpen →
+    posterize → grayscale → invert), with contrast pivoting on mid-grey like the live preview (an almost-empty
+    layer has no meaningful average); edges — clean smooths ragged outlines and drops specks, sharpen hardens soft
+    edges, posterize steps the soft falloff into bands."""
+    from PIL import ImageFilter
     a = dict(ADJ_DEFAULTS, **(adj or {}))
     alpha = sk.getchannel("A")
-    flat = Image.new("RGB", sk.size, (128, 128, 128))
-    flat.paste(sk.convert("RGB"), (0, 0), alpha.point(lambda v: 255 if v else 0))
-    rgb = adjust_tone(flat, {k: v for k, v in (adj or {}).items() if k not in ("clean", "sharpen")})
-    c, sh = int(a["clean"]), float(a["sharpen"])
-    if c > 0:                                   # smooth the outline, lose stray specks
+    rgb = _stroke_color_field(sk)
+    c, sh, bits = int(a["clean"]), float(a["sharpen"]), int(a["posterize"])
+    if c > 0:                                   # colors: smooth blotchy / blocky paint
+        rgb = rgb.filter(ImageFilter.MedianFilter(3 if c < 3 else 5))
+        if c >= 2:
+            rgb = rgb.filter(ImageFilter.GaussianBlur(0.4 * (c - 1)))
+    rgb = adjust_tone(rgb, {"brightness": a["brightness"]})
+    ct = float(a["contrast"])
+    if ct:                                      # contrast around mid-grey
+        f = 1 + ct / 100
+        rgb = rgb.point([max(0, min(255, int(round(128 + (i - 128) * f)))) for i in range(256)] * 3)
+    rgb = adjust_tone(rgb, {k: a[k] for k in ("gamma", "saturation", "hue", "sharpen", "posterize", "gray", "invert")})
+    if c > 0:                                   # edges: smooth the outline, lose stray specks
         alpha = alpha.filter(ImageFilter.MedianFilter(3 if c < 3 else 5))
         if c >= 2:
             alpha = alpha.filter(ImageFilter.GaussianBlur(0.5 * (c - 1)))
-    if sh > 0:                                  # harden soft edges: stretch the outline's alpha around the middle
+    if sh > 0:                                  # edges: harden soft falloff
         k = 1 + 1.5 * sh
         alpha = alpha.point(lambda v: max(0, min(255, int((v - 128) * k + 128))) if v else 0)
+    if bits > 0:                                # edges: the soft falloff in as few steps as the colors
+        n = 2 ** max(1, min(8, bits)) - 1
+        alpha = alpha.point(lambda v: int(round(round(v / 255 * n) / n * 255)))
     rgb.putalpha(alpha)
     return rgb
 
@@ -2440,7 +2495,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 stem = re.sub(r"(__adj\d+)+$", "", os.path.splitext(os.path.basename(src))[0])
                 n = 1 + max([int(m.group(1)) for f in os.listdir(LAB) for m in [re.match(re.escape(stem) + r"__adj(\d+)\.png$", f)] if m] or [0])
                 out = os.path.join(LAB, f"{stem}__adj{n}.png")
-                adjust_tone(Image.open(src).convert("RGB"), adj).save(out)
+                adjust_image(src, adj).save(out)             # (a `region`: only inside the selection)
                 return self._json({"file": os.path.basename(out), "size": image_size(out)})
             if u.path == "/api/lab/import":
                 # bring a render / steering ref / corkboard item into the LAB as an input

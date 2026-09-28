@@ -497,10 +497,11 @@ serves it locally at `/docs/settings-atlas.html`.
   (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**. A preset or a
   whole folder exports/imports as a `.zip`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
-  adjust the source first (brightness, contrast, posterize, crop…), and **edit** part of an
+  adjust the source first (brightness, contrast, sharpen, posterize, crop…) — the whole picture, only your 🎨 strokes, or just
+  a selected part — then **✓ apply now** to stack adjustments (with undo / redo), and **edit** part of an
   image (inpainting): paint the mask with brush / line / rectangle / ellipse / polygon tools
   (undo, brush-shaped cursor) — or **🎨 paint in color** (color picker + 💧 screen picker, hard / soft
-  tip, opacity) to rough in what you want, e.g. a brown cigar with an orange lit tip; **⬚ select, ✥ move
+  tip, opacity) to rough in what you want, e.g. a brown cigar with an orange lit tip; **⬚ select (box, ➰ lasso or ⬠ polygon), ✥ move
   and ⤡ transform** (scale / rotate around an anchored or free pivot) what you've drawn; select by words, or load a layered `.draw` / `.ora` / `.psd`
   whose `mask` layer is the mask and `art` layer the input. Edits can keep the picture's
   colors, light & shadow, and shape, and **paint it in first** (fill the mask with the new
