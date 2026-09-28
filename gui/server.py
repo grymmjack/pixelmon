@@ -864,12 +864,7 @@ class JobQueue:
                     if size and sketch.size != size:
                         sketch = sketch.resize(size, Image.NEAREST)
                     if stroke_adj and not adjust_is_default(stroke_adj):
-                        # on a mid-grey backdrop: contrast pivots on the average, and an almost-empty strokes layer
-                        # averages near black (+contrast would brighten everything); grey = the same pivot as the preview
-                        flat = Image.new("RGB", sketch.size, (128, 128, 128))
-                        flat.paste(sketch.convert("RGB"), (0, 0), sketch.getchannel("A").point(lambda v: 255 if v else 0))
-                        rgb = adjust_tone(flat, stroke_adj)
-                        rgb.putalpha(sketch.getchannel("A")); sketch = rgb
+                        sketch = adjust_strokes(sketch, stroke_adj)
                     m = ImageChops.lighter(m, sketch.getchannel("A").point(lambda v: 255 if v > 16 else 0))
                 mask = os.path.join(jdir, "mask.png")
                 m.save(mask)
@@ -1169,6 +1164,28 @@ def adjust_image(path, adj, max_side=None):
     if max_side and max(im.size) > max_side:
         im.thumbnail((max_side, max_side), Image.LANCZOS)
     return adjust_tone(im, adj)
+
+
+def adjust_strokes(sk, adj):
+    """The LAB's tuning on the 🎨 strokes layer (RGBA). Colors: the same tone steps as the picture, pivoted on
+    mid-grey (an almost-empty layer averages near black). Edges: strokes are flat color, so sharpen and clean
+    work on their outline — sharpen hardens soft-brush edges, clean smooths ragged edges and drops specks."""
+    from PIL import Image, ImageFilter
+    a = dict(ADJ_DEFAULTS, **(adj or {}))
+    alpha = sk.getchannel("A")
+    flat = Image.new("RGB", sk.size, (128, 128, 128))
+    flat.paste(sk.convert("RGB"), (0, 0), alpha.point(lambda v: 255 if v else 0))
+    rgb = adjust_tone(flat, {k: v for k, v in (adj or {}).items() if k not in ("clean", "sharpen")})
+    c, sh = int(a["clean"]), float(a["sharpen"])
+    if c > 0:                                   # smooth the outline, lose stray specks
+        alpha = alpha.filter(ImageFilter.MedianFilter(3 if c < 3 else 5))
+        if c >= 2:
+            alpha = alpha.filter(ImageFilter.GaussianBlur(0.5 * (c - 1)))
+    if sh > 0:                                  # harden soft edges: stretch the outline's alpha around the middle
+        k = 1 + 1.5 * sh
+        alpha = alpha.point(lambda v: max(0, min(255, int((v - 128) * k + 128))) if v else 0)
+    rgb.putalpha(alpha)
+    return rgb
 
 
 def adjust_tone(im, adj):
@@ -2388,6 +2405,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 m.convert("L").save(buf, "PNG")
                 return self._json({"mask": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
                                    "size": m.size})
+            if u.path == "/api/lab/edges":
+                # "what the AI sees" with your 🎨 strokes painted in (as the edit uses them), tuned the same way
+                from PIL import Image
+                adj = body.get("adj") or {}
+                strokes_only = body.get("scope") == "strokes"
+                pic_adj = ({"crop": adj.get("crop")} if adj.get("crop") else {}) if strokes_only else adj
+                im = adjust_image(lab_path(body.get("file")), pic_adj, max_side=720).convert("RGBA")
+                data = str(body.get("sketch") or "")
+                if data:
+                    raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
+                    sk = Image.open(io.BytesIO(raw)).convert("RGBA").resize(im.size, Image.NEAREST)
+                    if strokes_only:
+                        tone = {k: v for k, v in adj.items() if k != "crop"}
+                        if not adjust_is_default(tone):
+                            sk = adjust_strokes(sk, tone)
+                    im = Image.alpha_composite(im, sk)
+                b = io.BytesIO(); edge_view(im.convert("RGB")).save(b, "PNG")
+                return self._json({"image": "data:image/png;base64," + base64.b64encode(b.getvalue()).decode()})
             if u.path == "/api/lab/bake":
                 # "apply now": bake the adjust sliders into the picture (a new LAB input; the old one stays for undo)
                 # or into the 🎨 strokes. The crop isn't baked, so the mask and strokes keep lining up.
@@ -2399,11 +2434,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     data = str(body["sketch"])
                     raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
                     sk = Image.open(io.BytesIO(raw)).convert("RGBA")
-                    flat = Image.new("RGB", sk.size, (128, 128, 128))      # mid-grey pivot, like the edit does
-                    flat.paste(sk.convert("RGB"), (0, 0), sk.getchannel("A").point(lambda v: 255 if v else 0))
-                    rgb = adjust_tone(flat, adj)
-                    rgb.putalpha(sk.getchannel("A"))
-                    b = io.BytesIO(); rgb.save(b, "PNG")
+                    b = io.BytesIO(); adjust_strokes(sk, adj).save(b, "PNG")
                     return self._json({"sketch": "data:image/png;base64," + base64.b64encode(b.getvalue()).decode()})
                 src = lab_path(body.get("file"))
                 stem = re.sub(r"(__adj\d+)+$", "", os.path.splitext(os.path.basename(src))[0])
