@@ -4038,6 +4038,10 @@ function drawMaskOverlay() {
   g.globalCompositeOperation = "source-over";
   lzMask();
 }
+// painted-in edits: the strength slider goes up to this (0.85 = detailed, e.g. a cigar's band and burnt end; above
+// it the old pixels win — the beard grew back over the cigar)
+const PAINTIN_MAX = 0.85;
+const paintinStrength = E => Math.min(+E.strength || 1, PAINTIN_MAX).toFixed(2);
 // "paint it in first": the new thing's color, from the words — a color you named, or a sensible one for common things
 const ROUGH_COLORS = [
   [/\b(black|ebony|jet|onyx|obsidian)\b/, "#18141a"], [/\b(white|ivory|pale)\b/, "#e6e1d8"], [/\b(dark red|crimson|blood|bloody|gore)\b/, "#6e1010"],
@@ -4071,13 +4075,13 @@ function renderRough(E) {
   const r = roughFor(E), g = roughGuess(E.what);
   if (LABS.sketch) {                          // your own colors win
     $("editRough").checked = true; $("editRoughColor").value = LABS.pcolor || "#6a4424";
-    $("editRoughWhy").innerHTML = "uses your <b>🎨 color strokes</b> as the paint-in (the automatic color is skipped), then shapes and shades them · strength ≤ 0.75";
+    $("editRoughWhy").innerHTML = `uses your <b>🎨 color strokes</b> as the paint-in (the automatic color is skipped), then shapes and shades them · strength ${paintinStrength(E)} (up to ${PAINTIN_MAX})`;
     return;
   }
   $("editRough").checked = E.rough !== "off";
   $("editRoughColor").value = (r && r.color) || (g && g.color) || "#18141a";
   $("editRoughWhy").innerHTML = E.rough === "off" ? "off — the edit starts from what's there (a masked eye can come back as an eye)"
-    : r ? `paints the mask <b><span style="display:inline-block;width:10px;height:10px;background:${r.color};border:1px solid var(--line);vertical-align:middle"></span> ${r.color}</b> first (${esc(r.why)}${r.why === "your color" ? "" : ", from your words"}), then shapes and shades it · strength ≤ 0.75`
+    : r ? `paints the mask <b><span style="display:inline-block;width:10px;height:10px;background:${r.color};border:1px solid var(--line);vertical-align:middle"></span> ${r.color}</b> first (${esc(r.why)}${r.why === "your color" ? "" : ", from your words"}), then shapes and shades it · strength ${paintinStrength(E)} (up to ${PAINTIN_MAX}; lower = closer to the paint)`
     : "nothing in the words says a color — pick one with the swatch, or it edits as usual";
 }
 // which model will draw this edit (mirrors the server's rule in adv_argv)
@@ -4173,7 +4177,7 @@ async function editApply() {
                             // keep light & shadow: start from the old pixels (blend) — the strength decides how far it may go
                             mode: rough || sketch || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
                  lab_init: LABS.file,
-                 lab_denoise: rough || sketch ? Math.min(E.strength, 0.75)
+                 lab_denoise: rough || sketch ? Math.min(E.strength, PAINTIN_MAX)
                    : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };
