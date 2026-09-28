@@ -3556,19 +3556,37 @@ function renderCork() {
   store.set("corkOpen", CORK.open); store.set("corkBoard", CORK.board);
   requestAnimationFrame(corkSyncGrid);
 }
+// where a drop lands: before / after the item under the pointer (the same marker a rearrange shows); null = the end
+function corkDropIndex(e) {
+  const t = e.target.closest && e.target.closest(".cork-item"); if (!t) return null;
+  const i = curBoard().items.indexOf(t.dataset.cork); if (i < 0) return null;
+  const r = t.getBoundingClientRect();
+  return i + (e.clientX > r.left + r.width / 2 ? 1 : 0);
+}
 async function corkDrop(e) {
   e.preventDefault(); $("corkBody").classList.remove("over");
   const raw = e.dataTransfer.getData(DRAG_MIME);
   const own = raw && (() => { try { const p = JSON.parse(raw); return p.board === CORK.board && p.file ? p.file : null; } catch { return null; } })();
   if (own) return corkMove(own, e);        // rearranging this board
+  const at = corkDropIndex(e), board = CORK.board, added = [];
+  document.querySelectorAll(".cork-item.drop-before, .cork-item.drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
   try {
-    if (raw) await api("/api/boards/add", { board: CORK.board, ...JSON.parse(raw) });
+    if (raw) added.push((await api("/api/boards/add", { board, ...JSON.parse(raw) })).file);
     else for (const f of [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"))) {
-      const r = await fetch(`/api/refs/upload?board=${encodeURIComponent(CORK.board)}&filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
-      if (!r.ok) throw new Error((await r.json()).error);
+      const r = await fetch(`/api/refs/upload?board=${encodeURIComponent(board)}&filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error);
+      added.push(j.file);
     }
   } catch (err) { showErr(err); }
-  loadBoards();
+  await loadBoards();
+  // new pictures go where they were dropped, not to the bottom
+  const b = curBoard(), mine = added.filter(f => f && b.items.includes(f));
+  if (at != null && mine.length && b.name === board) {
+    const before = b.items.slice(0, at).filter(f => !mine.includes(f)).length;       // the slot, counted without the new ones
+    const rest = b.items.filter(f => !mine.includes(f));
+    rest.splice(before, 0, ...mine); b.items = rest;
+    renderCork(); saveCorkLayout();
+  }
 }
 function initCork() {
   // what a drag carries: a gallery render {src:{dir,file}} or a steering ref {ref}
