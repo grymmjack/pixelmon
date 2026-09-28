@@ -491,6 +491,7 @@ fieldset.closed { padding-bottom: 2px; }
 .maskcolor input[type=color] { width: 28px; height: 22px; padding: 0; border: 0; background: none; }
 .maskcolor select { width: auto; padding: 2px 4px; font-size: 12px; } .maskcolor input[type=range] { width: 80px; }
 .maskcolor.off { opacity: .45; }
+.cropwrap.picking, .cropwrap.picking * { cursor: crosshair !important; } #labDrop .cropwrap.picking #brushCur { display: none; }
 .cropwrap canvas.sketchc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 #brushCur.color { border-style: solid; }
 .editrough { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
@@ -817,6 +818,7 @@ fieldset.closed { padding-bottom: 2px; }
             <button type="button" class="btn small" id="maskColorBtn" title="paint in color (C): your strokes are painted into the picture before the edit — the rough version of what you want — and count as mask">🎨 color</button>
             <button type="button" class="btn small" id="maskErase" title="erase mask and color (E)">⌫ erase</button>
             <span class="maskcolor" id="maskColorOpts"><input type="color" id="maskColor" title="brush color">
+              <button type="button" class="btn small" id="maskPick" title="pick the brush color: anywhere on screen (the picture, a render, a swatch…) · or Alt+click the picture">💧</button>
               <select id="maskTip" title="brush tip"><option value="hard">hard</option><option value="soft">soft</option></select>
               opacity <input type="range" id="maskOpacity" min="5" max="100" step="5" title="stroke opacity"><b id="maskOpacityVal"></b></span>
             <span class="masktoolset" id="maskToolset">
@@ -890,6 +892,7 @@ fieldset.closed { padding-bottom: 2px; }
             <div class="editrough" id="editRoughRow"><label class="inline" title="fill the masked area with the new thing's color first, then let the edit shape and shade it — without this a masked eye comes back as an eye">
                 <input type="checkbox" id="editRough"> paint it in first</label>
               <input type="color" id="editRoughColor" title="the color to rough it in with (pick one to override the automatic guess)">
+              <button type="button" class="btn small" id="editRoughPick" title="pick the color from anywhere on screen (or the picture)">💧</button>
               <span class="uses" id="editRoughWhy"></span></div>
             <div class="editmodel"><span>model:</span>
               <select data-advmirror="inpaint_model" title="which model draws the edit — the same setting as ⚙ Advanced › Inpainting model"></select>
@@ -4038,6 +4041,29 @@ function drawMaskOverlay() {
   g.globalCompositeOperation = "source-over";
   lzMask();
 }
+// 💧 pick a color: the screen picker (Chrome / Edge: any pixel anywhere) or, without it, a click on the LAB picture.
+// Alt+click on the picture while painting samples it directly (the picture + your color strokes).
+let PICK = null;                                   // waiting for a click on the picture: the function that takes the color
+function samplePicture(x, y) {                     // x, y in the picture's own pixels
+  const img = $("labDrop").querySelector(".cropwrap img"); if (!img || !img.naturalWidth) return null;
+  const c = document.createElement("canvas"); c.width = 1; c.height = 1;
+  const g = c.getContext("2d"); g.drawImage(img, -Math.floor(x), -Math.floor(y));
+  if (sketchCanvas.width) g.drawImage(sketchCanvas, -Math.floor(x) * sketchCanvas.width / img.naturalWidth, -Math.floor(y) * sketchCanvas.height / img.naturalHeight);
+  const d = g.getImageData(0, 0, 1, 1).data;
+  return "#" + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, "0")).join("");
+}
+async function pickColor(take) {
+  if (window.EyeDropper) {
+    try { const r = await new EyeDropper().open(); if (r && r.sRGBHex) take(r.sRGBHex.slice(0, 7)); } catch { /* Esc: cancelled */ }
+    return;
+  }
+  const wrap = $("labDrop").querySelector(".cropwrap");
+  if (!wrap) return showErr("load a picture in the LAB to pick a color from it");
+  PICK = take; wrap.classList.add("picking"); note("click the picture to pick a color (Esc cancels)");
+}
+function pickEnd() { PICK = null; const w = $("labDrop").querySelector(".cropwrap"); if (w) w.classList.remove("picking"); }
+const setBrushColor = hex => { LABS.pcolor = hex; $("maskColor").value = hex; store.set("lab", LABS); $("maskColorBtn").click(); note(`brush color ${hex}`); };
+const setRoughColor = hex => { LABS.edit.rough = hex; store.set("lab", LABS); renderEditBox(); note(`paint-in color ${hex}`); };
 // painted-in edits: the strength slider goes up to this (0.85 = detailed, e.g. a cigar's band and burnt end; above
 // it the old pixels win — the beard grew back over the cigar)
 const PAINTIN_MAX = 0.85;
@@ -4279,6 +4305,13 @@ function initMask() {
   $("maskUndo").onclick = () => { if (poly.length) { restore(); poly = []; snap = null; strokeLive = false; drawMaskOverlay(); return; }
     const d = undo.pop(); if (d) { put(d); drawMaskOverlay(); maskSave(); sketchSave(); } };
   drop.addEventListener("pointerdown", e => {
+    if (e.button === 0 && e.target.closest(".cropwrap") && (PICK || (maskEdit && e.altKey))) {   // 💧 sample the picture
+      e.preventDefault(); e.stopImmediatePropagation();
+      const img = drop.querySelector(".cropwrap img"), b = img.getBoundingClientRect();
+      const hex = samplePicture((e.clientX - b.left) / b.width * img.naturalWidth, (e.clientY - b.top) / b.height * img.naturalHeight);
+      if (hex) (PICK || setBrushColor)(hex);
+      return pickEnd();
+    }
     if (!maskEdit || !e.target.closest(".cropwrap") || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const p = at(e);
@@ -4325,6 +4358,9 @@ function initMask() {
   setMode("mask");
   $("maskColor").value = LABS.pcolor || "#6a4424"; $("maskTip").value = LABS.ptip || "hard";
   $("maskOpacity").value = LABS.popac ?? 100; $("maskOpacityVal").textContent = `${LABS.popac ?? 100}%`;
+  $("maskPick").onclick = () => pickColor(setBrushColor);
+  $("editRoughPick").onclick = () => pickColor(setRoughColor);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && PICK) pickEnd(); });
   $("maskColor").oninput = e => { LABS.pcolor = e.target.value; store.set("lab", LABS); setMode("color"); };
   $("maskTip").onchange = e => { LABS.ptip = e.target.value; store.set("lab", LABS); setMode("color"); };
   $("maskOpacity").oninput = e => { LABS.popac = +e.target.value; $("maskOpacityVal").textContent = `${LABS.popac}%`; store.set("lab", LABS); };

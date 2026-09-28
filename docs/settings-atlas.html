@@ -335,6 +335,8 @@ const S = [
    "By default everything outside the mask is pasted back pixel-exact."],
   ["Mask tools", [G], { gui: "🖌 mask · 🎨 color · ⌫ erase · brush · line · rect · ellipse · polygon · undo · invert · clear" }, "brush 2 – 200 px", "—", "P / C / E · B L R O G · [ ] size · Ctrl+Z",
    "Hand-paint the mask; the cursor shows the brush. Shapes fill (paint) or cut (erase); polygon closes on double-click, Enter or the first point. Erase removes mask and color."],
+  ["💧 Pick a color", [G], { gui: "💧 next to the brush color and the paint-it-in color · Alt+click the LAB picture" }, "any pixel on screen · the picture", "—", "—",
+   "💧 opens the screen color picker (Chrome / Edge): sample any pixel anywhere — the picture, a render, a palette swatch, another window; without it, click the picture. Alt+click on the picture while painting samples it straight into the brush (your color strokes included)."],
   ["🎨 Color brush", [G], { gui: "LAB mask tools › 🎨 color + color picker · hard / soft tip · opacity" }, "any color · hard or soft · 5 – 100%", "hard, 100%",
    "a brown line for a cigar + a soft orange dot for its lit end",
    "Paint the rough version of what you want right on the input — every tool works in color. The strokes are painted into the picture before the edit and count as mask; the edit (change / add) then shapes and shades them, instead of guessing one color from your words. Each stroke is laid on at its opacity as a whole (overlaps don't darken)."],
