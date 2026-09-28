@@ -486,7 +486,10 @@ fieldset.closed { padding-bottom: 2px; }
 .editmodel { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
 .editmodel > span:first-child { color: var(--dim); } .editmodel select { max-width: 100%; flex: 1; min-width: 160px; }
 .editmodel .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editmodel .uses b { color: var(--accent); }
-.editkeep > span { color: var(--dim); } .editkeep label { margin: 0; color: var(--text); }
+.editkeep > span { color: var(--dim); }
+.editrough { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
+.editrough label { margin: 0; color: var(--text); } .editrough input[type=color] { width: 30px; height: 20px; padding: 0; border: 0; background: none; }
+.editrough .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editrough .uses b { color: var(--accent); } .editkeep label { margin: 0; color: var(--text); }
 .refine-note { border: 1px solid var(--accent); border-radius: 4px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: var(--text); }
 .refine-note .row2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 .lineage img { width: 80px; image-rendering: pixelated; border: 1px solid var(--line); cursor: pointer; vertical-align: middle; }
@@ -874,6 +877,10 @@ fieldset.closed { padding-bottom: 2px; }
                 <input type="checkbox" id="editKeepLight"> light &amp; shadow</label>
               <label class="inline" title="follow the old outlines (ControlNet), so it keeps the same pose and faces the same way">
                 <input type="checkbox" id="editKeepShape"> shape &amp; direction</label></div>
+            <div class="editrough" id="editRoughRow"><label class="inline" title="fill the masked area with the new thing's color first, then let the edit shape and shade it — without this a masked eye comes back as an eye">
+                <input type="checkbox" id="editRough"> paint it in first</label>
+              <input type="color" id="editRoughColor" title="the color to rough it in with (pick one to override the automatic guess)">
+              <span class="uses" id="editRoughWhy"></span></div>
             <div class="editmodel"><span>model:</span>
               <select data-advmirror="inpaint_model" title="which model draws the edit — the same setting as ⚙ Advanced › Inpainting model"></select>
               <span class="uses" id="editUses"></span></div>
@@ -3976,6 +3983,43 @@ function drawMaskOverlay() {
   g.globalCompositeOperation = "source-over";
   lzMask();
 }
+// "paint it in first": the new thing's color, from the words — a color you named, or a sensible one for common things
+const ROUGH_COLORS = [
+  [/\b(black|ebony|jet|onyx|obsidian)\b/, "#18141a"], [/\b(white|ivory|pale)\b/, "#e6e1d8"], [/\b(dark red|crimson|blood|bloody|gore)\b/, "#6e1010"],
+  [/\b(red|scarlet|ruby)\b/, "#b01e1e"], [/\b(orange|amber)\b/, "#d8641c"], [/\b(gold|golden|brass)\b/, "#c8a032"], [/\b(yellow)\b/, "#e0c030"],
+  [/\b(green|emerald|jade)\b/, "#2e7a2e"], [/\b(dark blue|navy)\b/, "#1c2a60"], [/\b(blue|azure|sapphire)\b/, "#2a50a8"],
+  [/\b(purple|violet|amethyst)\b/, "#6a2a8a"], [/\b(pink|magenta)\b/, "#d870a0"], [/\b(brown|leather|wooden|wood)\b/, "#6a4424"],
+  [/\b(silver|steel|iron|metal)\b/, "#a8a8b0"], [/\b(gr[ae]y|stone|ash)\b/, "#7c7c80"], [/\b(bronze|copper|rust)\b/, "#a0642e"],
+];
+const ROUGH_THINGS = [
+  [/\b(eye ?patch|patch|hole|void|shadow|tar|soot)\b/, "#18141a"], [/\b(fire|flame|flames|lava|ember)\b/, "#d8641c"],
+  [/\b(crown|coins?|treasure|gold)\b/, "#c8a032"], [/\b(snow|ice|frost|cloud)\b/, "#e6e8ee"], [/\b(grass|leaves|moss|vines?|bush)\b/, "#2e7a2e"],
+  [/\b(water|sea|river|lake)\b/, "#2a50a8"], [/\b(bone|bones|skull|teeth|tooth|fang|fangs)\b/, "#dcd2b4"],
+  [/\b(blood|wound|scar)\b/, "#6e1010"], [/\b(sky)\b/, "#6a90c8"], [/\b(smoke|fog|mist)\b/, "#9a9aa2"],
+];
+function roughGuess(what) {
+  const w = String(what || "").toLowerCase();
+  for (const [re, c] of ROUGH_COLORS) { const m = w.match(re); if (m) return { color: c, why: `"${m[0]}"` }; }
+  for (const [re, c] of ROUGH_THINGS) { const m = w.match(re); if (m) return { color: c, why: `"${m[0]}"` }; }
+  return null;
+}
+// the rough-in color this edit will use: "off", a picked color, or the automatic guess (null = nothing to go on)
+function roughFor(E) {
+  if (!["change", "add"].includes(E.action) || E.rough === "off") return null;
+  if (/^#[0-9a-f]{6}$/i.test(E.rough || "")) return { color: E.rough, why: "your color" };
+  return roughGuess(E.what);
+}
+function renderRough(E) {
+  const row = $("editRoughRow"); if (!row) return;
+  const on = ["change", "add"].includes(E.action);
+  row.classList.toggle("hidden", !on); if (!on) return;
+  const r = roughFor(E), g = roughGuess(E.what);
+  $("editRough").checked = E.rough !== "off";
+  $("editRoughColor").value = (r && r.color) || (g && g.color) || "#18141a";
+  $("editRoughWhy").innerHTML = E.rough === "off" ? "off — the edit starts from what's there (a masked eye can come back as an eye)"
+    : r ? `paints the mask <b><span style="display:inline-block;width:10px;height:10px;background:${r.color};border:1px solid var(--line);vertical-align:middle"></span> ${r.color}</b> first (${esc(r.why)}${r.why === "your color" ? "" : ", from your words"}), then shapes and shades it · strength ≤ 0.8`
+    : "nothing in the words says a color — pick one with the swatch, or it edits as usual";
+}
 // which model will draw this edit (mirrors the server's rule in adv_argv)
 function editUses(E) {
   const el = $("editUses"); if (!el) return;
@@ -4011,6 +4055,8 @@ function renderEditBox() {
   $("maskSize").value = LABS.brush || 16; $("maskSizeVal").textContent = LABS.brush || 16;
   if (E.keepLight && E.action !== "tweak" && E.action !== "erase")
     $("hEdit").textContent = `starts from what's there (strength ${Math.min(E.strength, 0.92).toFixed(2)}): keeps the light and shadow while the subject changes — lower = closer to the old pixels`;
+  renderRough(E);
+  if (roughFor(E)) $("hEdit").textContent = "roughs in the new thing's color, then reshapes and shades it — so it replaces what was there instead of redrawing it";
   editUses(E);
   const dropped = (readForm().styles || []).filter(x => EDIT_FRAMING.includes(x));
   if (dropped.length) $("hEdit").textContent += ` · leaves out the framing style${dropped.length > 1 ? "s" : ""} ${dropped.join(", ")} (they'd paint a whole scene into the mask)`;
@@ -4059,12 +4105,14 @@ async function editApply() {
   const styles = (f.styles || []).filter(x => !EDIT_FRAMING.includes(x));
   const blend = E.action === "erase" ? what : `${what}, seamlessly part of the surrounding picture, matching its lighting, colors and style`;
   const form = { ...f, subject: blend, styles, kind: "", outW: w, outH: h, n: 1, no_sprite_suffix: true };
+  const rough = roughFor(E);          // paint it in first: start from a blob of the new thing's color and reshape it
   const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
-                 inpaint: { file: LABS.file, mask: LABS.mask, keep_colors: !!E.keepColors,
+                 inpaint: { file: LABS.file, mask: LABS.mask, keep_colors: !!E.keepColors, rough: rough ? rough.color : "",
                             // keep light & shadow: start from the old pixels (blend) — the strength decides how far it may go
-                            mode: E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
+                            mode: rough || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
                  lab_init: LABS.file,
-                 lab_denoise: E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
+                 lab_denoise: rough ? Math.min(E.strength, 0.8)
+                   : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };
   if (E.keepShape) base.control = { file: LABS.file, mode: "canny", strength: 0.6, end: 0.6 };   // the old outlines guide the new part
@@ -4197,9 +4245,12 @@ function initMask() {
   });
   $("editAction").onchange = e => { LABS.edit.action = e.target.value; LABS.edit.strength = e.target.value === "tweak" ? 0.5 : 1; store.set("lab", LABS); renderEditBox(); };
   $("editStrength").oninput = e => { LABS.edit.strength = +e.target.value; store.set("lab", LABS); renderEditBox(); };
-  $("editWhat").oninput = e => { LABS.edit.what = e.target.value; store.set("lab", LABS); };
+  $("editWhat").oninput = e => { LABS.edit.what = e.target.value; store.set("lab", LABS); renderRough(LABS.edit); };
   for (const [id, k] of [["editKeepColors", "keepColors"], ["editKeepLight", "keepLight"], ["editKeepShape", "keepShape"]])
     $(id).onchange = e => { LABS.edit[k] = e.target.checked; store.set("lab", LABS); renderEditBox(); };
+  $("editRough").onchange = e => { LABS.edit.rough = e.target.checked ? "auto" : "off"; store.set("lab", LABS); renderEditBox(); };
+  $("editRoughColor").oninput = e => { LABS.edit.rough = e.target.value; store.set("lab", LABS); renderRough(LABS.edit); };
+  $("editRoughColor").onchange = () => renderEditBox();
   $("editGo").onclick = editApply;
   $("refineNote").addEventListener("input", e => {
     if (e.target.id === "refineSteer" && LABS.refine) { LABS.refine.steer = +e.target.value; $("refineSteerVal").textContent = (+e.target.value).toFixed(2); store.set("lab", LABS); }

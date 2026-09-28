@@ -843,6 +843,18 @@ class JobQueue:
                 mask = os.path.join(jdir, "mask.png")
                 with open(mask, "wb") as fh:
                     fh.write(raw)
+                rough = str(params["inpaint"].get("rough") or "")
+                if re.fullmatch(r"#[0-9a-fA-F]{6}", rough) and init:
+                    # "paint it in first": a flat blob of the new thing's color where the mask is, so the edit reshapes
+                    # it instead of redrawing what was there (a masked eye otherwise comes back as an eye)
+                    from PIL import Image
+                    base_img = Image.open(init).convert("RGB")
+                    m = Image.open(mask).convert("L").resize(base_img.size, Image.NEAREST).point(lambda v: 255 if v > 127 else 0)
+                    rgb = tuple(int(rough[i:i + 2], 16) for i in (1, 3, 5))
+                    init = os.path.join(jdir, "input-roughed.png")
+                    Image.composite(Image.new("RGB", base_img.size, rgb), base_img, m).save(init)
+                    if control == kept:              # the outline guide follows the painted-in shape, not the old eye
+                        control = init
         steer_dir = None
         if srcs:
             steer_dir = os.path.join(jdir, "steer")
