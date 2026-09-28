@@ -2783,7 +2783,7 @@ function lzMask() {
     if (!ov && !sk) { c.width = 0; return; }
     const src = ov || sk; c.width = src.width; c.height = src.height;
     const g = c.getContext("2d");
-    if (sk) g.drawImage(sk, 0, 0);                              // the color strokes, as they are
+    if (sk) { g.filter = strokesOnly() ? strokeFilter() || "none" : "none"; g.drawImage(sk, 0, 0); g.filter = "none"; }   // the color strokes (as tuned)
     if (ov) { g.globalAlpha = .55; g.drawImage(ov, 0, 0); g.globalAlpha = 1; }   // the mask, see-through pink
   });
 }
