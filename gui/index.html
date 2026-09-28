@@ -4017,7 +4017,7 @@ function renderRough(E) {
   $("editRough").checked = E.rough !== "off";
   $("editRoughColor").value = (r && r.color) || (g && g.color) || "#18141a";
   $("editRoughWhy").innerHTML = E.rough === "off" ? "off — the edit starts from what's there (a masked eye can come back as an eye)"
-    : r ? `paints the mask <b><span style="display:inline-block;width:10px;height:10px;background:${r.color};border:1px solid var(--line);vertical-align:middle"></span> ${r.color}</b> first (${esc(r.why)}${r.why === "your color" ? "" : ", from your words"}), then shapes and shades it · strength ≤ 0.8`
+    : r ? `paints the mask <b><span style="display:inline-block;width:10px;height:10px;background:${r.color};border:1px solid var(--line);vertical-align:middle"></span> ${r.color}</b> first (${esc(r.why)}${r.why === "your color" ? "" : ", from your words"}), then shapes and shades it · strength ≤ 0.75`
     : "nothing in the words says a color — pick one with the swatch, or it edits as usual";
 }
 // which model will draw this edit (mirrors the server's rule in adv_argv)
@@ -4027,7 +4027,8 @@ function editUses(E) {
   const have = (META && META.adv_lists && META.adv_lists.inpaint_models) || [], pick = ADV.inpaint_model || "auto";
   const ckpt = ADV.base || "the default checkpoint";
   let im = null, why = "";
-  if (pick === "off") why = "inpainting model is off";
+  if (roughFor(E)) why = "painting it in first needs a model that sees the painted shape (the inpainting model blanks the masked area)";
+  else if (pick === "off") why = "inpainting model is off";
   else if (!have.length) why = META && !META.server_up ? "the render server isn't answering" : "the render server has no inpainting model (download-models.sh --lab)";
   else if (pick !== "auto") im = have.includes(pick) ? pick : have[0];
   else if (blend) why = "auto uses it for fill edits only; this one starts from what's there (keep light & shadow / tweak) — pick the model by name above to use it here too";
@@ -4111,7 +4112,7 @@ async function editApply() {
                             // keep light & shadow: start from the old pixels (blend) — the strength decides how far it may go
                             mode: rough || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
                  lab_init: LABS.file,
-                 lab_denoise: rough ? Math.min(E.strength, 0.8)
+                 lab_denoise: rough ? Math.min(E.strength, 0.75)
                    : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };

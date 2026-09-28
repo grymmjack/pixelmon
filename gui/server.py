@@ -384,7 +384,7 @@ def load_adv_lists():
     return v
 
 
-def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
+def adv_argv(adv, art, has_control, has_mask, mask_mode="fill", rough=False):
     """The Advanced tab: extra pixelmon flags. Blank / missing = pixelmon's own default. Validated like the rest."""
     adv = adv if isinstance(adv, dict) else {}
     out = []
@@ -478,7 +478,9 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill"):
         # the SDXL inpainting model: "auto" = fill edits (painting something new) when the server has one;
         # picked by name = every LAB edit, blend ones too; "off" = the checkpoint like any other render
         choice_im = str(adv.get("inpaint_model") or "auto")
-        if choice_im != "off" and (choice_im != "auto" or (adv.get("mask_mode") or mask_mode) == "fill"):
+        # a painted-in edit never uses it: the inpainting model is shown the masked area blanked to grey, so it can't
+        # see the painted shape and draws what "should" be there (a masked eye came back as an eye, or a patch with a hole)
+        if not rough and choice_im != "off" and (choice_im != "auto" or (adv.get("mask_mode") or mask_mode) == "fill"):
             have = lists.get("inpaint_models") or []
             pick = choice_im if choice_im in have else (have[0] if have else None)
             if pick:
@@ -742,7 +744,8 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         if not (0 <= st <= 2 and 0 < en <= 1):
             raise ValueError("control strength must be 0..2 and end in (0, 1]")
         argv += ["--control", control, "--control-mode", mode, "--control-strength", f"{st:g}", "--control-end", f"{en:g}"]
-    extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init), str((p.get("inpaint") or {}).get("mode") or "fill"))
+    extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init), str((p.get("inpaint") or {}).get("mode") or "fill"),
+                     rough=bool((p.get("inpaint") or {}).get("rough")))
     extra = [x for i, x in enumerate(extra) if not (x == "--control-end" or (i and extra[i - 1] == "--control-end"))]
     if "--custom-hex" in extra and "--palette" in argv:              # custom colors = the Custom palette
         argv[argv.index("--palette") + 1] = "Custom"
