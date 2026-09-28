@@ -4531,7 +4531,11 @@ function renderSweepPick() {
   const have = new Set($("sweepValues").value.split(",").map(v => v.trim()).filter(Boolean));
   box.innerHTML = `<div class="sp-bar"><span>${list.length} to choose from</span>
       <button type="button" class="btn small" data-sp="all">all</button><button type="button" class="btn small" data-sp="none">none</button>
-      <span id="spCount"></span></div>
+      ${SWEEP_SETS[field] ? `<button type="button" class="btn small" data-sp="unique" title="tick just the ones that look different: ${esc(sweepSet(field).vals.join(", "))}">unique</button>` : ""}
+      <span id="spCount"></span>
+      ${["sampler", "scheduler", "base", "angle_grid", "dither"].includes(field) ? `<span style="flex:1"></span>
+        <button type="button" class="btn small" data-sp="set" title="make the ticked ones this setting's 'unique' set — also what the one-click 'sweep …' button runs">★ save as unique</button>
+        ${SWEEP_SET_DEFAULTS[field] || SWEEP_SETS[field] ? `<button type="button" class="btn small" data-sp="unset" title="${SWEEP_SET_DEFAULTS[field] ? "back to the default unique set" : "forget the unique set (one-click sweeps everything)"}">↺</button>` : ""}` : ""}</div>
     <div class="sp-list">${list.map(([v, l]) => `<label title="${esc(l)}"><input type="checkbox" value="${esc(v)}" ${have.has(v) ? "checked" : ""}>${esc(l.length > 34 ? v : l)}</label>`).join("")}</div>`;
   sweepCount();
 }
@@ -4588,17 +4592,27 @@ function initCombo() {
     await render(p);
   });
 }
-// one click: the same picture and seed once with every sampler / scheduler / checkpoint the server has
+// one click: the same picture and seed once with each of a chosen set (default: everything; samplers: the ones
+// that actually look different — the rest are near-duplicates). Tick a set in the Sweep checklist → ★ use for one-click.
+const SWEEP_SET_DEFAULTS = { sampler: ["euler", "euler_ancestral_cfg_pp", "dpm_2_ancestral", "dpmpp_sde_gpu", "lcm",
+                                       "res_multistep_cfg_pp", "res_multistep_ancestral_cfg_pp", "er_sde"] };
+const SWEEP_SETS = Object.assign({}, SWEEP_SET_DEFAULTS, store.get("sweepSets", {}));
+function sweepSet(field) {                         // the values the one-click button sweeps (only ones the server has)
+  const all = (sweepOptions(field) || []).map(([v]) => v), set = SWEEP_SETS[field];
+  const pick = set ? all.filter(v => set.includes(v)) : all;
+  return { vals: pick.length ? pick : all, all };
+}
 function sweepAllLabels() {
   document.querySelectorAll("[data-sweepall]").forEach(b => {
-    const n = (sweepOptions(b.dataset.sweepall) || []).length,
+    const { vals, all } = sweepSet(b.dataset.sweepall),
       what = { sampler: "samplers", scheduler: "schedulers", base: "checkpoints", angle_grid: "grids", dither: "dithers" }[b.dataset.sweepall];
-    b.textContent = `sweep ${what}${n ? ` (${n})` : ""}`; b.disabled = !n;
-    b.title = `same picture and seed, once with each of the ${n} ${what} on the render server — ${n} renders`;
+    b.textContent = `sweep ${what}${all.length ? ` (${vals.length < all.length ? `${vals.length} of ${all.length}` : all.length})` : ""}`; b.disabled = !all.length;
+    b.title = `same picture and seed, once with each of ${vals.length < all.length ? `your ${vals.length} chosen` : `the ${vals.length}`} ${what}`
+      + ` — ${vals.length} renders${vals.length < all.length ? `: ${vals.join(", ")}. Change the set in the Sweep checklist (★ use for one-click).` : ""}`;
   });
 }
 async function sweepAll(field) {
-  const vals = (sweepOptions(field) || []).map(([v]) => v);
+  const vals = sweepSet(field).vals;
   if (!vals.length) return showErr("the render server hasn't listed any yet (is it answering?)");
   const f = readForm();
   if (field === "dither" && (!f.palette || f.palette === "none"))
@@ -4623,6 +4637,18 @@ function initSweepPick() {
   });
   $("sweepPick").addEventListener("click", e => {
     const a = e.target.dataset.sp; if (!a) return;
+    const field = $("sweepField").value;
+    if (a === "set" || a === "unset") {
+      const ticked = [...$("sweepPick").querySelectorAll("input:checked")].map(i => i.value);
+      if (a === "set" && !ticked.length) return showErr("tick at least one first");
+      if (a === "set") SWEEP_SETS[field] = ticked; else if (SWEEP_SET_DEFAULTS[field]) SWEEP_SETS[field] = SWEEP_SET_DEFAULTS[field]; else delete SWEEP_SETS[field];
+      const saved = { ...SWEEP_SETS }; for (const k of Object.keys(SWEEP_SET_DEFAULTS)) if (JSON.stringify(saved[k]) === JSON.stringify(SWEEP_SET_DEFAULTS[k])) delete saved[k];
+      store.set("sweepSets", saved); renderSweepPick();
+      return note(a === "set" ? `saved: these ${ticked.length} are the unique set (and what one-click sweep runs)` : "unique set back to its default");
+    }
+    if (a === "unique") {
+      $("sweepValues").value = sweepSet(field).vals.join(", "); renderSweepPick(); return;
+    }
     $("sweepPick").querySelectorAll("input[type=checkbox]").forEach(i => (i.checked = a === "all"));
     $("sweepPick").dispatchEvent(new Event("change", { bubbles: true }));
     $("sweepValues").value = a === "all" ? sweepOptions($("sweepField").value).map(([v]) => v).join(", ") : ""; sweepCount();
