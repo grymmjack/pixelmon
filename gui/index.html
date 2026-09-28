@@ -298,7 +298,7 @@ select.advset { border-color: var(--accent); }
   background: repeating-linear-gradient(90deg, var(--line) 0 18px, transparent 18px 24px) center / 60px 3px no-repeat; }
 .lz-grip:hover, .lz-grip.drag { background-color: rgba(85,255,255,.15); }
 .lz-stage { position: relative; } .lz-stage img { width: 100%; }
-.lz-mask { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; pointer-events: none; image-rendering: pixelated; }
+.lz-mask { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 .lz-dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--accent); border-radius: 50%;
   box-shadow: 0 0 0 1px #000; pointer-events: none; display: none; } .lz-hover .lz-dot { display: block; }
 /* 50% on top, 33% + 10% side by side under it */
@@ -487,6 +487,12 @@ fieldset.closed { padding-bottom: 2px; }
 .editmodel > span:first-child { color: var(--dim); } .editmodel select { max-width: 100%; flex: 1; min-width: 160px; }
 .editmodel .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editmodel .uses b { color: var(--accent); }
 .editkeep > span { color: var(--dim); }
+.maskcolor { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--dim); }
+.maskcolor input[type=color] { width: 28px; height: 22px; padding: 0; border: 0; background: none; }
+.maskcolor select { width: auto; padding: 2px 4px; font-size: 12px; } .maskcolor input[type=range] { width: 80px; }
+.maskcolor.off { opacity: .45; }
+.cropwrap canvas.sketchc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+#brushCur.color { border-style: solid; }
 .editrough { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12.5px; margin: 6px 0 2px; }
 .editrough label { margin: 0; color: var(--text); } .editrough input[type=color] { width: 30px; height: 20px; padding: 0; border: 0; background: none; }
 .editrough .uses { flex-basis: 100%; font-size: 11.5px; color: var(--dim); } .editrough .uses b { color: var(--accent); } .editkeep label { margin: 0; color: var(--text); }
@@ -807,8 +813,12 @@ fieldset.closed { padding-bottom: 2px; }
           <div class="croptools"><button type="button" class="btn small" id="maskBtn" title="paint the area to change">✏️ mask</button>
             <span id="maskInfo"></span><i class="help" data-help="mask">i</i></div>
           <div class="masktools hidden" id="maskTools">
-            <button type="button" class="btn small on" id="maskPaint" title="paint (P)">🖌 paint</button>
-            <button type="button" class="btn small" id="maskErase" title="erase (E)">⌫ erase</button>
+            <button type="button" class="btn small on" id="maskPaint" title="paint the mask: where the edit may change things (P)">🖌 mask</button>
+            <button type="button" class="btn small" id="maskColorBtn" title="paint in color (C): your strokes are painted into the picture before the edit — the rough version of what you want — and count as mask">🎨 color</button>
+            <button type="button" class="btn small" id="maskErase" title="erase mask and color (E)">⌫ erase</button>
+            <span class="maskcolor" id="maskColorOpts"><input type="color" id="maskColor" title="brush color">
+              <select id="maskTip" title="brush tip"><option value="hard">hard</option><option value="soft">soft</option></select>
+              opacity <input type="range" id="maskOpacity" min="5" max="100" step="5" title="stroke opacity"><b id="maskOpacityVal"></b></span>
             <span class="masktoolset" id="maskToolset">
               <button type="button" class="btn small on" data-mtool="brush" title="freehand brush (B)">✎</button>
               <button type="button" class="btn small" data-mtool="line" title="straight line, brush-wide (L) · shift = 45° steps">╱</button>
@@ -2732,10 +2742,13 @@ function initSliders() {
 
 // the mask, mirrored into the zoom views
 function lzMask() {
-  const ov = $("labDrop").querySelector("canvas.maskc");
+  const ov = $("labDrop").querySelector("canvas.maskc"), sk = $("labDrop").querySelector("canvas.sketchc");
   document.querySelectorAll("#lzViews .lz-mask").forEach(c => {
-    if (!ov) { c.width = 0; return; }
-    c.width = ov.width; c.height = ov.height; c.getContext("2d").drawImage(ov, 0, 0);
+    if (!ov && !sk) { c.width = 0; return; }
+    const src = ov || sk; c.width = src.width; c.height = src.height;
+    const g = c.getContext("2d");
+    if (sk) g.drawImage(sk, 0, 0);                              // the color strokes, as they are
+    if (ov) { g.globalAlpha = .55; g.drawImage(ov, 0, 0); g.globalAlpha = 1; }   // the mask, see-through pink
   });
 }
 // Scrolls we cause ourselves must not echo back as "the user scrolled this view": views synced to each other
@@ -2955,7 +2968,7 @@ function initPaneTools() {
 let FORM_DEFAULTS = {};   // set in init() once the LoRA list is known
 const STEER_DEFAULTS = { use: false, sel: [], strength: 0.7, weight: "style transfer", combine: "concat", start: 0, end: 1 };
 let PRESETS = [];
-const LAB_KEYS = ["file", "size", "subject", "mode", "strength", "init", "denoise", "w", "n", "adj", "edges", "live", "pseed", "mask", "edit"];
+const LAB_KEYS = ["file", "size", "subject", "mode", "strength", "init", "denoise", "w", "n", "adj", "edges", "live", "pseed", "mask", "sketch", "edit"];
 function labSnapshot(active) {
   const l = Object.fromEntries(LAB_KEYS.map(k => [k, LABS[k]]));
   return { ...l, adj: { ...LABS.adj }, active: !!active };
@@ -3962,6 +3975,25 @@ function renderCropBox() {
 // ---- ✏️ mask painting (stored as a PNG data URL at the preview image's resolution; white = redraw)
 let maskEdit = false, maskErase = false;
 const maskCanvas = document.createElement("canvas");   // the real mask (white on transparent)
+const sketchCanvas = document.createElement("canvas"); // 🎨 color strokes: painted into the picture before the edit
+const strokeCanvas = document.createElement("canvas"); // the stroke being drawn (opaque; laid on at the brush opacity when done)
+let maskColorMode = false, strokeLive = false;
+function sketchHasPaint() {
+  if (!sketchCanvas.width) return false;
+  const d = sketchCanvas.getContext("2d").getImageData(0, 0, sketchCanvas.width, sketchCanvas.height).data;
+  for (let i = 3; i < d.length; i += 16) if (d[i]) return true;
+  return false;
+}
+function sketchSave() {
+  LABS.sketch = sketchHasPaint() ? sketchCanvas.toDataURL("image/png") : null;
+  store.set("lab", LABS); renderEditBox();
+}
+function sketchLoad(url, w, h) {
+  sketchCanvas.width = w; sketchCanvas.height = h;
+  const g = sketchCanvas.getContext("2d"); g.clearRect(0, 0, w, h);
+  if (!url) return drawMaskOverlay();
+  const im = new Image(); im.onload = () => { g.drawImage(im, 0, 0, w, h); drawMaskOverlay(); }; im.src = url;
+}
 function maskHasPaint() {
   if (!maskCanvas.width) return false;
   const d = maskCanvas.getContext("2d").getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
@@ -3992,8 +4024,13 @@ function maskLoad(url, w, h) {   // (re)build the paint canvas from a stored/seg
 }
 function drawMaskOverlay() {
   const wrap = $("labDrop").querySelector(".cropwrap"); if (!wrap) return;
-  let ov = wrap.querySelector("canvas.maskc");
-  if (!LABS.mask && !maskEdit) { if (ov) ov.remove(); lzMask(); return; }
+  let ov = wrap.querySelector("canvas.maskc"), sk = wrap.querySelector("canvas.sketchc");
+  if (!LABS.mask && !LABS.sketch && !maskEdit) { if (ov) ov.remove(); if (sk) sk.remove(); lzMask(); return; }
+  if (!sk) { sk = document.createElement("canvas"); sk.className = "sketchc"; wrap.appendChild(sk); }
+  sk.width = sketchCanvas.width || maskCanvas.width; sk.height = sketchCanvas.height || maskCanvas.height;
+  const sg = sk.getContext("2d"); sg.clearRect(0, 0, sk.width, sk.height);
+  if (sketchCanvas.width) sg.drawImage(sketchCanvas, 0, 0);
+  if (strokeLive && strokeCanvas.width) { sg.globalAlpha = (LABS.popac ?? 100) / 100; sg.drawImage(strokeCanvas, 0, 0); sg.globalAlpha = 1; }
   if (!ov) { ov = document.createElement("canvas"); ov.className = "maskc"; wrap.appendChild(ov); }
   ov.width = maskCanvas.width; ov.height = maskCanvas.height;
   const g = ov.getContext("2d"); g.clearRect(0, 0, ov.width, ov.height);
@@ -4032,6 +4069,11 @@ function renderRough(E) {
   const on = ["change", "add"].includes(E.action);
   row.classList.toggle("hidden", !on); if (!on) return;
   const r = roughFor(E), g = roughGuess(E.what);
+  if (LABS.sketch) {                          // your own colors win
+    $("editRough").checked = true; $("editRoughColor").value = LABS.pcolor || "#6a4424";
+    $("editRoughWhy").innerHTML = "uses your <b>🎨 color strokes</b> as the paint-in (the automatic color is skipped), then shapes and shades them · strength ≤ 0.75";
+    return;
+  }
   $("editRough").checked = E.rough !== "off";
   $("editRoughColor").value = (r && r.color) || (g && g.color) || "#18141a";
   $("editRoughWhy").innerHTML = E.rough === "off" ? "off — the edit starts from what's there (a masked eye can come back as an eye)"
@@ -4045,7 +4087,7 @@ function editUses(E) {
   const have = (META && META.adv_lists && META.adv_lists.inpaint_models) || [], pick = ADV.inpaint_model || "auto";
   const ckpt = ADV.base || "the default checkpoint";
   let im = null, why = "";
-  if (roughFor(E)) why = "painting it in first needs a model that sees the painted shape (the inpainting model blanks the masked area)";
+  if (roughFor(E) || (LABS.sketch && ["change", "add"].includes(E.action))) why = "painting it in first needs a model that sees the painted shape (the inpainting model blanks the masked area)";
   else if (pick === "off") why = "inpainting model is off";
   else if (!have.length) why = META && !META.server_up ? "the render server isn't answering" : "the render server has no inpainting model (download-models.sh --lab)";
   else if (pick !== "auto") im = have.includes(pick) ? pick : have[0];
@@ -4055,7 +4097,7 @@ function editUses(E) {
     : `this edit uses <b>${esc(ckpt.replace(/\.safetensors$/, ""))}</b> — ${esc(why)}`;
 }
 function renderEditBox() {
-  const has = !!LABS.mask;
+  const has = !!(LABS.mask || LABS.sketch);
   $("editBox").classList.toggle("hidden", !has);
   $("maskBtn").classList.toggle("on", maskEdit); $("maskBtn").textContent = maskEdit ? "✓ done" : "✏️ mask";
   $("maskTools").classList.toggle("hidden", !maskEdit);
@@ -4075,7 +4117,7 @@ function renderEditBox() {
   if (E.keepLight && E.action !== "tweak" && E.action !== "erase")
     $("hEdit").textContent = `starts from what's there (strength ${Math.min(E.strength, 0.92).toFixed(2)}): keeps the light and shadow while the subject changes — lower = closer to the old pixels`;
   renderRough(E);
-  if (roughFor(E)) $("hEdit").textContent = "roughs in the new thing's color, then reshapes and shades it — so it replaces what was there instead of redrawing it";
+  if (roughFor(E) || (LABS.sketch && ["change", "add"].includes(E.action))) $("hEdit").textContent = "roughs in the new thing's color, then reshapes and shades it — so it replaces what was there instead of redrawing it";
   editUses(E);
   const dropped = (readForm().styles || []).filter(x => EDIT_FRAMING.includes(x));
   if (dropped.length) $("hEdit").textContent += ` · leaves out the framing style${dropped.length > 1 ? "s" : ""} ${dropped.join(", ")} (they'd paint a whole scene into the mask)`;
@@ -4094,7 +4136,7 @@ async function labRefine(job, o) {
   let r; try { r = await api("/api/lab/import", { src: { dir: job.dir, file: o.file } }); } catch (e) { return showErr(e); }
   const prev = LABS.refine, round = prev ? prev.round + 1 : 1;
   LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.adj = { ...ADJ0 }; LABS.group = null;
-  LABS.mask = isEdit ? mask : null; maskCanvas.width = 0;           // same picture size: the mask still lines up
+  LABS.mask = isEdit ? mask : null; LABS.sketch = null; maskCanvas.width = 0; sketchCanvas.width = 0;   // same size: the mask still lines up; the colors are in the picture now
   if (isEdit) {
     const E = LABS.edit || (LABS.edit = { action: "change", strength: 1, what: "" });
     E.strength = E.action === "tweak" ? Math.max(0.3, +(E.strength - 0.1).toFixed(2)) : 0.6;
@@ -4111,7 +4153,7 @@ async function labRefine(job, o) {
 }
 const EDIT_FRAMING = ["scene", "painterlyscene", "solo", "item", "portrait"];
 async function editApply() {
-  if (!LABS.file || !LABS.mask) return showErr("Paint a mask first (✏️ mask).");
+  if (!LABS.file || !(LABS.mask || LABS.sketch)) return showErr("Paint a mask (or 🎨 colors) first (✏️ mask).");
   const E = LABS.edit, what = (E.what || "").trim();
   if (!what) return showErr("Say what should be there.");
   const f = readForm(), img = $("labDrop").querySelector(".cropwrap img");
@@ -4124,13 +4166,14 @@ async function editApply() {
   const styles = (f.styles || []).filter(x => !EDIT_FRAMING.includes(x));
   const blend = E.action === "erase" ? what : `${what}, seamlessly part of the surrounding picture, matching its lighting, colors and style`;
   const form = { ...f, subject: blend, styles, kind: "", outW: w, outH: h, n: 1, no_sprite_suffix: true };
-  const rough = roughFor(E);          // paint it in first: start from a blob of the new thing's color and reshape it
+  const sketch = ["change", "add"].includes(E.action) ? LABS.sketch : null;   // your 🎨 colors are the paint-in
+  const rough = sketch ? null : roughFor(E);   // paint it in first: start from a blob of the new thing's color and reshape it
   const base = { ...params(form), form, out: `${w}x${h}`, n: 1,
-                 inpaint: { file: LABS.file, mask: LABS.mask, keep_colors: !!E.keepColors, rough: rough ? rough.color : "",
+                 inpaint: { file: LABS.file, mask: LABS.mask, keep_colors: !!E.keepColors, rough: rough ? rough.color : "", sketch: sketch || "",
                             // keep light & shadow: start from the old pixels (blend) — the strength decides how far it may go
-                            mode: rough || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
+                            mode: rough || sketch || E.action === "tweak" || (E.keepLight && E.action !== "erase") ? "blend" : "fill" },
                  lab_init: LABS.file,
-                 lab_denoise: rough ? Math.min(E.strength, 0.75)
+                 lab_denoise: rough || sketch ? Math.min(E.strength, 0.75)
                    : E.action !== "tweak" && E.keepLight && E.action !== "erase" ? Math.min(E.strength, 0.92) : E.strength };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen; delete base.control;
   if (adjTouched()) base.lab_adjust = { ...LABS.adj };
@@ -4153,23 +4196,51 @@ function initMask() {
   const at = e => { const img = drop.querySelector(".cropwrap img"), b = img.getBoundingClientRect();
     return { x: (e.clientX - b.left) / b.width * maskCanvas.width, y: (e.clientY - b.top) / b.height * maskCanvas.height,
              k: maskCanvas.width / b.width }; };
+  const colorOn = () => maskColorMode && !maskErase;
+  // the canvases a mark goes into: color mode → the live stroke (in the brush color, soft or hard); mask mode → the mask;
+  // erase → both the mask and the color layer
+  const targets = () => colorOn() ? [strokeCanvas.getContext("2d")]
+    : maskErase ? [maskCanvas.getContext("2d"), sketchCanvas.width ? sketchCanvas.getContext("2d") : null].filter(Boolean)
+    : [maskCanvas.getContext("2d")];
+  const ink = (c, r) => {
+    c.globalCompositeOperation = maskErase ? "destination-out" : "source-over";
+    c.strokeStyle = c.fillStyle = colorOn() ? (LABS.pcolor || "#6a4424") : "#fff";
+    c.filter = colorOn() && LABS.ptip === "soft" ? `blur(${Math.max(1, r * 0.45).toFixed(1)}px)` : "none";
+  };
+  const ensureLayers = () => {
+    if (sketchCanvas.width !== maskCanvas.width || sketchCanvas.height !== maskCanvas.height) { sketchCanvas.width = maskCanvas.width; sketchCanvas.height = maskCanvas.height; }
+    if (strokeCanvas.width !== maskCanvas.width || strokeCanvas.height !== maskCanvas.height) { strokeCanvas.width = maskCanvas.width; strokeCanvas.height = maskCanvas.height; }
+  };
   const stroke = (p) => {
-    const g = maskCanvas.getContext("2d"), r = (LABS.brush || 16) / 2 * p.k;
-    g.globalCompositeOperation = maskErase ? "destination-out" : "source-over";
-    g.strokeStyle = g.fillStyle = "#fff"; g.lineWidth = r * 2; g.lineCap = "round";
-    g.beginPath(); if (last) { g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); }
-    g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
-    g.globalCompositeOperation = "source-over"; last = p; drawMaskOverlay();
+    const r = (LABS.brush || 16) / 2 * p.k;
+    for (const g of targets()) {
+      ink(g, r); g.lineWidth = r * 2; g.lineCap = "round";
+      g.beginPath(); if (last) { g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); }
+      g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+      g.globalCompositeOperation = "source-over"; g.filter = "none";
+    }
+    last = p; drawMaskOverlay();
+  };
+  // a finished color stroke / shape goes onto the color layer at the brush opacity (as a whole, so overlaps don't darken)
+  const commitStroke = () => {
+    if (!strokeLive) return;
+    const g = sketchCanvas.getContext("2d");
+    g.globalAlpha = (LABS.popac ?? 100) / 100; g.drawImage(strokeCanvas, 0, 0); g.globalAlpha = 1;
+    strokeCanvas.getContext("2d").clearRect(0, 0, strokeCanvas.width, strokeCanvas.height); strokeLive = false;
+    drawMaskOverlay(); sketchSave();
   };
   // ---- tools: brush / line / rect / ellipse / poly, all in paint or erase mode, with undo ----
   let tool = store.get("maskTool", "brush"), start = null, snap = null, poly = [], polyHover = null;
   const undo = [];
   const g = () => maskCanvas.getContext("2d");
-  const pushUndo = () => { undo.push(g().getImageData(0, 0, maskCanvas.width, maskCanvas.height)); if (undo.length > 30) undo.shift(); };
-  const restore = () => { if (snap) g().putImageData(snap, 0, 0); };
-  const mode = c => { c.globalCompositeOperation = maskErase ? "destination-out" : "source-over"; c.strokeStyle = c.fillStyle = "#fff"; };
-  const shape = (a, b, shift) => {           // draw the current shape tool from a to b into the mask
-    const c = g(); mode(c); c.beginPath();
+  const grab = () => ({ m: g().getImageData(0, 0, maskCanvas.width, maskCanvas.height),
+                        s: sketchCanvas.width ? sketchCanvas.getContext("2d").getImageData(0, 0, sketchCanvas.width, sketchCanvas.height) : null });
+  const put = d => { g().putImageData(d.m, 0, 0); if (d.s && sketchCanvas.width) sketchCanvas.getContext("2d").putImageData(d.s, 0, 0); };
+  const pushUndo = () => { ensureLayers(); undo.push(grab()); if (undo.length > 30) undo.shift(); };
+  const restore = () => { if (snap) put(snap); if (colorOn()) strokeCanvas.getContext("2d").clearRect(0, 0, strokeCanvas.width, strokeCanvas.height); };
+  const shape = (a, b, shift) => {           // draw the current shape tool from a to b (into the mask, the color stroke, or erasing)
+    for (const c of targets()) {
+    ink(c, (LABS.brush || 16) / 2 * a.k); c.beginPath();
     let w = b.x - a.x, h = b.y - a.y;
     if (shift && (tool === "rect" || tool === "ellipse")) { const m = Math.max(Math.abs(w), Math.abs(h)); w = Math.sign(w || 1) * m; h = Math.sign(h || 1) * m; }
     if (tool === "line") {
@@ -4177,37 +4248,46 @@ function initMask() {
       c.lineWidth = (LABS.brush || 16) * a.k; c.lineCap = "round"; c.moveTo(a.x, a.y); c.lineTo(a.x + w, a.y + h); c.stroke();
     } else if (tool === "rect") { c.rect(Math.min(a.x, a.x + w), Math.min(a.y, a.y + h), Math.abs(w), Math.abs(h)); c.fill(); }
     else if (tool === "ellipse") { c.ellipse(a.x + w / 2, a.y + h / 2, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2); c.fill(); }
-    c.globalCompositeOperation = "source-over";
+    c.globalCompositeOperation = "source-over"; c.filter = "none";
+    }
+    if (colorOn()) strokeLive = true;
   };
   const polyDraw = (closing) => {            // polygon so far (+ a rubber band to the pointer), or filled when closing
     restore(); if (!poly.length) return drawMaskOverlay();
-    const c = g(); mode(c); c.beginPath(); c.moveTo(poly[0].x, poly[0].y);
-    for (const p of poly.slice(1)) c.lineTo(p.x, p.y);
-    if (closing) { c.closePath(); c.fill(); }
-    else { if (polyHover) c.lineTo(polyHover.x, polyHover.y); c.lineWidth = Math.max(1, 2 * poly[0].k); c.stroke();
-      for (const p of poly) { c.beginPath(); c.arc(p.x, p.y, 3 * p.k, 0, Math.PI * 2); c.fill(); } }
-    c.globalCompositeOperation = "source-over"; drawMaskOverlay();
+    for (const c of targets()) {
+      ink(c, 2 * poly[0].k); if (!closing) c.filter = "none";
+      c.beginPath(); c.moveTo(poly[0].x, poly[0].y);
+      for (const p of poly.slice(1)) c.lineTo(p.x, p.y);
+      if (closing) { c.closePath(); c.fill(); }
+      else { if (polyHover) c.lineTo(polyHover.x, polyHover.y); c.lineWidth = Math.max(1, 2 * poly[0].k); c.stroke();
+        for (const p of poly) { c.beginPath(); c.arc(p.x, p.y, 3 * p.k, 0, Math.PI * 2); c.fill(); } }
+      c.globalCompositeOperation = "source-over"; c.filter = "none";
+    }
+    if (colorOn()) strokeLive = true;
+    drawMaskOverlay();
   };
-  const polyClose = () => { if (poly.length >= 3) { polyDraw(true); maskSave(); } else restore(); poly = []; polyHover = null; snap = null; drawMaskOverlay(); };
+  const finish = () => { if (colorOn()) commitStroke(); else { maskSave(); if (maskErase) sketchSave(); } };
+  const polyClose = () => { if (poly.length >= 3) { polyDraw(true); finish(); } else restore(); poly = []; polyHover = null; snap = null; drawMaskOverlay(); };
   const setTool = t => { if (poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); } tool = t; store.set("maskTool", t);
     document.querySelectorAll("[data-mtool]").forEach(b => b.classList.toggle("on", b.dataset.mtool === t)); };
   setTool(tool);
   $("maskToolset").addEventListener("click", e => { const b = e.target.closest("[data-mtool]"); if (b) setTool(b.dataset.mtool); });
-  $("maskUndo").onclick = () => { if (poly.length) { restore(); poly = []; snap = null; drawMaskOverlay(); return; }
-    const d = undo.pop(); if (d) { g().putImageData(d, 0, 0); drawMaskOverlay(); maskSave(); } };
+  $("maskUndo").onclick = () => { if (poly.length) { restore(); poly = []; snap = null; strokeLive = false; drawMaskOverlay(); return; }
+    const d = undo.pop(); if (d) { put(d); drawMaskOverlay(); maskSave(); sketchSave(); } };
   drop.addEventListener("pointerdown", e => {
     if (!maskEdit || !e.target.closest(".cropwrap") || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const p = at(e);
     if (tool === "poly") {
-      if (!poly.length) { pushUndo(); snap = g().getImageData(0, 0, maskCanvas.width, maskCanvas.height); }
+      if (!poly.length) { pushUndo(); snap = grab(); }
       const f = poly[0];
       if (poly.length >= 3 && Math.hypot(p.x - f.x, p.y - f.y) < 8 * p.k) return polyClose();   // clicked the first point
       poly.push(p); polyDraw(false); return;
     }
     pushUndo(); drop.setPointerCapture(e.pointerId); painting = true; last = null;
+    if (colorOn()) { strokeCanvas.getContext("2d").clearRect(0, 0, strokeCanvas.width, strokeCanvas.height); strokeLive = true; }
     if (tool === "brush") return stroke(p);
-    start = p; snap = g().getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+    start = p; snap = grab();
   });
   drop.addEventListener("pointermove", e => {
     if (tool === "poly" && poly.length && maskEdit) { polyHover = at(e); return polyDraw(false); }
@@ -4219,7 +4299,7 @@ function initMask() {
     if (!painting) return;
     painting = false; last = null;
     if (tool !== "brush" && start) { restore(); shape(start, at(e), e.shiftKey); drawMaskOverlay(); start = null; snap = null; }
-    maskSave();
+    finish();
   });
   drop.addEventListener("dblclick", e => { if (maskEdit && tool === "poly" && poly.length) { e.preventDefault(); poly.pop(); polyClose(); } });
   $("maskBtn").onclick = () => {
@@ -4227,13 +4307,27 @@ function initMask() {
     if (!maskEdit && cropEdit) { cropEdit = false; }
     maskEdit = !maskEdit;
     const img = drop.querySelector(".cropwrap img");
-    if (maskEdit && img && img.naturalWidth && maskCanvas.width !== img.naturalWidth) maskLoad(LABS.mask, img.naturalWidth, img.naturalHeight);
+    if (maskEdit && img && img.naturalWidth && maskCanvas.width !== img.naturalWidth) { maskLoad(LABS.mask, img.naturalWidth, img.naturalHeight); sketchLoad(LABS.sketch, img.naturalWidth, img.naturalHeight); }
     renderLab();
   };
-  $("maskPaint").onclick = () => { maskErase = false; $("maskPaint").classList.add("on"); $("maskErase").classList.remove("on"); };
-  $("maskErase").onclick = () => { maskErase = true; $("maskErase").classList.add("on"); $("maskPaint").classList.remove("on"); };
+  const setMode = m => {                    // mask · color · erase
+    maskErase = m === "erase"; maskColorMode = m === "color";
+    $("maskPaint").classList.toggle("on", m === "mask"); $("maskColorBtn").classList.toggle("on", m === "color"); $("maskErase").classList.toggle("on", m === "erase");
+    $("maskColorOpts").classList.toggle("off", m !== "color");
+  };
+  $("maskPaint").onclick = () => setMode("mask");
+  $("maskColorBtn").onclick = () => setMode("color");
+  $("maskErase").onclick = () => setMode("erase");
+  setMode("mask");
+  $("maskColor").value = LABS.pcolor || "#6a4424"; $("maskTip").value = LABS.ptip || "hard";
+  $("maskOpacity").value = LABS.popac ?? 100; $("maskOpacityVal").textContent = `${LABS.popac ?? 100}%`;
+  $("maskColor").oninput = e => { LABS.pcolor = e.target.value; store.set("lab", LABS); setMode("color"); };
+  $("maskTip").onchange = e => { LABS.ptip = e.target.value; store.set("lab", LABS); setMode("color"); };
+  $("maskOpacity").oninput = e => { LABS.popac = +e.target.value; $("maskOpacityVal").textContent = `${LABS.popac}%`; store.set("lab", LABS); };
   $("maskSize").oninput = e => { LABS.brush = +e.target.value; $("maskSizeVal").textContent = LABS.brush; store.set("lab", LABS); };
-  $("maskClear").onclick = () => { pushUndo(); maskCanvas.getContext("2d").clearRect(0, 0, maskCanvas.width, maskCanvas.height); drawMaskOverlay(); maskSave(); };
+  $("maskClear").onclick = () => { pushUndo(); maskCanvas.getContext("2d").clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    if (sketchCanvas.width) sketchCanvas.getContext("2d").clearRect(0, 0, sketchCanvas.width, sketchCanvas.height);
+    drawMaskOverlay(); maskSave(); sketchSave(); };
   $("maskInvert").onclick = () => {
     pushUndo();
     const g = maskCanvas.getContext("2d"), d = g.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
@@ -4255,6 +4349,7 @@ function initMask() {
     if (!maskEdit || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
     if (e.key === "p" || e.key === "P") $("maskPaint").click();
     if (e.key === "e" || e.key === "E") $("maskErase").click();
+    if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey) $("maskColorBtn").click();
     const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly" }[e.key.toLowerCase()];
     if (tk && !e.ctrlKey && !e.metaKey) setTool(tk);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("maskUndo").click(); }
@@ -4264,7 +4359,11 @@ function initMask() {
   });
   $("editAction").onchange = e => { LABS.edit.action = e.target.value; LABS.edit.strength = e.target.value === "tweak" ? 0.5 : 1; store.set("lab", LABS); renderEditBox(); };
   $("editStrength").oninput = e => { LABS.edit.strength = +e.target.value; store.set("lab", LABS); renderEditBox(); };
-  $("editWhat").oninput = e => { LABS.edit.what = e.target.value; store.set("lab", LABS); renderRough(LABS.edit); };
+  $("editWhat").oninput = e => {
+    LABS.edit.what = e.target.value;
+    if (LABS.edit.rough === "off") LABS.edit.rough = "auto";      // a new thing: paint-it-in is back on (untick again to skip it)
+    store.set("lab", LABS); renderEditBox();
+  };
   for (const [id, k] of [["editKeepColors", "keepColors"], ["editKeepLight", "keepLight"], ["editKeepShape", "keepShape"]])
     $(id).onchange = e => { LABS.edit[k] = e.target.checked; store.set("lab", LABS); renderEditBox(); };
   $("editRough").onchange = e => { LABS.edit.rough = e.target.checked ? "auto" : "off"; store.set("lab", LABS); renderEditBox(); };
@@ -4317,7 +4416,7 @@ function initCrop() {
     renderCropBox();
   });
   drop.addEventListener("pointerup", () => { if (!drag) return; drag = null;
-    if (LABS.mask) { LABS.mask = null; showErr("The crop changed, so the mask was cleared — repaint it."); }
+    if (LABS.mask || LABS.sketch) { LABS.mask = null; LABS.sketch = null; showErr("The crop changed, so the mask and colors were cleared — repaint them."); }
     store.set("lab", LABS); renderLab(); labSchedule(); });
   $("cropBtn").onclick = () => { if (!LABS.file) return; cropEdit = !cropEdit; if (cropEdit) maskEdit = false; renderLab(); if (!cropEdit) labSchedule(); };
   $("cropClear").onclick = () => { LABS.adj.crop = null; cropEdit = false; store.set("lab", LABS); renderLab(); labSchedule(); };
@@ -4370,7 +4469,7 @@ function renderLab() {
   const limg = $("labDrop").querySelector(".cropwrap img");
   if (limg) {
     limg.onload = () => {
-      if (maskCanvas.width !== limg.naturalWidth || maskCanvas.height !== limg.naturalHeight) maskLoad(LABS.mask, limg.naturalWidth, limg.naturalHeight);
+      if (maskCanvas.width !== limg.naturalWidth || maskCanvas.height !== limg.naturalHeight) { maskLoad(LABS.mask, limg.naturalWidth, limg.naturalHeight); sketchLoad(LABS.sketch, limg.naturalWidth, limg.naturalHeight); }
       else drawMaskOverlay();
     };
     if (limg.complete && limg.naturalWidth) limg.onload();
@@ -4401,7 +4500,7 @@ async function labLayered(f) {
   ok(`${f.name}: ${I.art_layer ? `art from layer “${I.art_layer}”` : "art = all visible layers"}${I.mask_layer ? `, mask from layer “${I.mask_layer}”` :
      " — no layer named “mask”, so no mask (layers: " + (I.layers || []).join(", ") + ")"}`);
 }
-async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.refine = null; LABS.thumb = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
+async function labSet(r) { LABS.file = r.file; LABS.size = r.size || [0, 0]; LABS.mask = null; LABS.sketch = null; LABS.refine = null; LABS.thumb = null; maskCanvas.width = 0; await loadLab(); labSchedule(); }
 function labParams() {
   const f = readForm(), [w, h] = labOut();
   const subject = (LABS.subject || "the subject").trim();
@@ -4483,11 +4582,11 @@ function initLab() {
     const files = x ? [x.dataset.labRemove] : [...document.querySelectorAll("#labRecent [data-labfile]")].map(i => i.dataset.labfile).filter(f => f !== LABS.file);
     if (all && !confirm(`Remove ${files.length} recent input${files.length > 1 ? "s" : ""} from the strip? (the one in use stays)\n\nThey're moved to lab-inputs/.removed, not deleted.`)) return;
     try { await api("/api/lab/remove", { files }); } catch (err) { return showErr(err); }
-    if (files.includes(LABS.file)) { LABS.file = null; LABS.mask = null; store.set("lab", LABS); }
+    if (files.includes(LABS.file)) { LABS.file = null; LABS.mask = null; LABS.sketch = null; store.set("lab", LABS); }
     loadLab();
   }, true);
   $("labRecent").onclick = e => { const i = e.target.closest("[data-labfile]"); if (!i) return;
-    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; maskCanvas.width = 0; renderLab(); labSchedule(); };
+    LABS.file = i.dataset.labfile; LABS.size = [+i.dataset.w, +i.dataset.h]; LABS.mask = null; LABS.sketch = null; maskCanvas.width = 0; sketchCanvas.width = 0; renderLab(); labSchedule(); };
   $("labSubject").oninput = e => { LABS.subject = e.target.value; store.set("lab", LABS); labSchedule(); };
   $("labMode").onchange = e => { LABS.mode = e.target.value; renderLab(); labSchedule(); };
   $("labStrength").oninput = e => { LABS.strength = +e.target.value; renderLab(); labSchedule(); };

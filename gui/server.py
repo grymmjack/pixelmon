@@ -745,7 +745,7 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             raise ValueError("control strength must be 0..2 and end in (0, 1]")
         argv += ["--control", control, "--control-mode", mode, "--control-strength", f"{st:g}", "--control-end", f"{en:g}"]
     extra = adv_argv(p.get("adv"), art, bool(control), bool(mask and init), str((p.get("inpaint") or {}).get("mode") or "fill"),
-                     rough=bool((p.get("inpaint") or {}).get("rough")))
+                     rough=bool((p.get("inpaint") or {}).get("rough") or (p.get("inpaint") or {}).get("sketch")))
     extra = [x for i, x in enumerate(extra) if not (x == "--control-end" or (i and extra[i - 1] == "--control-end"))]
     if "--custom-hex" in extra and "--palette" in argv:              # custom colors = the Custom palette
         argv[argv.index("--palette") + 1] = "Custom"
@@ -839,13 +839,35 @@ class JobQueue:
                 # lock the edit to the picture's own colors (outside the mask is pasted back anyway)
                 params["adv"] = dict(params.get("adv") or {}, custom_hex=" ".join(picture_palette(kept)))
             if params.get("inpaint"):                # the painted mask, as sent (white = redraw)
-                data = str(params["inpaint"].get("mask") or "")
-                raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
-                if raw[:8] != b"\x89PNG\r\n\x1a\n":
-                    raise ValueError("mask must be a PNG")
+                from PIL import Image, ImageChops
+
+                def png(data, what):
+                    raw = base64.b64decode(data.split(",", 1)[1] if data.startswith("data:") else data)
+                    if raw[:8] != b"\x89PNG\r\n\x1a\n":
+                        raise ValueError(f"{what} must be a PNG")
+                    return Image.open(io.BytesIO(raw))
+                data, sk = str(params["inpaint"].get("mask") or ""), str(params["inpaint"].get("sketch") or "")
+                if not data and not sk:
+                    raise ValueError("paint a mask (or 🎨 colors) first")
+                size = Image.open(init).size if init else None
+                m = png(data, "mask").convert("L") if data else Image.new("L", size, 0)
+                if size and m.size != size:
+                    m = m.resize(size, Image.NEAREST)
+                sketch = None
+                if sk:                                   # 🎨 color strokes: they count as mask too
+                    sketch = png(sk, "color sketch").convert("RGBA")
+                    if size and sketch.size != size:
+                        sketch = sketch.resize(size, Image.NEAREST)
+                    m = ImageChops.lighter(m, sketch.getchannel("A").point(lambda v: 255 if v > 16 else 0))
                 mask = os.path.join(jdir, "mask.png")
-                with open(mask, "wb") as fh:
-                    fh.write(raw)
+                m.save(mask)
+                if sketch is not None and init:          # paint the strokes into the picture: the rough version of the new thing
+                    base_img = Image.open(init).convert("RGBA")
+                    params["inpaint"]["rough"] = ""      # your colors are the paint-in; no automatic color on top
+                    init = os.path.join(jdir, "input-roughed.png")
+                    Image.alpha_composite(base_img, sketch).convert("RGB").save(init)
+                    if control == kept:
+                        control = init
                 rough = str(params["inpaint"].get("rough") or "")
                 if re.fullmatch(r"#[0-9a-fA-F]{6}", rough) and init:
                     # "paint it in first": a flat blob of the new thing's color where the mask is, so the edit reshapes
