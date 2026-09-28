@@ -492,6 +492,12 @@ fieldset.closed { padding-bottom: 2px; }
 .maskcolor select { width: auto; padding: 2px 4px; font-size: 12px; } .maskcolor input[type=range] { width: 80px; }
 .maskcolor.off { opacity: .45; }
 .cropwrap.picking, .cropwrap.picking * { cursor: crosshair !important; }
+.cropwrap svg.tfsvg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: visible; }
+.tfbar { display: inline-flex; gap: 6px; align-items: center; padding: 2px 6px; border: 1px solid var(--accent2); border-radius: var(--radius); }
+.tf-anchor { display: inline-grid; grid-template-columns: repeat(3, 9px); gap: 2px; }
+.tf-anchor button { width: 9px; height: 9px; padding: 0; border: 1px solid var(--dim); background: transparent; border-radius: 1px; cursor: pointer; }
+.tf-anchor button.on, .tfbar .btn.on { background: var(--accent2); border-color: var(--accent2); }
+.tfbar .btn[data-anchor="free"].on { color: #000; }
 .cropwrap .selbox { position: absolute; pointer-events: none; border: 1px dashed #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.7); z-index: 3; } #labDrop .cropwrap.picking #brushCur { display: none; }
 .cropwrap canvas.sketchc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 #brushCur.color { border-style: solid; }
@@ -830,7 +836,15 @@ fieldset.closed { padding-bottom: 2px; }
               <button type="button" class="btn small" data-mtool="poly" title="filled polygon (G): click points, double-click / Enter / click the first point to close · Esc cancels">⬠</button>
               <button type="button" class="btn small" data-mtool="select" title="select (M): drag a box · drag inside it or use the arrow keys to move what's in it (shift = 10 px) · Delete clears it · Esc puts it back / deselects · Ctrl+A = everything">⬚</button>
               <button type="button" class="btn small" data-mtool="move" title="move (V): drag to move the selection — or everything you've drawn when nothing is selected · arrow keys too">✥</button>
+              <button type="button" class="btn small" data-mtool="transform" title="transform (T): scale (corner / edge handles, shift = keep proportions) and rotate (drag outside the box, shift = 15° steps) the selection — or everything — around a pivot · drag inside / arrows = move · Enter applies, Esc cancels">⤡</button>
               <button type="button" class="btn small" id="maskUndo" title="undo (Ctrl+Z)">↶</button></span>
+            <span class="tfbar hidden" id="tfBar"><span class="tf-anchor" id="tfAnchor" title="pivot: a corner, an edge, the center — or drag the pivot dot anywhere (free)">
+                <button type="button" data-anchor="nw"></button><button type="button" data-anchor="n"></button><button type="button" data-anchor="ne"></button>
+                <button type="button" data-anchor="w"></button><button type="button" data-anchor="c"></button><button type="button" data-anchor="e"></button>
+                <button type="button" data-anchor="sw"></button><button type="button" data-anchor="s"></button><button type="button" data-anchor="se"></button></span>
+              <button type="button" class="btn small" data-anchor="free" title="free pivot: drag the pivot dot anywhere">free</button>
+              <b id="tfRead"></b>
+              <button type="button" class="btn small" id="tfApply" title="apply (Enter)">✓</button><button type="button" class="btn small" id="tfCancel" title="cancel (Esc)">✕</button></span>
             size <input type="range" id="maskSize" min="2" max="200" step="1"><b id="maskSizeVal"></b>
             <button type="button" class="btn small" id="maskInvert">invert</button>
             <button type="button" class="btn small" id="maskClear">clear</button>
@@ -4312,7 +4326,7 @@ function initMask() {
   const selBox = () => {
     const wrap = drop.querySelector(".cropwrap"); if (!wrap) return;
     let b = wrap.querySelector(".selbox");
-    if (!sel || !maskCanvas.width) { if (b) b.remove(); return; }
+    if (!sel || !maskCanvas.width || tf) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement("div"); b.className = "selbox"; wrap.appendChild(b); }
     const W = maskCanvas.width, H = maskCanvas.height;
     Object.assign(b.style, { left: sel.x / W * 100 + "%", top: sel.y / H * 100 + "%", width: sel.w / W * 100 + "%", height: sel.h / H * 100 + "%" });
@@ -4340,8 +4354,14 @@ function initMask() {
   const dropFloat = () => { if (!fl) return; fl = null; clearTimeout(saveT); maskSave(); sketchSave(); };
   const deselect = () => { dropFloat(); sel = null; selBox(); };
   const selectAll = () => { dropFloat(); if (!maskCanvas.width) return; sel = { x: 0, y: 0, w: maskCanvas.width, h: maskCanvas.height }; selBox(); };
-  selHook = t => { if (!["select", "move"].includes(t)) deselect(); };
+  selHook = t => {
+    if (tf && t !== "transform") tfEnd(true);                 // leaving transform applies it
+    if (!["select", "move", "transform"].includes(t)) deselect();
+    if (t === "transform") setTimeout(() => { if (!tf && maskEdit) tfStart(); });
+  };
   const selPointerDown = (e, p) => {         // true = handled
+    if (tf) { drop.setPointerCapture(e.pointerId); tfDown(e, p); return true; }
+    if (tool === "transform") { tfStart(); if (tf) { drop.setPointerCapture(e.pointerId); tfDown(e, p); } return true; }
     if (tool !== "select" && tool !== "move") return false;
     drop.setPointerCapture(e.pointerId);
     if (sel && sel.auto && tool === "select") deselect();           // the move tool's everything-selection isn't a real one
@@ -4350,17 +4370,26 @@ function initMask() {
     dropFloat(); sel = null; marquee = p; selBox(); return true;
   };
   const selPointerMove = e => {
+    if (tf) { if (tf.drag) tfMove(e, at(e)); return true; }
     if (dragMove) { const p = at(e); sel.x = dragMove.x0 + Math.round(p.x - dragMove.p0.x); sel.y = dragMove.y0 + Math.round(p.y - dragMove.p0.y); placeFloat(); return true; }
     if (marquee) { sel = norm(marquee, at(e)); selBox(); return true; }
     return false;
   };
   const selPointerUp = () => {
+    if (tf) { tf.drag = null; return true; }
     if (dragMove) { dragMove = null; clearTimeout(saveT); maskSave(); sketchSave(); if (sel && sel.auto) deselect(); return true; }
     if (marquee) { marquee = null; if (!sel || sel.w < 2 || sel.h < 2) sel = null; selBox(); return true; }
     return false;
   };
   const selKey = e => {                        // arrows / Delete / Esc / Ctrl+A — true = handled
     const k = e.key;
+    if (tf) {
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+      if (d) { e.preventDefault(); const st = e.shiftKey ? 10 : 1; tf.M = new DOMMatrix().translate(d[0] * st, d[1] * st).multiply(tf.M); tfRender(); return true; }
+      if (k === "Enter") { e.preventDefault(); tfEnd(true); return true; }
+      if (k === "Escape") { e.preventDefault(); tfEnd(false); return true; }
+      return false;
+    }
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "a") { e.preventDefault(); if (!["select", "move"].includes(tool)) setTool("select"); selectAll(); return true; }
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
     if (!sel && d && tool === "move") { selectAll(); if (sel) sel.auto = true; }   // move tool, nothing selected: arrows move everything
@@ -4371,7 +4400,109 @@ function initMask() {
     if (k === "Enter") { e.preventDefault(); deselect(); return true; }
     return false;
   };
+  // ---- ⤡ transform: scale / rotate the lifted selection around a pivot. M maps the box's original coordinates to
+  // the canvas; the pivot `pl` lives in those original coordinates (a corner / edge / the center, or anywhere)
+  let tf = null;
+  const tfLocal = r => ({ nw: [r.x, r.y], n: [r.x + r.w / 2, r.y], ne: [r.x + r.w, r.y], e: [r.x + r.w, r.y + r.h / 2],
+    se: [r.x + r.w, r.y + r.h], s: [r.x + r.w / 2, r.y + r.h], sw: [r.x, r.y + r.h], w: [r.x, r.y + r.h / 2], c: [r.x + r.w / 2, r.y + r.h / 2] });
+  const mp = (M, x, y) => { const q = M.transformPoint(new DOMPoint(x, y)); return { x: q.x, y: q.y }; };
+  const tfSetAnchor = a => {
+    if (!tf) return;
+    tf.anchor = a; store.set("tfAnchor", a);
+    if (a !== "free") { const [x, y] = tfLocal(tf.r)[a]; tf.pl = { x, y }; }
+    document.querySelectorAll("#tfBar [data-anchor]").forEach(b => b.classList.toggle("on", b.dataset.anchor === a));
+    tfDraw();
+  };
+  const tfStart = () => {
+    if (!maskCanvas.width) return;
+    if (!sel) { selectAll(); if (!sel) return; }
+    lift();
+    tf = { r: { ...sel }, M: new DOMMatrix(), ang: 0, pl: null, drag: null };
+    $("tfBar").classList.remove("hidden"); selBox();
+    tfSetAnchor(store.get("tfAnchor", "c") === "free" ? "c" : store.get("tfAnchor", "c"));
+    tfRender();
+  };
+  const tfRender = () => {
+    if (!tf || !fl) return;
+    put(fl.base);
+    for (const [c, src, smooth] of [[g(), fl.m, false], [sketchCanvas.getContext("2d"), fl.sk, true]]) {
+      c.save(); c.setTransform(tf.M); c.imageSmoothingEnabled = smooth; c.drawImage(src, tf.r.x, tf.r.y); c.restore();
+    }
+    drawMaskOverlay(); tfDraw();
+  };
+  const tfDraw = () => {
+    const wrap = drop.querySelector(".cropwrap"); if (!wrap) return;
+    let sv = wrap.querySelector("svg.tfsvg");
+    if (!tf) { if (sv) sv.remove(); return; }
+    if (!sv) { sv = document.createElementNS("http://www.w3.org/2000/svg", "svg"); sv.setAttribute("class", "tfsvg"); wrap.appendChild(sv); }
+    const W = maskCanvas.width, H = maskCanvas.height, img = wrap.querySelector("img");
+    const k = W / Math.max(1, img.getBoundingClientRect().width);        // canvas px per screen px
+    sv.setAttribute("viewBox", `0 0 ${W} ${H}`); sv.setAttribute("preserveAspectRatio", "none");
+    const L = tfLocal(tf.r), P = n => mp(tf.M, ...L[n]);
+    const quad = ["nw", "ne", "se", "sw"].map(n => { const q = P(n); return `${q.x},${q.y}`; }).join(" ");
+    const hs = 7 * k, pv = mp(tf.M, tf.pl.x, tf.pl.y);
+    sv.innerHTML = `<polygon points="${quad}" fill="none" stroke="#000" stroke-width="${3 * k}"/><polygon points="${quad}" fill="none" stroke="#fff" stroke-width="${1.2 * k}" stroke-dasharray="${4 * k} ${3 * k}"/>`
+      + ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(n => { const q = P(n);
+        return `<rect x="${q.x - hs / 2}" y="${q.y - hs / 2}" width="${hs}" height="${hs}" fill="#fff" stroke="#000" stroke-width="${k}"/>`; }).join("")
+      + `<circle cx="${pv.x}" cy="${pv.y}" r="${5 * k}" fill="none" stroke="#000" stroke-width="${3 * k}"/><circle cx="${pv.x}" cy="${pv.y}" r="${5 * k}" fill="none" stroke="#ff2266" stroke-width="${1.5 * k}"/>`
+      + `<path d="M${pv.x - 8 * k},${pv.y}H${pv.x + 8 * k}M${pv.x},${pv.y - 8 * k}V${pv.y + 8 * k}" stroke="#ff2266" stroke-width="${1.2 * k}"/>`;
+    const sx = Math.hypot(tf.M.a, tf.M.b), sy = Math.hypot(tf.M.c, tf.M.d);
+    $("tfRead").textContent = `${(((tf.ang % 360) + 540) % 360 - 180).toFixed(0)}° · ${Math.round(sx * 100)}%${Math.abs(sx - sy) > 0.005 ? ` × ${Math.round(sy * 100)}%` : ""}`;
+  };
+  const tfEnd = apply => {                    // apply: leave it where it is (new selection = its bounding box); else put it back
+    if (!tf) return;
+    if (apply) {
+      const pts = ["nw", "ne", "se", "sw"].map(n => mp(tf.M, ...tfLocal(tf.r)[n]));
+      const x0 = Math.floor(Math.min(...pts.map(q => q.x))), y0 = Math.floor(Math.min(...pts.map(q => q.y)));
+      const x1 = Math.ceil(Math.max(...pts.map(q => q.x))), y1 = Math.ceil(Math.max(...pts.map(q => q.y)));
+      fl = null; tf = null; sel = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; maskSave(); sketchSave();
+    } else {
+      if (fl) { put(fl.before); undo.pop(); } fl = null; tf = null; sel = null; drawMaskOverlay(); maskSave(); sketchSave();
+    }
+    $("tfBar").classList.add("hidden"); tfDraw(); selBox();
+    if (tool === "transform") { tool = "select"; store.set("maskTool", "select");
+      document.querySelectorAll("[data-mtool]").forEach(b => b.classList.toggle("on", b.dataset.mtool === "select")); }
+  };
+  const tfDown = (e, q) => {                  // what the press grabbed: the pivot, a handle, the inside, or outside (rotate)
+    const k = q.k, L = tfLocal(tf.r), inv = tf.M.inverse(), pv = mp(tf.M, tf.pl.x, tf.pl.y);
+    const M0 = DOMMatrix.fromMatrix(tf.M);
+    if (Math.hypot(q.x - pv.x, q.y - pv.y) < 9 * k) return (tf.drag = { kind: "pivot" });
+    for (const n of ["nw", "n", "ne", "e", "se", "s", "sw", "w"]) {
+      const h = mp(tf.M, ...L[n]);
+      if (Math.hypot(q.x - h.x, q.y - h.y) < 8 * k) return (tf.drag = { kind: "scale", n, lh: { x: L[n][0], y: L[n][1] }, M0 });
+    }
+    const ql = mp(inv, q.x, q.y), r = tf.r;
+    if (ql.x >= r.x && ql.x <= r.x + r.w && ql.y >= r.y && ql.y <= r.y + r.h) return (tf.drag = { kind: "move", q0: q, M0 });
+    return (tf.drag = { kind: "rotate", a0: Math.atan2(q.y - pv.y, q.x - pv.x), P: pv, M0, ang0: tf.ang });
+  };
+  const tfMove = (e, q) => {
+    const d = tf.drag; if (!d) return;
+    if (d.kind === "pivot") { const ql = mp(tf.M.inverse(), q.x, q.y); tf.pl = ql; tfSetAnchor("free"); return; }
+    if (d.kind === "move") { tf.M = new DOMMatrix().translate(Math.round(q.x - d.q0.x), Math.round(q.y - d.q0.y)).multiply(d.M0); return tfRender(); }
+    if (d.kind === "rotate") {
+      let deg = (Math.atan2(q.y - d.P.y, q.x - d.P.x) - d.a0) * 180 / Math.PI;
+      if (e.shiftKey) deg = Math.round((d.ang0 + deg) / 15) * 15 - d.ang0;
+      tf.ang = d.ang0 + deg;
+      tf.M = new DOMMatrix().translate(d.P.x, d.P.y).rotate(deg).translate(-d.P.x, -d.P.y).multiply(d.M0);
+      return tfRender();
+    }
+    // scale along the box's own axes, around the pivot
+    const ql = mp(d.M0.inverse(), q.x, q.y), pl = tf.pl, n = d.n;
+    const ax = n !== "n" && n !== "s", ay = n !== "e" && n !== "w";
+    let fx = ax && Math.abs(d.lh.x - pl.x) > 0.5 ? (ql.x - pl.x) / (d.lh.x - pl.x) : 1;
+    let fy = ay && Math.abs(d.lh.y - pl.y) > 0.5 ? (ql.y - pl.y) / (d.lh.y - pl.y) : 1;
+    if (e.shiftKey && ax && ay) { const f = Math.max(Math.abs(fx), Math.abs(fy)); fx = f * Math.sign(fx || 1); fy = f * Math.sign(fy || 1); }
+    fx = Math.sign(fx || 1) * Math.max(0.02, Math.abs(fx)); fy = Math.sign(fy || 1) * Math.max(0.02, Math.abs(fy));
+    tf.M = d.M0.multiply(new DOMMatrix().translate(pl.x, pl.y).scale(fx, fy).translate(-pl.x, -pl.y));
+    tfRender();
+  };
+  $("tfBar").addEventListener("click", e => {
+    const a = e.target.closest("[data-anchor]"); if (a) return tfSetAnchor(a.dataset.anchor);
+    if (e.target.id === "tfApply") tfEnd(true);
+    if (e.target.id === "tfCancel") tfEnd(false);
+  });
   $("maskUndo").onclick = () => { if (poly.length) { restore(); poly = []; snap = null; strokeLive = false; drawMaskOverlay(); return; }
+    if (tf) { tf = null; $("tfBar").classList.add("hidden"); tfDraw(); }
     fl = null; dragMove = null; sel = null;               // undo also drops the selection (it may point at nothing now)
     const d = undo.pop(); if (d) { put(d); drawMaskOverlay(); maskSave(); sketchSave(); } selBox(); };
   drop.addEventListener("pointerdown", e => {
@@ -4416,7 +4547,7 @@ function initMask() {
     if (!LABS.file) return;
     if (!maskEdit && cropEdit) { cropEdit = false; }
     maskEdit = !maskEdit;
-    if (!maskEdit) deselect();
+    if (!maskEdit) { if (tf) tfEnd(true); deselect(); }
     const img = drop.querySelector(".cropwrap img");
     if (maskEdit && img && img.naturalWidth && maskCanvas.width !== img.naturalWidth) { maskLoad(LABS.mask, img.naturalWidth, img.naturalHeight); sketchLoad(LABS.sketch, img.naturalWidth, img.naturalHeight); }
     renderLab();
@@ -4465,7 +4596,7 @@ function initMask() {
     if (e.key === "p" || e.key === "P") $("maskPaint").click();
     if (e.key === "e" || e.key === "E") $("maskErase").click();
     if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey) $("maskColorBtn").click();
-    const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly", m: "select", v: "move" }[e.key.toLowerCase()];
+    const tk = { b: "brush", l: "line", r: "rect", o: "ellipse", g: "poly", m: "select", v: "move", t: "transform" }[e.key.toLowerCase()];
     if (tk && !e.ctrlKey && !e.metaKey) setTool(tk);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("maskUndo").click(); }
     if (e.key === "Enter" && tool === "poly" && poly.length) { e.preventDefault(); polyClose(); }
