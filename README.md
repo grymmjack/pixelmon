@@ -503,7 +503,7 @@ serves it locally at `/docs/settings-atlas.html`.
   whose `mask` layer is the mask and `art` layer the input. Edits can keep the picture's
   colors, light & shadow, and shape; the edit box shows (and picks) which model draws the
   edit — the SDXL inpainting model or your checkpoint. **🎯 Refine** makes a result the new
-  target, a docked **zoom loupe** (300 / 200 / 50 / 33 / 10 %) follows your pointer, and
+  target, a docked **zoom loupe** (600 / 300 / 200 / 50 / 33 / 10 %) follows your pointer, and
   **use as thumbnail** picks the saved preset's picture.
 - **Steering:** push renders toward reference images (IPAdapter), with strength, weight
   type and a start/end window.
