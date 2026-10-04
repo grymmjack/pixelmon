@@ -413,7 +413,7 @@ fieldset.closed { padding-bottom: 2px; }
 /* ---- help: live hints + ⓘ tooltips ---- */
 .hint { font-size: 11.5px; color: var(--dim); margin: 1px 0 8px; min-height: 15px; }
 .hint b { color: var(--accent2); font-weight: 500; }
-.help { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--dim);
+.help { display: inline-grid; place-items: center; width: 15px; height: 15px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--dim);
   color: var(--dim); font: 600 10px/1 system-ui, sans-serif; cursor: help; margin-left: 4px; vertical-align: middle; font-style: normal; }
 .help:hover { border-color: var(--accent); color: var(--accent); }
 #helpTip { position: fixed; z-index: 30; max-width: 340px; background: var(--panel); border: 1px solid var(--accent);
@@ -556,6 +556,7 @@ fieldset.closed { padding-bottom: 2px; }
 .zooms { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
 .zooms .btn.on { border-color: var(--accent); color: var(--accent); }
 .lb-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.lb-actions .btn.on { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -664,6 +665,9 @@ fieldset.closed { padding-bottom: 2px; }
         <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
         <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
           <input type="checkbox" id="no_sprite_suffix"> no sprite suffix<i class="help" data-help="suffix">i</i></label>
+        <label style="white-space:nowrap"><input type="checkbox" id="tile"> seamless tile
+          <select id="tile_axes" title="which edges wrap"><option value="both">both axes</option><option value="x">x only</option><option value="y">y only</option></select>
+          <i class="help" data-help="tile">i</i></label>
       </div>
       <div class="row">
         <div><label>Pixel size<i class="help" data-help="pxsize">i</i></label><select id="pixel_size">
@@ -1068,6 +1072,7 @@ fieldset.closed { padding-bottom: 2px; }
     <div id="lbInfo"></div>
     <div class="cmd" id="lbCmd"></div>
     <div class="lb-actions">
+      <button class="btn hidden" id="lbTiled" title="show this texture repeated 3×3 to check the seams">▦ 3×3 seam check</button>
       <button class="btn" id="lbEvolve">🧬 Evolve from this</button>
       <button class="btn" id="lbParent">Use as parent (tune sliders first)</button>
       <button class="btn" id="lbPreset">Save as preset</button>
@@ -1123,7 +1128,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "no_sprite_suffix", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
+  "snap_pixels", "transparent", "art", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull"];
 let activeStyles = new Set();
 
@@ -1151,7 +1156,7 @@ function params(f = readForm()) {
   return {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
     styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
-    no_sprite_suffix: f.no_sprite_suffix,
+    no_sprite_suffix: f.no_sprite_suffix, tile: f.tile ? f.tile_axes || "both" : "",
     palette: f.palette, palette_strength: f.palette_strength, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
@@ -1170,6 +1175,7 @@ function cliFor(p) {
     return "'" + s.replace(/'/g, "'\\''") + "'"; };
   const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "local", "--no-open", "--show-prompt"];
   if (p.art) a.push("--art");
+  if (p.tile) a.push("--tile", ...(p.tile === "both" ? [] : [p.tile]));
   if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
   if (p.negative) a.push("--negative", q(p.negative));
   if (p.styles.length) a.push("--style", p.styles.join(","));
@@ -1535,6 +1541,10 @@ const HELP = {
   pstrength: `<span class="tipk">Palette strength</span> (art mode): pulls every color of the painting toward its nearest
     color in the palette, without pixelating. <b>0.4–0.7</b> = the palette's look with smooth shading; <b>1</b> = only
     exact palette colors (a posterized painting you can open in DRAW with the palette). 0 = off.`,
+  tile: `<span class="tipk">Seamless tile</span>: makes a texture that repeats with no visible seam — walls, floors,
+    ceilings, terrain. The render wraps around at its edges (left meets right, top meets bottom; or just one axis).
+    Describe a surface, not a thing ("mossy stone bricks"). The lightbox's <b>▦ 3×3 seam check</b> shows it repeated.
+    Works in art mode too.`,
   suffix: `<span class="tipk">No sprite suffix</span>: pixelmon normally adds "game sprite, solid background" to every
     prompt. Tick this for full scenes (it happens automatically when Kind is "scene background").`,
   palette: `<span class="tipk">Palette</span>: the exact set of colors the picture may use. <b>EGA</b> = the 16 colors of
@@ -2092,7 +2102,7 @@ async function checkServer() {
   if (!el || !inp) return;
   el.textContent = "checking…"; el.className = "dim";
   try {
-    const r = await api("/api/server/check?s=" + encodeURIComponent(inp.value.trim() || "local"));
+    const r = await api("/api/server/check?s=" + encodeURIComponent(inp.value.trim() || SETUP.server_default || "local"));
     el.textContent = `${r.up ? "✓ reachable" : "✗ can't reach"} ${r.url || ""}`; el.className = r.up ? "okmark ok" : "okmark bad";
     const m = await api("/api/meta"); META.server = m.server; META.server_up = m.server_up; showServer();
   } catch (e) { el.textContent = "✗ " + e.message; el.className = "okmark bad"; }
@@ -2120,13 +2130,14 @@ function renderSetup() {
       ${found.length ? `<optgroup label="found on this ${osName} machine">${found.map((a, i) => `<option value="${i}">${esc(a.name)}</option>`).join("")}</optgroup>` : ""}
       <option value="custom">custom program…</option></select>
       <span class="dim">${found.length} more found on ${osName}</span></div>`; };
-  const fd = S.folder_default || "os", SV = SETUP.servers || {}, cur = SETUP.server_locked || S.server || "local";
+  const fd = S.folder_default || "os", SV = SETUP.servers || {}, cur = SETUP.server_locked || S.server || "", DEF = SETUP.server_default || "local";
   const srvSect = `<fieldset class="setup-sect"><legend>Render server</legend>
       <p>The ComfyUI that renders everything. <b>local</b> = ComfyUI on this machine (pixelmon starts it by itself when you render).
         For another box, name it in <code>servers.json</code> in the pixelmon folder (copy <code>servers.example.json</code>),
-        or type its address. A comma list (<code>gpubox,local</code>) spreads batches across several.</p>
+        or type its address. A comma list (<code>gpubox,local</code>) spreads batches across several.
+        Leave it empty to use the default (<code>"_default"</code> in <code>servers.json</code>, now <b>${esc(DEF)}</b>).</p>
       <div class="addrow"><input type="text" id="setupServer" list="setupServers" value="${esc(cur)}" ${SETUP.server_locked ? "disabled" : ""}
-          placeholder="local" style="width:260px" title="a servers.json name, host, host:port or http://…">
+          placeholder="${esc(DEF)} (default)" style="width:260px" title="a servers.json name, host, host:port or http://…">
         <datalist id="setupServers">${Object.entries(SV).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</datalist>
         <button type="button" class="btn small" id="setupServerTest">test</button>
         <span id="setupServerState" class="dim"></span></div>
@@ -5487,6 +5498,7 @@ function openLb(jobId, file, stack) {
   const many = lbStack.length > 1;
   $("lbPrev").classList.toggle("hidden", !many); $("lbNext").classList.toggle("hidden", !many);
   $("lbImg").src = fileUrl(job, o);
+  $("lbTiled").classList.toggle("hidden", !o.tiled); $("lbTiled").classList.remove("on");
   palFill($("lbPal"), job.dir, o.file, 256);
   $("lbTitle").textContent = (job.label || `seed ${o.seed ?? "?"}`) + (many ? `   ·   ${lbIdx + 1} / ${lbStack.length}` : "");
   const p = job.params;
@@ -5596,7 +5608,7 @@ async function init() {
   const saved = store.get("form", null);
   FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
     era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, transparent: false,
-    art: false, no_sprite_suffix: false, palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
+    art: false, no_sprite_suffix: false, tile: false, tile_axes: "both", palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
     seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
@@ -5691,6 +5703,10 @@ async function init() {
     if (job) openLb(job.id, im.dataset.openFile);
   });
   $("lbLoad").onclick = () => { loadJobSettings(lbItem.job, lbItem.o.seed); closeLb(); };
+  $("lbTiled").onclick = e => {
+    const on = e.currentTarget.classList.toggle("on"), { job, o } = lbItem;
+    $("lbImg").src = on ? fileUrl(job, { file: o.tiled }) : fileUrl(job, o); setZoom(lbZoom);
+  };
   $("lbSame").onclick = () => { render({ ...lbItem.job.params, seed: lbItem.o.seed ?? -1, n: 1 }); closeLb(); };
   $("lbReroll").onclick = () => { render({ ...lbItem.job.params, seed: -1 }); closeLb(); };
   $("lbReveal").onclick = () => reveal("job", lbItem.job.dir);

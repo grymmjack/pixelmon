@@ -149,10 +149,11 @@ Name your machines in **`servers.json`** (copy `servers.example.json`) so you ca
 use short aliases — it's gitignored, so your IPs stay out of the repo:
 
 ```json
-{ "local": "http://127.0.0.1:8188", "gpubox": "http://192.168.1.50:8188" }
+{ "_default": "gpubox", "local": "http://127.0.0.1:8188", "gpubox": "http://192.168.1.50:8188" }
 ```
 
-`$PIXELMON_SERVER` works too. The remote box just needs ComfyUI + models running;
+**`"_default"`** is where renders go when you don't pass `--server` (an alias, host/URL or
+comma-list farm; leave it out for `local`). `$PIXELMON_SERVER` works too, and beats `"_default"`. The remote box just needs ComfyUI + models running;
 the client only needs this repo (no GPU/torch). Results land in your local
 `~/ComfyUI/output/pixelmon/` (or wherever `--output-to` points). The `--server`
 flag also makes pixelmon **not** try to start a local server for a remote target.
@@ -298,6 +299,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (picks its own grid; add `--out` for an exact size) | off |
 | `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
+| `--tile [x\|y]` | **seamless tileable texture**: the model and VAE wrap at the edges (circular padding) and the pixel pass filters across them, so the result repeats with no seam (both axes, or just `x` / `y`). Drops the sprite wording and adds an edge/object negative. Also saves a 3×3 `_tiled_` preview for checking seams. Needs the updated `pixelart_palette` nodes on the render server | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
 | `--dither [NAME]` | dither between palette colors: `bayer2/4/8/16`, `clustered`, `floyd-steinberg`, `jarvis`, `stucki`, `burkes`, `sierra`, `sierra2`, `sierra-lite`, `atkinson` (bare = floyd-steinberg) | off |
@@ -305,7 +307,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--show-prompt` | print the exact positive + negative prompts sent to the model (after styles and pixelmon's additions) | off |
 | `--no-sprite-suffix` | don't append `game sprite, simple flat colors, solid background` (automatic when the prompt contains `scene background`) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
-| `--server NAME\|host` | render on a remote ComfyUI (alias from `servers.json`, or `host[:port]`/URL); results fetched back over HTTP — see [Render from another machine](#render-from-another-machine---server) | local |
+| `--server NAME\|host` | render on a remote ComfyUI (alias from `servers.json`, or `host[:port]`/URL); results fetched back over HTTP — see [Render from another machine](#render-from-another-machine---server) | `servers.json` `"_default"`, else local |
 | `--seed N` | lock / repeat a result | random |
 | `--steps`, `--cfg` | refinement steps / prompt adherence | 25 / 7 |
 | `--lora-strength N` | how strongly to pixelate | 1.0 |
@@ -454,8 +456,8 @@ pixelmon-gui --lan           # also reachable from other devices on your LAN
 pixelmon-gui --server gpubox # render somewhere else for this run
 ```
 
-**Where it renders:** 🛠 Setup › **Render server**. The default is `local` (ComfyUI on this
-machine, port 8188). Type a `servers.json` name, `host`, `host:port` or URL, and **test** shows
+**Where it renders:** 🛠 Setup › **Render server**. Left empty it uses `servers.json`'s
+`"_default"`, else `local` (ComfyUI on this machine, port 8188). Type a `servers.json` name, `host`, `host:port` or URL, and **test** shows
 whether it answers. A comma list (`gpubox,local`) spreads batches across several. The choice is
 saved in `gui-setup.json`; `--server` or `PIXELMON_SERVER` override it for one run.
 
@@ -772,6 +774,7 @@ pixelmon/
 │       ├── palettes.py         palette registry — add your own here
 │       ├── thin_lines.py       1-px outlines (Zhang–Suen thinning)
 │       ├── pixel_angles.py     pixel-art angle snapping + grids
+│       ├── seamless.py         --tile: circular-padding UNet / VAE decode + 3x3 seam preview
 │       └── web/                ComfyUI extension: loads the running pixelmon job onto the canvas
 └── examples/                   sample sprites + the full style gallery (examples/README.md)
 ```

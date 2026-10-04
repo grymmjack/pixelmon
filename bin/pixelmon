@@ -16,7 +16,7 @@ case " $* " in
 esac
 [ "$#" -eq 0 ] && needs_server=0
 
-# A remote render target (--server NAME|HOST, or $PIXELMON_SERVER) is managed elsewhere
+# A remote render target (--server NAME|HOST, $PIXELMON_SERVER, or servers.json "_default") is managed elsewhere
 # (e.g. another box on the LAN) — don't try to start a local ComfyUI for it.
 TARGET="${PIXELMON_SERVER:-}"
 prev=""
@@ -24,6 +24,11 @@ for arg in "$@"; do
     [ "$prev" = "--server" ] && TARGET="$arg"
     prev="$arg"
 done
+# Neither given: fall back to servers.json's "_default" (the same file pixelmon.py reads).
+if [ -z "$TARGET" ]; then
+    SERVERS_JSON="$(dirname "$(readlink -f "$0")")/../servers.json"
+    [ -f "$SERVERS_JSON" ] && TARGET="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("_default") or "")' "$SERVERS_JSON" 2>/dev/null || true)"
+fi
 if [ -n "$TARGET" ]; then
     case "$TARGET" in
         local|localhost|127.0.0.1*|http://127.0.0.1*|http://localhost*) ;;

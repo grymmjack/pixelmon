@@ -7,7 +7,7 @@ into its own folder under the gallery dir with a job.json recording the exact
 settings and command, so the gallery can reload / re-run anything.
 
 The render server is a servers.json alias, host[:port] or URL: --server NAME, else $PIXELMON_SERVER,
-else the one picked in the Setup tab, else "local" (ComfyUI on this machine, port 8188).
+else the one picked in the Setup tab, else servers.json "_default", else "local" (ComfyUI on this machine, port 8188).
 
 Standard library only. usage: pixelmon-gui [--port 8190] [--lan] [--server NAME] [--gallery DIR]
 """
@@ -150,6 +150,7 @@ def full_prompt(p):
     art = bool(p.get("art"))
     style_add, style_neg = pm.resolve_styles(",".join(p.get("styles") or []))
     a = types.SimpleNamespace(art=art, no_sprite_suffix=bool(p.get("no_sprite_suffix")),
+                              tile=p.get("tile") if p.get("tile") in ("both", "x", "y") else None,
                               style_add=style_add, style_neg=style_neg,
                               negative=str(p.get("negative") or "").strip()
                               or (pm.ART_NEGATIVE if art else pm.PIXEL_NEGATIVE))
@@ -300,20 +301,29 @@ CHARACTER_WORDS = {"knight", "wizard", "warrior", "goblin", "orc", "dwarf", "elf
                    "sorceress", "paladin", "thief", "ranger", "captain", "cyborg", "alien", "beast", "golem", "mage"}
 
 
-def known_servers():
-    """servers.json aliases (keys starting with _ are comments) plus the built-in 'local'."""
+def _servers_json():
     try:
         with open(os.path.join(REPO, "servers.json"), encoding="utf-8") as f:
-            out = {k: v for k, v in json.load(f).items() if not k.startswith("_") and isinstance(v, str)}
+            return json.load(f)
     except Exception:
-        out = {}
+        return {}
+
+
+def known_servers():
+    """servers.json aliases (keys starting with _ are comments) plus the built-in 'local'."""
+    out = {k: v for k, v in _servers_json().items() if not k.startswith("_") and isinstance(v, str)}
     out.setdefault("local", "http://127.0.0.1:8188")
     return out
 
 
+def default_server():
+    """servers.json "_default" (what pixelmon uses without --server), else 'local'."""
+    return re.sub(r"\s+", "", str(_servers_json().get("_default") or "")) or "local"
+
+
 def render_server():
-    """Where renders go: --server / $PIXELMON_SERVER, else the Setup tab's pick, else 'local'."""
-    return SERVER_ARG or load_setup().get("server") or "local"
+    """Where renders go: --server / $PIXELMON_SERVER, else the Setup tab's pick, else servers.json's default."""
+    return SERVER_ARG or load_setup().get("server") or default_server()
 
 
 def server_url(name=None):
@@ -637,6 +647,9 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     art = bool(p.get("art"))
     if art:
         argv.append("--art")
+    tile = str(p.get("tile") or "")
+    if tile in ("both", "x", "y"):
+        argv += ["--tile"] + ([] if tile == "both" else [tile])
     lora = str(p.get("lora") or "")
     if lora == "(none)":
         argv.append("--no-lora")
@@ -1008,13 +1021,18 @@ class JobQueue:
             with self.lock:
                 # trust the folder over log parsing (covers moved/renamed files)
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
-                               if not os.path.basename(f).startswith(("parent.", "input", "mask.")) and "_preview_" not in os.path.basename(f))   # kept parent / LAB input aren't output
+                               if not os.path.basename(f).startswith(("parent.", "input", "mask."))
+                               and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f))   # kept parent / LAB input / seam checks aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
                         m = re.search(r"_s(\d+)_", f)
                         job["outputs"].append({"seed": int(m.group(1)) if m else None, "file": f})
                 job["outputs"] = [o for o in job["outputs"] if o["file"] in found]
+                for o in job["outputs"]:             # --tile: the 3x3 seam check saved beside each texture
+                    t = re.sub(r"_(sprite|art)_(\d+_\.png)$", r"_tiled_\2", o["file"])
+                    if t != o["file"] and os.path.isfile(os.path.join(d, t)):
+                        o["tiled"] = t
                 if job["status"] != "cancelled":
                     job["status"] = "done" if rc == 0 and job["outputs"] else "failed"
                 if job["status"] == "done" and job.get("export"):
@@ -1404,7 +1422,7 @@ def load_setup():
     s.setdefault("folder_apps", [])
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
     s.setdefault("draw_palette", True)     # Open in DRAW also loads the image's colors as a .gpl (--palette)
-    s.setdefault("server", "")            # render server (servers.json alias / host / URL); "" = local
+    s.setdefault("server", "")            # render server (servers.json alias / host / URL); "" = servers.json "_default"
     return s
 
 
@@ -2178,7 +2196,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json({"setup": load_setup(), "detected": {"draw": detect_draw(), "kaleidotron": detect_kaleidotron(),
                                                                     "image_apps": img, "folder_apps": fold},
                                "os": "windows" if IS_WIN else "macos" if IS_MAC else "linux",
-                               "servers": known_servers(), "server": render_server(), "server_locked": SERVER_ARG})
+                               "servers": known_servers(), "server": render_server(), "server_locked": SERVER_ARG,
+                               "server_default": default_server()})
         if u.path == "/api/server/check":
             name = (urllib.parse.parse_qs(u.query).get("s") or [""])[0].strip() or render_server()
             return self._json({"server": name, "url": server_url(name), "up": server_up(name)})
@@ -2811,7 +2830,7 @@ def main():
     ap.add_argument("--port", type=int, default=8190)
     ap.add_argument("--server", default=os.environ.get("PIXELMON_SERVER", ""),
                     help="render server: a servers.json alias, host[:port] or URL (default: $PIXELMON_SERVER, "
-                         "else the Setup tab's choice, else 'local')")
+                         "else the Setup tab's choice, else servers.json \"_default\", else 'local')")
     ap.add_argument("--lan", action="store_true", help="listen on all interfaces so other devices on the LAN can use it")
     ap.add_argument("--refs", default=REFS, help="steering image library, one folder per collection "
                                                   "(default ~/pixelmon-refs)")

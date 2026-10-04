@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 # pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
 # target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
@@ -58,11 +58,14 @@ except Exception:
 # Named ComfyUI targets for `--server NAME`. Your personal servers.json (gitignored)
 # is loaded if present; otherwise just the built-in 'local'. Copy servers.example.json
 # to servers.json and add your machines, e.g. {"titan": "http://192.168.1.50:8188"}.
+# "_default": "NAME[,...]" picks the target used when no --server / $PIXELMON_SERVER is given.
 try:
     with open(os.path.join(_SCRIPT_DIR, "servers.json"), encoding="utf-8") as _svf:
-        SERVERS = {k: v for k, v in json.load(_svf).items() if not k.startswith("_")}
+        _svjson = json.load(_svf)
+    SERVERS = {k: v for k, v in _svjson.items() if not k.startswith("_")}
+    DEFAULT_SERVER = str(_svjson.get("_default") or "").strip()
 except Exception:
-    SERVERS = {}
+    SERVERS, DEFAULT_SERVER = {}, ""
 SERVERS.setdefault("local", "http://127.0.0.1:8188")
 
 
@@ -126,6 +129,7 @@ def print_help():
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
+        opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
         opt("--dither-amount F", "dither strength 0..1", "0.75"),
@@ -148,7 +152,7 @@ def print_help():
         opt("--version", "print the pixelmon version"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
-        opt("--server NAMES", "render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs", "local"),
+        opt("--server NAMES", "render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs", DEFAULT_SERVER or "local"),
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
         opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
         opt("--preview", "also save an enlarged zoomed-in PNG"),
@@ -246,6 +250,11 @@ def with_article(subject):
     return subject if re.match(r"(a|an|the)\s", subject.strip(), re.I) else f"a {subject}"
 
 
+# --tile: what a seamless texture must NOT have (anything that marks an edge, a centre or a viewpoint)
+TILE_NEGATIVE = "border, frame, vignette, perspective, horizon, single object, character, centered composition"
+TILE_POSITIVE = "seamless repeating texture, flat even lighting, pattern fills the whole frame"
+
+
 def art_positive(subject, style_add):
     """Build the POSITIVE prompt for --art (full-res digital art) mode.
 
@@ -291,6 +300,11 @@ def final_prompts(a, subject):
     # Style negatives (a.style_neg) push away unwanted shapes/looks.
     if a.art:
         prompt = art_positive(subject, a.style_add)
+        if a.tile:
+            prompt += ", " + TILE_POSITIVE
+    elif a.tile:
+        # a texture is a surface, not a thing: no "a ...", no sprite suffix, no solid background
+        prompt = ", ".join(x for x in ("pixel art texture", subject, a.style_add, TILE_POSITIVE) if x)
     else:
         parts = [f"pixel, {with_article(subject)}"]
         if a.style_add:
@@ -299,6 +313,8 @@ def final_prompts(a, subject):
                      else "game sprite, simple flat colors, solid background")
         prompt = ", ".join(parts)
     negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
+    if a.tile:
+        negative += ", " + TILE_NEGATIVE
     return prompt, negative
 
 
@@ -395,6 +411,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                          "negative": ["7", 0], "latent_image": ["5", 0]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
     }
+    if a.tile:   # seamless: the decoder wraps at the edges too (the UNet is patched further down)
+        g["8"] = {"class_type": "CircularVAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2], "tiling": a.tile}}
     if a.art:
         # Digital-art mode: no pixelation, no palette lock. SDXL draws at its own resolution; a smaller
         # output is a smooth (lanczos) resize of that picture, never a tiny generation.
@@ -418,7 +436,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
                               "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle,
                               "pixel_angles": a.pixel_angles, "angle_grid": a.angle_grid,
-                              "pixel_w": a.px_w, "pixel_h": a.px_h, "thin_lines": a.thin_lines}}
+                              "pixel_w": a.px_w, "pixel_h": a.px_h, "thin_lines": a.thin_lines,
+                              **({"tile": a.tile} if a.tile else {})}}
         g["11"] = {"class_type": "SaveImage",
                    "inputs": {"filename_prefix": prefix + "_sprite", "images": ["10", 0]}}
         if a.preview:  # enlarged zoomed-in copy — opt-in; default saves only the true sprite
@@ -552,6 +571,14 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "vae": ["4", 2], "pixels": ["41", 0], "mask": ["47", 0], "noise_mask": True}}
         g["3"]["inputs"]["positive"], g["3"]["inputs"]["negative"] = ["61", 0], ["61", 1]
         g["3"]["inputs"]["latent_image"] = ["61", 2]
+    if a.tile:
+        # circular padding in the UNet, applied last so it wraps the LoRA / IPAdapter-patched model
+        g["70"] = {"class_type": "SeamlessTile", "inputs": {"model": model_src, "tiling": a.tile}}
+        model_src = ["70", 0]
+        # a 3x3 repeat of the result, to check the seams by eye
+        if "11" in g:
+            g["71"] = {"class_type": "TilePreview", "inputs": {"image": g["11"]["inputs"]["images"], "repeat": 3, "tiling": a.tile}}
+            g["72"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix + "_tiled", "images": ["71", 0]}}
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
     g["3"]["inputs"]["model"] = model_src
@@ -1046,6 +1073,9 @@ def main():
     p.add_argument("--batch", default=None, metavar="SUBJECTS",
                    help='comma-separated subjects to round-robin, one of each per pass '
                         '(e.g. --batch "bat,skeleton,spider"); each goes to its own folder')
+    p.add_argument("--tile", nargs="?", const="both", default=None, choices=["both", "x", "y"],
+                   help="seamless, tileable texture: the render wraps at its edges so it repeats with no "
+                        "seam (both axes, or just x / y). also saves a 3x3 _tiled_ preview")
     p.add_argument("--transparent", action="store_true",
                    help="cut out the background -> transparent PNG (great for game sprites)")
     p.add_argument("--bg-tolerance", dest="bg_tolerance", type=int, default=16,
@@ -1121,7 +1151,8 @@ def main():
     p.add_argument("--server", default=None, metavar="NAME|HOST[,...]",
                    help="render on a remote ComfyUI: a servers.json alias (e.g. 'titan') "
                         "or host[:port]/URL. comma-list = RENDER FARM, jobs fan across all "
-                        "GPUs (e.g. 'rtx,titan,local'). default: local (also honors $PIXELMON_SERVER)")
+                        "GPUs (e.g. 'rtx,titan,local'). default: $PIXELMON_SERVER, else servers.json "
+                        "\"_default\", else local")
     p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
     # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
@@ -1242,10 +1273,10 @@ def main():
                         "prompt contains 'scene background')")
     a = p.parse_args()
 
-    # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > local default.
-    # Sets the module globals used by submit() / wait() / fetch_image().
+    # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > servers.json
+    # "_default" > local. Sets the module globals used by submit() / wait() / fetch_image().
     global SERVER, REMOTE, POOL
-    _target = a.server or os.environ.get("PIXELMON_SERVER")
+    _target = a.server or os.environ.get("PIXELMON_SERVER") or DEFAULT_SERVER
     if _target:
         POOL = [resolve_server(s.strip()) for s in _target.split(",") if s.strip()]
         SERVER = POOL[0]                       # first entry is the single-server default
@@ -1516,11 +1547,14 @@ def main():
             art_palette(a, sprite, pal)
             enlarge_output(a, sprite)
             preview = next((f for f in files if "_preview_" in f), None)
-            first_open = first_open or preview or sprite   # open preview if saved, else the sprite
+            tiled = next((f for f in files if "_tiled_" in f), None)
+            first_open = first_open or tiled or preview or sprite   # open the seam check / preview if saved, else the sprite
             tag = f"[{i}/{total}] " if total > 1 else ""
             subj_note = f"{subj}  " if a.batch else ""
             pal_note = f"pal={pal}  " if a.palette == "random" else ""
             print(f"   ✅ {tag}{subj_note}{pal_note}seed={seed}  ->  {sprite}")
+            if tiled:
+                print(f"      3x3 seam check  ->  {tiled}")
 
     where = ", ".join(sorted({str(x) for x in dests.values() if x})) or f"{OUTPUT}/pixelmon/"
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {where}")

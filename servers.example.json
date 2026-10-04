@@ -1,5 +1,7 @@
 {
   "_comment": "Named ComfyUI render targets for `pixelmon --server NAME`. Copy this file to servers.json and add your machines. Keys starting with _ are ignored. You can also pass a raw host/URL: `--server 192.168.1.50`. RENDER FARM: pass a comma-list to fan jobs across all of them, e.g. `--server gpubox,titan,local` (dynamic dispatch — faster GPUs do more).",
+  "_default_comment": "_default = the target used when no --server is passed (and $PIXELMON_SERVER is unset). An alias, host/URL, or comma-list farm. Omit it for 'local'.",
+  "_default": "local",
   "local": "http://127.0.0.1:8188",
   "_example_gpubox": "http://192.168.1.50:8188"
 }

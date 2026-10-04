@@ -17,6 +17,7 @@ from PIL import Image, ImageFilter
 
 from .palettes import ALL_PALETTES, parse_palette
 from .pixel_angles import ANGLE_SETS, snap_angles
+from .seamless import TILE_MODES, CircularVAEDecode, SeamlessTile, TilePreview
 from .thin_lines import thin_lines
 
 _RESAMPLE = {"nearest": Image.NEAREST, "box (area average)": Image.BOX}
@@ -254,6 +255,23 @@ def _make_transparent(pixels_rgb, tolerance):
     return Image.fromarray(rgba, "RGBA")
 
 
+def _wrap_pad(pil, px, py):
+    """Pad with the image's own opposite edges (as if tiled), so filters see across the seam."""
+    a = np.asarray(pil)
+    pad = ((py, py), (px, px)) + ((0, 0),) * (a.ndim - 2)
+    return Image.fromarray(np.pad(a, pad, mode="wrap"))
+
+
+def _wrap_filter(pil, filt, margin, tile):
+    """pil.filter(filt), wrap-aware on the axes a seamless texture tiles along."""
+    if tile == "off":
+        return pil.filter(filt)
+    px = margin if tile in ("both", "x") else 0
+    py = margin if tile in ("both", "y") else 0
+    out = _wrap_pad(pil, px, py).filter(filt)
+    return out.crop((px, py, px + pil.width, py + pil.height))
+
+
 def _snapper_bin():
     """Locate the spritefusion-pixel-snapper binary (env override or repo build)."""
     env = os.environ.get("PIXELMON_SNAPPER")
@@ -315,6 +333,7 @@ class PixelArtPalette:
                 "pixel_w": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),   # 0 = auto
                 "pixel_h": ("INT", {"default": 0, "min": 0, "max": 32, "step": 1}),
                 "custom_hex": ("STRING", {"default": "", "multiline": True}),
+                "tile": (["off"] + TILE_MODES, {"default": "off"}),   # seamless texture: wrap at the edges
             },
         }
 
@@ -327,7 +346,7 @@ class PixelArtPalette:
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
                 snap_pixels=False, snap_colors=0, out_width=0, out_height=0, despeckle=2,
-                dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0, thin_lines_w=0, **kw):
+                dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0, thin_lines_w=0, tile="off", **kw):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
@@ -343,7 +362,7 @@ class PixelArtPalette:
             if smooth != "none" and max(sw, sh) > target_long:
                 block = max(3, int(round(max(sw, sh) / target_long)) | 1)   # odd >= 3
                 fil = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
-                src = src.filter(fil(size=block))
+                src = _wrap_filter(src, fil(size=block), block, tile)
             scl = target_long / max(sw, sh)
             return src.resize((max(1, round(sw * scl)), max(1, round(sh * scl))), resample=resample)
 
@@ -365,7 +384,7 @@ class PixelArtPalette:
                 if smooth != "none":
                     block = max(3, int(round(pil.width / gw)) | 1)
                     fil = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
-                    src = pil.filter(fil(size=block))
+                    src = _wrap_filter(pil, fil(size=block), block, tile)
                 small = src.resize((gw, gh), resample=_RESAMPLE[downscale_filter])
         elif snap_pixels:
             # Hand the raw render to the pixel-snapper: it auto-detects the true
@@ -383,6 +402,13 @@ class PixelArtPalette:
                                     resample=Image.NEAREST)                          # integer reduce
         else:
             small = flatten_shrink(pil, min(downscale_to, pixel_grid), _RESAMPLE[downscale_filter])
+
+        # Seamless: run the native-grid steps on a 3x3 tiling and keep the middle, so dither error,
+        # speckle islands, thin lines and angle snapping all carry across the edges like a real tile.
+        if tile != "off":
+            nw, nh = small.size
+            tx, ty = (nw if tile in ("both", "x") else 0), (nh if tile in ("both", "y") else 0)
+            small = _wrap_pad(small.convert("RGB"), tx, ty)
 
         # Palette, dither, despeckle and cutout all run at the art's NATIVE pixel
         # grid (the snapper's res, or the grid-reduced size), so dither patterns
@@ -408,6 +434,9 @@ class PixelArtPalette:
         if pixel_angles > 0:
             pixels = snap_angles(pixels, strength=pixel_angles, angle_set=angle_grid)
 
+        if tile != "off":
+            pixels = pixels.crop((tx, ty, tx + nw, ty + nh))
+
         if transparent_bg:
             pixels = _make_transparent(pixels, bg_tolerance)
 
@@ -422,5 +451,7 @@ class PixelArtPalette:
         return (_pil_to_tensor(pixels), _pil_to_tensor(preview))
 
 
-NODE_CLASS_MAPPINGS = {"PixelArtPalette": PixelArtPalette}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixelArtPalette": "Pixel Art + Palette"}
+NODE_CLASS_MAPPINGS = {"PixelArtPalette": PixelArtPalette, "SeamlessTile": SeamlessTile,
+                       "CircularVAEDecode": CircularVAEDecode, "TilePreview": TilePreview}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixelArtPalette": "Pixel Art + Palette", "SeamlessTile": "Seamless Tile (model)",
+                              "CircularVAEDecode": "VAE Decode (seamless)", "TilePreview": "Tile Preview"}

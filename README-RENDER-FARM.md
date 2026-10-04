@@ -53,13 +53,15 @@ Copy `servers.example.json` → `servers.json` (gitignored, so your IPs stay pri
 and add aliases:
 ```json
 {
+  "_default": "rtx",
   "local": "http://127.0.0.1:8188",
   "rtx":   "http://192.168.1.50:8188",
   "titan": "http://192.168.1.51:8188",
   "mac":   "http://192.168.1.52:8188"
 }
 ```
-You can also skip the file and pass raw hosts: `--server 192.168.1.50,local`.
+`"_default"` is the target used when you don't pass `--server` (a comma-list makes the farm
+the default). You can also skip the file and pass raw hosts: `--server 192.168.1.50,local`.
 
 ### 4. Run it
 ```bash
