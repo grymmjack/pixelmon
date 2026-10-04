@@ -81,6 +81,7 @@ case "$GPU" in
 esac
 pip install -r "$COMFY/requirements.txt"
 pip install opencv-python-headless        # --pixel-angles (pixel-art angle snapping) in the palette node
+pip install --no-deps unfake               # --snap-pixels grid finder (--no-deps: it wants the desktop opencv, which needs libGL)
 
 # 3. link our files into place (this repo stays the source of truth)
 link() { ln -sfn "$1" "$2"; echo "   linked $2 -> $1"; }

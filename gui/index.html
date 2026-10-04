@@ -89,6 +89,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .warns .fx.all { border-color: var(--ok); color: var(--ok); } .warns .fx.all:hover { background: var(--ok); color: #000; }
 .full { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
   padding: 6px 8px; margin-top: 6px; word-break: break-word; }
+.exactBox { display: grid; gap: 4px; margin-top: 4px; }
+.exactBox textarea { font: 12px var(--mono); }
+.exactBar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
+.exactBar .edited { color: var(--warn); }
 .full div { margin: 2px 0; } .full b { color: var(--accent); font-weight: 500; }
 .full .neg b { color: var(--bad); } .full .lo b { color: var(--warn); }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -360,6 +364,7 @@ select.advset { border-color: var(--accent); }
 .pal .gpl { font: 600 9.5px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px;
   color: var(--accent); text-decoration: none; text-transform: uppercase; }
 .pal .gpl:hover { border-color: var(--accent); }
+.pal .wh { color: var(--text); }
 
 /* ---- grid overlay (viewing aid) ---- */
 .gstage { position: relative; display: inline-block; line-height: 0; }
@@ -644,6 +649,12 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="final" id="finalPrompt" title="your prompt + LoRA tags"></div>
       <label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="showFull"> Show full prompt</label>
       <div class="full hidden" id="fullPrompt"></div>
+      <input type="checkbox" id="exactDirty" hidden><label class="inline" style="color:var(--text);margin-top:6px"><input type="checkbox" id="exact"> ✎ edit the full prompt (sent word for word)<i class="help" data-help="exact">i</i></label>
+      <div class="exactBox hidden" id="exactBox">
+        <label>positive — exactly what the model gets</label><textarea id="exactPos" rows="7"></textarea>
+        <label>negative — exactly what the model gets (empty = none)</label><textarea id="exactNeg" rows="4"></textarea>
+        <div class="exactBar"><button type="button" id="exactRebuild">↺ rebuild from the settings above</button><span id="exactNote"></span></div>
+      </div>
       <div class="warns hidden" id="promptWarns"></div>
       <div class="steer-sum hidden" id="steerSum" title="open the Steering tab"></div>
       <details><summary>Negative prompt<i class="help" data-help="negative">i</i></summary>
@@ -660,9 +671,12 @@ fieldset.closed { padding-bottom: 2px; }
           <div class="inline"><input type="number" id="outW" min="1" max="4096"><span>×</span><input type="number" id="outH" min="1" max="4096"></div></div>
       </div>
       <div class="checks">
-        <label><input type="checkbox" id="snap_pixels"> snap pixels<i class="help" data-help="snap">i</i></label>
+        <label style="white-space:nowrap"><input type="checkbox" id="snap_pixels"> snap pixels
+          <select id="snap_method" title="how the grid is found"><option value="unfake">unfake (model's own grid)</option><option value="snapper">snapper (fit canvas)</option></select>
+          <i class="help" data-help="snap">i</i></label>
         <label><input type="checkbox" id="transparent"> transparent bg<i class="help" data-help="transparent">i</i></label>
         <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
+        <label><input type="checkbox" id="raw"> raw (LoRA only, no pixel step)<i class="help" data-help="rawmode">i</i></label>
         <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
           <input type="checkbox" id="no_sprite_suffix"> no sprite suffix<i class="help" data-help="suffix">i</i></label>
         <label style="white-space:nowrap"><input type="checkbox" id="tile"> seamless tile
@@ -1128,8 +1142,8 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "transparent", "art", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
-  "n", "name", "steps", "cfg", "fast", "showFull"];
+  "snap_pixels", "snap_method", "transparent", "art", "raw", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
+  "n", "name", "steps", "cfg", "fast", "showFull", "exact", "exactPos", "exactNeg", "exactDirty"];
 let activeStyles = new Set();
 
 function readForm() {
@@ -1155,7 +1169,7 @@ function params(f = readForm()) {
   const out = f.outW && f.outH ? `${f.outW}x${f.outH}` : "";
   return {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
-    styles: f.styles, out, snap_pixels: f.snap_pixels, transparent: f.transparent, art: f.art,
+    styles: f.styles, out, snap_pixels: f.snap_pixels, snap_method: f.snap_method, transparent: f.transparent, art: f.art, raw: !f.art && f.raw,
     no_sprite_suffix: f.no_sprite_suffix, tile: f.tile ? f.tile_axes || "both" : "",
     palette: f.palette, palette_strength: f.palette_strength, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
@@ -1164,6 +1178,8 @@ function params(f = readForm()) {
     ...steerParams(),
     ...evoParams(),
     adv: advParams(),
+    // the edited full prompt replaces everything composed above, word for word
+    ...(f.exact ? { exact: true, prompt: f.exactPos.trim(), negative: f.exactNeg.trim(), styles: [] } : {}),
   };
 }
 function cliFor(p) {
@@ -1175,9 +1191,11 @@ function cliFor(p) {
     return "'" + s.replace(/'/g, "'\\''") + "'"; };
   const a = ["pixelmon", q(p.prompt), "--server", META ? META.server : "local", "--no-open", "--show-prompt"];
   if (p.art) a.push("--art");
+  if (p.raw) a.push("--raw");
   if (p.tile) a.push("--tile", ...(p.tile === "both" ? [] : [p.tile]));
   if (p.lora === "(none)") a.push("--no-lora"); else if (p.lora) a.push("--lora", q(p.lora), "--lora-strength", p.lora_strength);
-  if (p.negative) a.push("--negative", q(p.negative));
+  if (p.exact) a.push("--exact-prompt", "--negative", q(p.negative));
+  else if (p.negative) a.push("--negative", q(p.negative));
   if (p.styles.length) a.push("--style", p.styles.join(","));
   if (p.out) a.push("--out", p.out);
   if (p.art && p.palette && p.palette !== "none" && +p.palette_strength > 0) {
@@ -1192,7 +1210,7 @@ function cliFor(p) {
     if (+p.pixel_angles > 0 && p.angle_grid && p.angle_grid !== "pixel") a.push("--angle-grid", p.angle_grid);
     if (p.pixel_size) a.push("--pixel-size", p.pixel_size);
     if (+p.thin_lines > 0) a.push("--thin-lines", p.thin_lines);
-    if (p.snap_pixels) a.push("--snap-pixels");
+    if (p.snap_pixels) a.push("--snap-pixels", "--snap-method", p.snap_method || "unfake");
     if (p.transparent) a.push("--transparent");
     if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
   }
@@ -1226,11 +1244,14 @@ function refresh() {
     if (f.art && f.dither !== "none" && f.palette !== "none" && ps > 0)
       $("hPStrength").textContent += ` · dithered (${f.dither}) — strongest at 1, where it replaces the color bands with dot patterns`;
     $("ditherRow").style.opacity = f.art && (!f.palette || f.palette === "none" || !ps) ? .4 : ""; }
-  $("finalPrompt").textContent = composedPrompt(f) || "…";
+  $("finalPrompt").textContent = f.exact ? "✎ using the edited full prompt below — the settings above only fill it (↺ rebuild)"
+    : composedPrompt(f) || "…";
   $("amtVal").textContent = (+f.dither_amount).toFixed(2);
   { const m = /^(\d+)x(\d+)$/.exec(f.pixel_size || ""), W = +f.outW, H = +f.outH;
-    $("hPxSize").textContent = !m ? (f.snap_pixels ? "auto + snap pixels: the snapper guesses its own grid — pixels can come out HUGE; pick a size"
-                                                   : "auto — one art pixel per output pixel")
+    const unfake = f.snap_pixels && f.snap_method !== "snapper";
+    $("hPxSize").textContent = unfake ? "snap pixels (unfake): the model's own grid, reduced to your canvas — pixel size is ignored"
+      : !m ? (f.snap_pixels ? "auto + snap pixels: the snapper guesses its own grid — pixels can come out HUGE; pick a size"
+                            : "auto — one art pixel per output pixel")
       : `${W}×${H} → art grid ${Math.round(W / m[1])}×${Math.round(H / m[2])}, each pixel ${m[1]}×${m[2]} screen pixels`
         + (W % m[1] || H % m[2] ? " (size isn't an exact multiple — edges get uneven)" : "");
     if (!f.art && Math.max(W, H) > 1024) {         // same rule as pixelmon: made at 1/k, enlarged by exactly k
@@ -1251,7 +1272,8 @@ function refresh() {
   const sw = (META && META.palettes[f.palette]) || [];
   $("swatches").innerHTML = sw.slice(0, 64).map(h => `<span style="background:#${h}"></span>`).join("");
   $("seed").placeholder = f.seedLock ? "seed" : "random each run";
-  $("fullPrompt").classList.toggle("hidden", !f.showFull);
+  $("fullPrompt").classList.toggle("hidden", !f.showFull || f.exact);
+  $("exactBox").classList.toggle("hidden", !f.exact);
   queueFullPrompt();   // always: it also brings back conflict warnings
   if (typeof LABS !== "undefined" && LABS.live && !$("labPane").classList.contains("hidden")) { renderLab(); labSchedule(); }
   store.set("form", f);
@@ -1259,21 +1281,32 @@ function refresh() {
 // exact prompts from pixelmon's own final_prompts(), fetched as you type
 const fullHtml = fp => fp && fp.positive ? `<div><b>positive:</b> ${esc(fp.positive)}</div>
   <div class="neg"><b>negative:</b> ${esc(fp.negative)}</div><div class="lo"><b>lora:</b> ${esc(fp.lora || "")}</div>` : "";
-let fullTimer = null;
+let fullTimer = null, GEN_FULL = null;   // GEN_FULL = the prompt pixelmon builds from the settings
+// the editor follows the generated prompt until you type in it (exactDirty); after that — even if you
+// empty it — only ↺ rebuild overwrites it
+function fillExact(r) { if (!r) return; $("exactPos").value = r.positive; $("exactNeg").value = r.negative; }
+function exactNote() {
+  $("exactNote").innerHTML = $("exactDirty").checked ? `<span class="edited">edited — changes above no longer flow in</span>`
+    : "follows the settings above until you edit it";
+}
 function queueFullPrompt() {
   clearTimeout(fullTimer);
   fullTimer = setTimeout(async () => {
-    const p = { ...params(), form: readForm() };
+    const f = readForm(), p = { ...params({ ...f, exact: false }), form: f };
     const warns = $("promptWarns");
     if (!p.prompt) { $("fullPrompt").innerHTML = `<div style="color:var(--dim)">write a prompt…</div>`; warns.classList.add("hidden"); return; }
     try {
       const r = await api("/api/prompt", p);
+      const follow = f.exact && !$("exactDirty").checked;
+      GEN_FULL = r;
+      if (follow) { fillExact(r); store.set("form", readForm()); }
+      exactNote();
       $("fullPrompt").innerHTML = fullHtml(r);
       LAST_WARN = r.warnings || [];
       warns.innerHTML = LAST_WARN.map((w, i) => `<div>⚠ ${esc(w.text)}<br>${w.fixes.map((f, j) =>
           `<button type="button" class="fx" data-fix="${i}:${j}">${esc(f.label)}</button>`).join("")}</div>`).join("")
         + (LAST_WARN.length > 1 ? `<div><button type="button" class="fx all" data-fixall="1">✨ fix all (use each first suggestion)</button></div>` : "");
-      warns.classList.toggle("hidden", !LAST_WARN.length);
+      warns.classList.toggle("hidden", !LAST_WARN.length || f.exact);
     } catch (e) { $("fullPrompt").innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; }
   }, 250);
 }
@@ -1531,13 +1564,25 @@ const HELP = {
   canvas: `<span class="tipk">Canvas</span>: the final picture size, and how its pixels are made.`,
   outsize: `<span class="tipk">Output size</span>: the exact width × height of the finished image, in pixels.
     320×200 is a classic DOS game screen; 128×128 suits a character or item.`,
-  snap: `<span class="tipk">Snap pixels</span>: straightens the image onto a perfect pixel grid for a crisper look.
-    Set a <b>Pixel size</b> too, or it may pick very big pixels on its own.`,
+  snap: `<span class="tipk">Snap pixels</span>: instead of shrinking the model's picture to your canvas, find the pixel
+    grid the model actually drew and keep one color per block — much crisper, keeps small details.
+    <b>unfake</b> (recommended) finds the grid the model really drew, then reduces that clean grid to your exact
+    canvas. Pixel size is ignored. If the model drew <i>chunkier</i> than your canvas (e.g. a 204-wide grid for 320),
+    the pixels get stretched to fit — they can come out a little uneven.
+    <b>snapper</b> (the older one) — set a <b>Pixel size</b> with it, or it may pick very big pixels on its own.`,
   transparent: `<span class="tipk">Transparent bg</span>: removes the plain background around a single sprite or
     character, so it can be placed in a game. Not for scenes.`,
   artmode: `<span class="tipk">Art mode</span>: makes a full-resolution painting/illustration instead of pixel art
     (no pixel steps). SDXL paints at 1024 and a smaller size is a smooth resize. A palette can still tint it —
     see <b>Palette strength</b>.`,
+  exact: `<span class="tipk">Edit the full prompt</span>: the exact positive and negative text sent to the model,
+    in boxes you can change — nothing is added behind your back (no prefix, suffix, style text or default negative).
+    It starts as the prompt built from your subject, LoRA tags, kind/genre/era, style guides and negative, and keeps
+    following them until you edit it; <b>↺ rebuild</b> brings back the generated version. The LoRA and its strength
+    still come from the LoRA picker. Batch rows still build their own prompts.`,
+  rawmode: `<span class="tipk">Raw</span>: the same prompt and LoRA as a pixel render, but you get the model's own
+    full-resolution picture (e.g. 1024 × 640 for a 320 × 200 canvas) — the LoRA's look with no downscale, palette,
+    dither or cleanup. Ignored in art mode.`,
   pstrength: `<span class="tipk">Palette strength</span> (art mode): pulls every color of the painting toward its nearest
     color in the palette, without pixelating. <b>0.4–0.7</b> = the palette's look with smooth shading; <b>1</b> = only
     exact palette colors (a posterized painting you can open in DRAW with the palette). 0 = off.`,
@@ -3294,7 +3339,7 @@ async function queueBatch() {
     const r = BATCH.rows[i], rowStyles = r.style ? r.style.split(",") : [];
     const styles = mode === "row" ? rowStyles : mode === "form" ? f.styles : [...new Set([...rowStyles, ...f.styles])];
     const out = sizeMode === "row" && r.size ? (/x/i.test(r.size) ? r.size.toLowerCase() : `${r.size}x${r.size}`) : base.out;
-    const p = { ...base, prompt: composedPrompt({ ...f, subject: r.prompt }), styles, out, n: 1,
+    const p = { ...base, exact: false, negative: f.negative.trim(), prompt: composedPrompt({ ...f, subject: r.prompt }), styles, out, n: 1,
                 name: r.path.split("/").pop(), group: BATCH.group, label: r.path,
                 form: { ...f, subject: r.prompt, styles } };
     if (dir) p.export = { dir, path: r.path };
@@ -3336,10 +3381,11 @@ async function copyText(text, btn) {
 const PAL = {};   // "dir/file" -> {n, colors}
 function palHtml(dir, file, info, max) {
   if (!info) return "…";
-  if (info.n === ">255") return `<span>&gt; 255 colors</span>`;
+  const size = info.w ? `<span class="wh" title="width × height in pixels">${info.w}×${info.h}</span>` : "";
+  if (info.n === ">255") return size + `<span>&gt; 255 colors</span>`;
   const q = `dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`;
   const shown = info.colors.slice(0, max);
-  return `<span class="sw" title="${esc(info.colors.join(" "))}">${shown.map(c => `<i style="background:${c}" title="${c}"></i>`).join("")}</span>`
+  return size + `<span class="sw" title="${esc(info.colors.join(" "))}">${shown.map(c => `<i style="background:${c}" title="${c}"></i>`).join("")}</span>`
     + (info.colors.length > max ? `<span>+${info.colors.length - max}</span>` : "")
     + `<span>${info.n} color${info.n === 1 ? "" : "s"}</span>`
     + `<a class="gpl" href="/api/colors.gpl?${q}" download title="download this palette as a GIMP .gpl file">GPL</a>`;
@@ -5242,7 +5288,7 @@ function initCombo() {
     if (!n) return;
     if ((COMBO.dither || []).some(d => d !== "none") && (!f.palette || f.palette === "none"))
       return showErr("dithering mixes palette colors — pick a palette first (with none, every dither looks the same)");
-    if (f.art) return showErr("the combo sweep is for pixel art — untick art mode");
+    if (f.art || f.raw) return showErr("the combo sweep is for pixel art — untick art mode / raw");
     if ((COMBO.angle_grid || []).length && !(+f.pixel_angles > 0)) {
       setSlider($("pixel_angles"), 1.5); note("pixel-art angles was off — turned it on at 1.5 so the grids show a difference");
     }
@@ -5607,9 +5653,9 @@ async function init() {
 
   const saved = store.get("form", null);
   FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
-    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, transparent: false,
-    art: false, no_sprite_suffix: false, tile: false, tile_axes: "both", palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
-    seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, styles: [] };
+    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, snap_method: "unfake", transparent: false,
+    art: false, raw: false, no_sprite_suffix: false, tile: false, tile_axes: "both", palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
+    seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, exact: false, exactPos: "", exactNeg: "", exactDirty: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
   $("resetAll").onclick = () => {
@@ -5628,6 +5674,9 @@ async function init() {
   $("form").addEventListener("input", e => { if (e.target.id === "outW" || e.target.id === "outH") syncOutPreset(); refresh(); });
   $("lora").addEventListener("change", () => { applyPreset(); refresh(); });
   $("showFull").addEventListener("change", () => { lastJobsJSON = ""; poll(); });
+  $("exact").addEventListener("change", () => { if ($("exact").checked && !$("exactDirty").checked) fillExact(GEN_FULL); refresh(); });
+  for (const id of ["exactPos", "exactNeg"]) $(id).addEventListener("input", () => { $("exactDirty").checked = true; exactNote(); });
+  $("exactRebuild").onclick = () => { $("exactDirty").checked = false; fillExact(GEN_FULL); refresh(); };
   $("outPreset").addEventListener("change", e => {
     if (e.target.value === "custom") return;
     const { wh, px } = sizeOf(e.target.value), [w, h] = wh.split("x");

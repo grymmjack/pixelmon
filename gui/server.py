@@ -148,13 +148,17 @@ def full_prompt(p):
     pm = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pm)
     art = bool(p.get("art"))
-    style_add, style_neg = pm.resolve_styles(",".join(p.get("styles") or []))
-    a = types.SimpleNamespace(art=art, no_sprite_suffix=bool(p.get("no_sprite_suffix")),
-                              tile=p.get("tile") if p.get("tile") in ("both", "x", "y") else None,
-                              style_add=style_add, style_neg=style_neg,
-                              negative=str(p.get("negative") or "").strip()
-                              or (pm.ART_NEGATIVE if art else pm.PIXEL_NEGATIVE))
-    pos, neg = pm.final_prompts(a, str(p.get("prompt") or "").strip())
+    if p.get("exact"):     # exact prompt: sent word for word, so the preview is just the text itself
+        pos, neg = str(p.get("prompt") or "").strip(), str(p.get("negative") or "").strip()
+        style_add = style_neg = ""
+    else:
+        style_add, style_neg = pm.resolve_styles(",".join(p.get("styles") or []))
+        a = types.SimpleNamespace(art=art, no_sprite_suffix=bool(p.get("no_sprite_suffix")),
+                                  tile=p.get("tile") if p.get("tile") in ("both", "x", "y") else None,
+                                  style_add=style_add, style_neg=style_neg,
+                                  negative=str(p.get("negative") or "").strip()
+                                  or (pm.ART_NEGATIVE if art else pm.PIXEL_NEGATIVE))
+        pos, neg = pm.final_prompts(a, str(p.get("prompt") or "").strip())
     warnings = prompt_warnings(p, pm)
     lora = str(p.get("lora") or "")
     if art or lora == "(none)":
@@ -273,9 +277,14 @@ def prompt_warnings(p, pm):
     if pa > 2.5:
         warn(f"pixel-art angles {pa:g} starts bending shapes — 1.25–2 straightens edges without distorting",
              setf("angles → 1.5", "pixel_angles", 1.5))
-    if p.get("snap_pixels") and not p.get("pixel_size") and not art:
+    snapper = str(p.get("snap_method") or "unfake") == "snapper"
+    if p.get("snap_pixels") and snapper and not p.get("pixel_size") and not art:
         warn("snap pixels on 'auto' pixel size — the snapper guesses its own grid and often makes pixels HUGE",
              setf("pixel size → 1×1", "pixel_size", "1x1"), setf("pixel size → 2×1", "pixel_size", "2x1"))
+    if p.get("snap_pixels") and not snapper and not art and int(p.get("despeckle") or 0) >= 2:
+        warn("unfake keeps the model's real grid, where small details (book spines, eyes) are 1–2 pixel islands — "
+             "despeckle 2+ wipes them out",
+             setf("despeckle → 0", "despeckle", 0), setf("despeckle → 1", "despeckle", 1))
     if not pa and str(p.get("angle_grid") or "pixel") != "pixel":
         warn(f"grid “{p['angle_grid']}” only applies when pixel-art angles is on", setf("angles → 1.5", "pixel_angles", 1.5))
     if pa and str(p.get("palette") or "none") == "none" and not art:
@@ -647,6 +656,8 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     art = bool(p.get("art"))
     if art:
         argv.append("--art")
+    elif p.get("raw") and not (mask and init) and not p.get("post_sweep"):   # inpaint / sweeps are pixel-art only
+        argv.append("--raw")
     tile = str(p.get("tile") or "")
     if tile in ("both", "x", "y"):
         argv += ["--tile"] + ([] if tile == "both" else [tile])
@@ -658,9 +669,12 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         s = num("lora_strength", float, 0.0, 2.0)
         if s is not None:
             argv += ["--lora-strength", f"{s:g}"]
-    if p.get("negative"):
+    exact = bool(p.get("exact"))
+    if exact:              # the edited full prompt: sent word for word (an empty negative stays empty)
+        argv += ["--exact-prompt", "--negative", str(p.get("negative") or "")]
+    elif p.get("negative"):
         argv += ["--negative", str(p["negative"])]
-    styles = [s for s in (p.get("styles") or []) if re.fullmatch(r"[\w-]+", s)]
+    styles = [] if exact else [s for s in (p.get("styles") or []) if re.fullmatch(r"[\w-]+", s)]
     if styles:
         argv += ["--style", ",".join(styles)]
     out, size = dims("out"), dims("size")
@@ -694,7 +708,10 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
         if d is not None:
             argv += ["--despeckle", str(d)]
         if p.get("snap_pixels"):
-            argv.append("--snap-pixels")
+            sm = str(p.get("snap_method") or "unfake")
+            if sm not in ("unfake", "snapper"):
+                raise ValueError(f"unknown snap method {sm!r}")
+            argv += ["--snap-pixels", "--snap-method", sm]
         if p.get("transparent"):
             argv.append("--transparent")
         if p.get("no_sprite_suffix"):
@@ -2169,7 +2186,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if n is None:
                 return self._json({"error": "palette readout needs Pillow — run pixelmon-gui with ComfyUI's venv"}, 501)
             if u.path == "/api/colors":
-                return self._json({"n": n, "colors": colors})
+                from PIL import Image
+                with Image.open(path) as im:       # reads the header only
+                    w, h = im.size
+                return self._json({"n": n, "colors": colors, "w": w, "h": h})
             if n == ">255":
                 return self._json({"error": "more than 255 colors — no palette to export"}, 400)
             stem = os.path.splitext(os.path.basename(path))[0]

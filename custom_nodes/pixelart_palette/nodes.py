@@ -303,6 +303,54 @@ def _snap_pixels(pil_img, k_colors, pixel_size=None):
         return Image.open(op).convert("RGB").copy()
 
 
+def _unfake_pixels(pil_img):
+    """Recover the model's OWN pixel grid with unfake (jenissimo/unfake.py): it measures the block size the
+    model drew, snaps to it and keeps each block's dominant color. Colors are left alone (max_colors=256
+    skips unfake's quantizer) — the palette step after this does the color work."""
+    try:
+        from unfake import pixel as unfake_pixel
+    except ImportError:
+        raise RuntimeError("unfake isn't installed in ComfyUI's Python. Install it once with:\n"
+                           "  ~/ComfyUI/.venv/bin/pip install --no-deps unfake   (it needs numpy, pillow and opencv-python-headless)")
+    import asyncio
+    import concurrent.futures
+    import logging
+    logging.getLogger("unfake.py").setLevel(logging.WARNING)
+    run = lambda: asyncio.run(unfake_pixel.process_image(pil_img.convert("RGB"), max_colors=256,
+                                                         downscale_method="dominant"))
+    with concurrent.futures.ThreadPoolExecutor(1) as ex:   # own thread: ComfyUI may already run an event loop
+        return ex.submit(run).result()["image"].convert("RGB")
+
+
+def _unfake_tile(pil_img, k, tile):
+    """unfake for SEAMLESS tiles: cropping to the grid would cut the wrap, so instead line the model's grid
+    up by ROLLING the image (it wraps, nothing is lost), then reduce exactly k x k blocks to the canvas."""
+    try:
+        from unfake.pixel import find_optimal_crop
+    except ImportError:
+        raise RuntimeError("unfake isn't installed in ComfyUI's Python. Install it once with:\n"
+                           "  ~/ComfyUI/.venv/bin/pip install --no-deps unfake   (it needs numpy, pillow and opencv-python-headless)")
+    a = np.asarray(pil_img.convert("RGB"))
+    dx, dy = find_optimal_crop(np.asarray(pil_img.convert("L")), k)
+    a = np.roll(a, (-dy if tile in ("both", "y") else 0, -dx if tile in ("both", "x") else 0), axis=(0, 1))
+    return _block_dominant(Image.fromarray(a), k)
+
+
+def _block_dominant(img, k):
+    """Shrink by an exact integer k: each k x k block becomes its most common color (ties -> first seen)."""
+    a = np.asarray(img.convert("RGB"))
+    h, w = (a.shape[0] // k) * k, (a.shape[1] // k) * k
+    blocks = a[:h, :w].reshape(h // k, k, w // k, k, 3).transpose(0, 2, 1, 3, 4).reshape(h // k, w // k, k * k, 3)
+    keys = (blocks[..., 0].astype(np.int32) << 16) | (blocks[..., 1].astype(np.int32) << 8) | blocks[..., 2]
+    out = np.empty(keys.shape[:2], np.int32)
+    for y in range(keys.shape[0]):
+        for x in range(keys.shape[1]):
+            v, c = np.unique(keys[y, x], return_counts=True)
+            out[y, x] = v[c.argmax()]
+    rgb = np.stack([(out >> 16) & 255, (out >> 8) & 255, out & 255], -1).astype(np.uint8)
+    return Image.fromarray(rgb)
+
+
 class PixelArtPalette:
     @classmethod
     def INPUT_TYPES(cls):
@@ -323,6 +371,7 @@ class PixelArtPalette:
                 "bg_tolerance": ("INT", {"default": 16, "min": 0, "max": 128, "step": 1}),
                 "snap_pixels": ("BOOLEAN", {"default": False}),
                 "snap_colors": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
+                "snap_method": (["unfake", "snapper"], {"default": "unfake"}),
                 "out_width": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "out_height": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "despeckle": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1}),
@@ -345,7 +394,7 @@ class PixelArtPalette:
     def process(self, image, downscale_to, palette, dithering,
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
-                snap_pixels=False, snap_colors=0, out_width=0, out_height=0, despeckle=2,
+                snap_pixels=False, snap_colors=0, snap_method="snapper", out_width=0, out_height=0, despeckle=2,
                 dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0, thin_lines_w=0, tile="off", **kw):
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
@@ -368,8 +417,17 @@ class PixelArtPalette:
 
         # Fixed pixel size (e.g. 2x1 = wide EGA/CGA pixels): the art grid is the output canvas divided by
         # the pixel size, and every art pixel becomes exactly pixel_w x pixel_h output pixels at the end.
+        # unfake: first recover the grid the model really drew; the exact canvas is applied after that.
+        # A seamless tile needs whole k x k blocks (unfake's grid crop would cut the wrap) — when the canvas
+        # doesn't divide the render evenly, the tile falls back to the normal wrap-aware shrink.
+        unfake = snap_pixels and snap_method == "unfake"
+        tile_k = (pil.width // out_width if unfake and tile != "off" and out_width > 0 and out_height > 0
+                  and pil.width % out_width == 0 and pil.height % out_height == 0
+                  and pil.width // out_width == pil.height // out_height else 0)
+        if unfake and tile != "off" and not tile_k:
+            unfake = snap_pixels = False
         grid = None
-        if pixel_w > 0 and pixel_h > 0 and out_width > 0 and out_height > 0:
+        if pixel_w > 0 and pixel_h > 0 and out_width > 0 and out_height > 0 and not unfake:
             grid = (max(1, round(out_width / pixel_w)), max(1, round(out_height / pixel_h)))
 
         if grid:
@@ -386,6 +444,16 @@ class PixelArtPalette:
                     fil = ImageFilter.ModeFilter if smooth == "mode" else ImageFilter.MedianFilter
                     src = _wrap_filter(pil, fil(size=block), block, tile)
                 small = src.resize((gw, gh), resample=_RESAMPLE[downscale_filter])
+        elif tile_k:
+            small = _unfake_tile(pil, tile_k, tile)        # seamless: exact blocks, no crop
+        elif unfake:
+            small = _unfake_pixels(pil)
+            if out_width > 0 and out_height > 0 and max(small.size) > max(out_width, out_height):
+                # the model drew finer than the canvas (Pixel Art XL: a 128 grid for a 64 sprite): reduce the
+                # CLEAN grid, block by block — far sharper than shrinking the raw render
+                k = max(small.size) / max(out_width, out_height)
+                small = (_block_dominant(small, round(k)) if abs(k - round(k)) < 0.05
+                         else flatten_shrink(small, max(out_width, out_height), Image.NEAREST))
         elif snap_pixels:
             # Hand the raw render to the pixel-snapper: it auto-detects the true
             # grid and outputs a perfect, grid-aligned sprite — REPLACING the

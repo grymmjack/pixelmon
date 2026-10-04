@@ -124,6 +124,7 @@ def print_help():
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
         opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
+        opt("--raw", "the LoRA's own full-res picture: pixel prompt + LoRA, no palette / downscale step"),
         opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact (+ --dither)", "0.6"),
         opt("--post-sweep SPEC", "render once, save every combination: 'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
@@ -133,7 +134,8 @@ def print_help():
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
         opt("--dither-amount F", "dither strength 0..1", "0.75"),
-        opt("--snap-pixels", "snap to a perfect grid (pixel-snapper) — extra crisp"),
+        opt("--snap-pixels", "find the model's own pixel grid instead of shrinking to --out — extra crisp"),
+        opt("--snap-method M", "unfake (model's own grid, reduced to --out) or snapper", "unfake"),
         opt("--despeckle N", "remove stray color islands of <= N px (0 = off)", "2"),
         opt("--pixel-angles F", "EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)", "0"),
         opt("--angle-grid G", "pixel / square / diagonal / isometric / hex / triangle", "pixel"),
@@ -177,6 +179,7 @@ def print_help():
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
         opt("--show-prompt", "print the exact positive/negative prompts sent to the model"),
+        opt("--exact-prompt", "send the prompt + --negative word for word: no added prefix/suffix/styles/default negative"),
         opt("--no-sprite-suffix", "drop 'game sprite … solid background' (auto for 'scene background')"),
         opt("--output-to DIR", "move outputs into DIR (relative to cwd)"),
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
@@ -294,6 +297,8 @@ def is_scene(a, subject):
 
 def final_prompts(a, subject):
     """The exact (positive, negative) prompt pair sent to the sampler."""
+    if getattr(a, "exact_prompt", False):   # --exact-prompt: nothing added, nothing changed
+        return subject, a.negative
     # The Pixel Art XL LoRA does the heavy lifting; the base prompt stays simple
     # and --style snippets (a.style_add) do the steering. "game sprite ... solid
     # background" keeps sprites clean, but fights full scenes, so scenes drop it.
@@ -394,8 +399,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
 
     name = slug(subject) if a.batch else (a.name or slug(subject))
     # seed in the filename so each variation is identifiable and re-runnable.
-    tag = "art" if a.art else palette
-    ow, oh = (a.sw, a.sh) if a.art else (a.ow * a.enlarge, a.oh * a.enlarge)
+    tag = "art" if a.art else "raw" if a.raw else palette
+    ow, oh = (a.sw, a.sh) if a.art else (a.gen_w, a.gen_h) if a.raw else (a.ow * a.enlarge, a.oh * a.enlarge)
     prefix = f"pixelmon/{name}_{ow}x{oh}_{tag}_s{seed}"
 
     g = {
@@ -424,6 +429,9 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
             art_img = ["17", 0]
         g["11"] = {"class_type": "SaveImage",
                    "inputs": {"filename_prefix": prefix + "_art", "images": art_img}}
+    elif a.raw:
+        # Raw mode: the pixel render's model picture, saved as SDXL drew it (what the LoRA alone looks like)
+        g["11"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix + "_raw", "images": ["8", 0]}}
     else:
         g["10"] = {"class_type": "PixelArtPalette",
                    "inputs": {"image": ["8", 0], "downscale_to": max(a.sw, a.sh), "palette": palette,
@@ -433,7 +441,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "downscale_filter": a.filter, "smooth": a.smooth,
                               "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                               "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
-                              "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors,
+                              "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors, "snap_method": a.snap_method,
                               "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle,
                               "pixel_angles": a.pixel_angles, "angle_grid": a.angle_grid,
                               "pixel_w": a.px_w, "pixel_h": a.px_h, "thin_lines": a.thin_lines,
@@ -745,7 +753,7 @@ def _palette_node():
 def enlarge_output(a, sprite):
     """Pixel art past 1024 was made at 1/k size: enlarge it by exactly k, nearest neighbour (crisp square pixels)."""
     k = getattr(a, "enlarge", 1)
-    if k <= 1 or not (sprite and os.path.isfile(sprite)):
+    if k <= 1 or getattr(a, "raw", False) or not (sprite and os.path.isfile(sprite)):
         return
     from PIL import Image
     im = Image.open(sprite)
@@ -1029,7 +1037,7 @@ def run_farm(a, work):
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             dest_dir = d or os.path.join(OUTPUT, "pixelmon")
             files = [fetch_image(im, dest_dir, srv) for im in imgs]
-            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
+            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f or "_raw_" in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)
@@ -1094,8 +1102,11 @@ def main():
                    help="dither strength 0..1: ordered = threshold spread, diffusion = share of error pushed on. "
                         "default 0.75")
     p.add_argument("--snap-pixels", dest="snap_pixels", action="store_true",
-                   help="snap to a perfect pixel grid via the pixel-snapper (auto-detects size; "
-                        "extra crisp). overrides --size.")
+                   help="find the pixel grid the model actually drew and take one color per block, instead of "
+                        "shrinking to --out (extra crisp). see --snap-method")
+    p.add_argument("--snap-method", dest="snap_method", choices=["unfake", "snapper"], default="unfake",
+                   help="--snap-pixels engine: unfake = find the grid the model really drew, then reduce it cleanly "
+                        "to --out (sharpest); snapper = spritefusion pixel-snapper, then fitted to --out. default unfake")
     p.add_argument("--pixel-angles", dest="pixel_angles", type=float, default=0.0, metavar="F",
                    help="EXPERIMENTAL: redraw region outlines with clean pixel-art angles (integer ratios "
                         "1:1, 2:1, 3:1 … like DRAW's angle snap). F = how much wobble gets straightened, "
@@ -1228,6 +1239,12 @@ def main():
                    help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no pixel "
                         "downscale. Saves SDXL's full-res image (default 1024px; a smaller --out is a "
                         "smooth resize). --palette pulls its colors toward a palette (--palette-strength).")
+    p.add_argument("--exact-prompt", dest="exact_prompt", action="store_true",
+                   help="send the prompt and --negative exactly as written: no 'pixel, a …' prefix, no sprite / "
+                        "scene suffix, no --style text, no default negative (an omitted --negative = empty)")
+    p.add_argument("--raw", action="store_true",
+                   help="RAW mode: the same prompt and LoRA as a pixel render, but saves the model's own "
+                        "full-res picture (SDXL's VAE output) — no downscale, palette or cleanup step")
     p.add_argument("--post-sweep", dest="post_sweep", default=None, metavar="SPEC",
                    help="render once, then save every combination of post-processing settings, e.g. "
                         "'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1' (fields: "
@@ -1304,7 +1321,10 @@ def main():
     if a.size is None:
         a.size = a.out if a.out else ("1024" if a.art else "128")
     if a.negative is None:
-        a.negative = ART_NEGATIVE if a.art else PIXEL_NEGATIVE
+        a.negative = "" if a.exact_prompt else ART_NEGATIVE if a.art else PIXEL_NEGATIVE
+    if a.exact_prompt and (a.style or a.animate):
+        p.error("--exact-prompt sends your text as-is, so it can't be combined with --style or --animate "
+                "(put the style words in the prompt yourself)")
     if a.art:
         ignored = [f for f, on in [
             ("--transparent", a.transparent), ("--dither (needs a --palette)", a.dither != "none" and a.palette == "none"),
@@ -1313,6 +1333,9 @@ def main():
         if ignored:
             print(f"   note: {', '.join(ignored)} have no effect in --art mode "
                   f"(there's no pixelation step to apply them to)")
+
+    if a.raw and not a.art:
+        print("   note: --raw saves the model's full-res picture; palette, dither and cleanup options are skipped")
 
     a.px_w = a.px_h = 0
     if a.pixel_size:
@@ -1327,6 +1350,8 @@ def main():
     if not 0.0 <= a.palette_strength <= 1.0:
         p.error("--palette-strength must be 0..1")
     a.post_combos = None
+    if a.raw and (a.art or a.animate or a.mask or a.post_sweep):
+        p.error("--raw can't be combined with --art, --animate, --mask or --post-sweep")
     if a.post_sweep:
         if a.art or a.animate or a.mask:
             p.error("--post-sweep works on pixel-art renders (not --art, --animate or LAB edits)")
@@ -1465,11 +1490,11 @@ def main():
     total = n * len(subjects)
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
     art_pal = f" + {a.palette} @ {a.palette_strength:g}" if a.palette != "none" and a.palette_strength > 0 else ""
-    pal_label = ("ART / full-res" + art_pal) if a.art else ("random" if a.palette == "random" else a.palette)
+    pal_label = ("ART / full-res" + art_pal) if a.art else "RAW / model output (no pixel step)" if a.raw else ("random" if a.palette == "random" else a.palette)
     style_label = f"  |  style: {a.style}" if a.style else ""
     subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
     count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
-    lw, lh = (a.sw, a.sh) if a.art else (a.ow * a.enlarge, a.oh * a.enlarge)
+    lw, lh = (a.sw, a.sh) if a.art else (a.gen_w, a.gen_h) if a.raw else (a.ow * a.enlarge, a.oh * a.enlarge)
     size_label = f"{lw}x{lh}" if lw != lh else f"{lw}px"
     if len(POOL) > 1:
         print(f"🚜 render farm: {len(POOL)} servers — {', '.join(_short(s) for s in POOL)}")
@@ -1541,7 +1566,7 @@ def main():
                     print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={seed}  ->  {f}")
                 first_open = first_open or (shots[0] if shots else None)
                 continue
-            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f), None)
+            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f or "_raw_" in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)

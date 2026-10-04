@@ -294,6 +294,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
 | `--out N\|WxH` | exact final canvas size, up to 4096 (sampling still follows `--size`, which defaults to `--out`); also forces the size with `--snap-pixels`. Pixel art past 1024 is made at 1/2–1/16 of the size and enlarged by exactly that factor (crisp square pixels) | `--size` |
 | `--art` | digital art instead of pixel art — see [Art mode](#art-mode---art) | off |
+| `--raw` | the LoRA's own full-res picture: same prompt + LoRA as a pixel render, no downscale / palette / cleanup | off |
 | `--palette-strength F` | with `--art` and a `--palette`: how far colors move toward the palette, 0–1 (1 = exact palette colors) | `0.6` |
 | `--post-sweep SPEC` | render **once**, then save every combination of post-processing settings — e.g. `'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'` (fields: `angle_grid`, `dither`, `dither_amount`, `pixel_angles`, `thin_lines`, `despeckle`, `palette`); ~1–2 s per picture after the render | — |
 | `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (picks its own grid; add `--out` for an exact size) | off |
@@ -587,6 +588,7 @@ OPTIONS
   --size N|WxH        square N, or non-square WxH e.g. 32x48  [128]
   --out N|WxH         exact final canvas size (default: --size); also with --snap-pixels
   --art               DIGITAL ART (not pixels): full-res illustration, no downscale  [1024]
+  --raw               the LoRA's own full-res picture: pixel prompt + LoRA, no palette / downscale step
   --palette-strength F --art + --palette: pull colors toward the palette, 1 = exact (+ --dither)  [0.6]
   --post-sweep SPEC   render once, save every combination: 'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'
   --palette NAME      none / random / a name (--list-palettes)  [none]
