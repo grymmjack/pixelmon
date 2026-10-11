@@ -54,6 +54,11 @@ body.cork-dragging { cursor: col-resize; user-select: none; }
 .statusbar b { color: var(--text); font-weight: 500; }
 .statusbar #sbStatus { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .statusbar .busy { color: var(--warn); } .statusbar .err { color: var(--bad); }
+.sb-abort { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-left: -6px; padding: 0 10px;
+  background: #b3121b; color: #fff; border: 1px solid #ff4d55; border-radius: 4px; font-family: inherit; font-size: 11px; font-weight: 700;
+  letter-spacing: .06em; cursor: pointer; }
+.sb-abort i { width: 11px; height: 11px; border-radius: 50%; background: #ff2a35; box-shadow: 0 0 0 2px #fff; }
+.sb-abort:hover { background: #d4161f; } .sb-abort:disabled { opacity: .7; cursor: wait; }
 
 /* ---- form panel ---- */
 .form { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 90px; container-type: inline-size; }
@@ -1100,6 +1105,8 @@ fieldset.closed { padding-bottom: 2px; }
 </div>
 
 <div class="statusbar">
+  <button type="button" id="sbAbort" class="sb-abort hidden"
+    title="stop everything now: cancel every queued job, stop the render that's running, empty ComfyUI's queue and interrupt it"><i></i> CANCEL AND ABORT</button>
   <label title="desktop notifications"><input type="checkbox" id="nfOn"> Notifications:</label>
   <label><input type="checkbox" id="nfDone"> when done</label>
   <label><input type="checkbox" id="nfErr"> on error</label>
@@ -1987,12 +1994,13 @@ async function evolveRound(checked) {
   if (!EVO.perChild) return render(base);
   const group = `evo-${Date.now()}`;
   showErr();
+  const gen = abortGen;
   for (let i = 0; i < EVO.n; i++) {
     const e = randomEvo();
     const p = { ...base, n: 1, evolve_denoise: e.denoise, evolve_steer: EVO.steerOn ? e.steer : 0,
                 evolve_steer_start: e.start, evolve_steer_end: e.end, evolve_weight_type: e.weight,
                 group, label: evoLabel(e) };
-    try { await api("/api/render", p); } catch (err) { showErr(err); break; }
+    try { if (!(await sendJob(p, gen))) break; } catch (err) { showErr(err); break; }
   }
   switchTab("queue"); poll();
 }
@@ -3178,6 +3186,7 @@ function initThumbPick() {
 const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: [0, 0], subject: "", mode: "canny", strength: 0.8,
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
 function initPaneTools() {
+  $("sbAbort").onclick = abortAll;
   $("queueClear").onclick = async () => {
     const js = Object.values(JOBS), waiting = js.filter(j => j.status === "queued").length,
           running = js.some(j => j.status === "running"), done = js.length - waiting - (running ? 1 : 0);
@@ -3517,7 +3526,7 @@ async function queueBatch() {
   const f = readForm(), base = { ...params(f), form: f };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen;   // batches don't breed
   BATCH.group = `batch-${Date.now()}`;
-  const mode = $("batchStyleMode").value, sizeMode = $("batchSizeMode").value;
+  const mode = $("batchStyleMode").value, sizeMode = $("batchSizeMode").value, gen = abortGen;
   for (const i of todo) {
     const r = BATCH.rows[i], rowStyles = r.style ? r.style.split(",") : [];
     const styles = mode === "row" ? rowStyles : mode === "form" ? f.styles : [...new Set([...rowStyles, ...f.styles])];
@@ -3526,7 +3535,7 @@ async function queueBatch() {
                 name: r.path.split("/").pop(), group: BATCH.group, label: r.path,
                 form: { ...f, subject: r.prompt, styles } };
     if (dir) p.export = { dir, path: r.path };
-    try { await api("/api/render", p); } catch (e) { showErr(`${r.path}: ${e.message}`); break; }
+    try { if (!(await sendJob(p, gen))) break; } catch (e) { showErr(`${r.path}: ${e.message}`); break; }
   }
   poll(); renderBatch();
 }
@@ -4019,6 +4028,7 @@ function statusUpdate(jobs) {
   const want = real.filter(j => j.status !== "cancelled").reduce((n, j) => n + (j.total || 1), 0);
   const made = real.reduce((n, j) => n + j.outputs.length, 0);
   $("sbCount").innerHTML = `<b>${made}</b> of <b>${want}</b> images created this session`;
+  abortShow(jobs);
   const run = jobs.find(j => j.status === "running"), queued = jobs.filter(j => j.status === "queued").length;
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
   $("sbStatus").innerHTML = run
@@ -4573,9 +4583,9 @@ async function editApply() {
     evolve_weight_type: "style and composition", evolve_steer_start: 0, evolve_steer_end: 1 });
   if (!(await preflight(base))) return;
   LABS.group = `lab-edit-${Date.now()}`;
-  const seed0 = Math.floor(Math.random() * 2 ** 31);
+  const seed0 = Math.floor(Math.random() * 2 ** 31), gen = abortGen;
   for (let i = 0; i < LABS.n; i++) {
-    try { await api("/api/render", { ...base, seed: seed0 + i, group: LABS.group, label: `edit · seed ${seed0 + i}` }); }
+    try { if (!(await sendJob({ ...base, seed: seed0 + i, group: LABS.group, label: `edit · seed ${seed0 + i}` }, gen))) break; }
     catch (e) { showErr(e); break; }
   }
   poll(); renderLab();
@@ -5261,9 +5271,9 @@ async function labConvert() {
   const base = labParams();
   if (!(await preflight(base))) return;
   LABS.group = `lab-${Date.now()}`;
-  const seed0 = Math.floor(Math.random() * 2 ** 31);
+  const seed0 = Math.floor(Math.random() * 2 ** 31), gen = abortGen;
   for (let i = 0; i < LABS.n; i++) {
-    try { await api("/api/render", { ...base, seed: seed0 + i, group: LABS.group, label: `seed ${seed0 + i}` }); }
+    try { if (!(await sendJob({ ...base, seed: seed0 + i, group: LABS.group, label: `seed ${seed0 + i}` }, gen))) break; }
     catch (e) { showErr(e); break; }
   }
   remember(subject); poll(); renderLab();
@@ -5381,6 +5391,34 @@ async function api(path, body) {
   return j;
 }
 function showErr(e) { $("err").textContent = e ? (e.message || e) : ""; }
+
+// ⛔ CANCEL AND ABORT bumps abortGen: a loop still sending jobs one by one stops there, and a job that
+// was already on its way when you pressed it is cancelled as it lands
+let abortGen = 0, sending = 0;
+async function sendJob(p, gen) {
+  if (gen !== abortGen) return null;
+  sending++; abortShow();
+  try {
+    const r = await api("/api/render", p);
+    if (gen !== abortGen) { for (const id of r.jobs || []) api(`/api/cancel/${id}`, {}).catch(() => {}); return null; }
+    return r;
+  } finally { sending--; abortShow(); }
+}
+function abortShow(jobs) {
+  const busy = (jobs || Object.values(JOBS)).some(j => j.status === "queued" || j.status === "running");
+  $("sbAbort").classList.toggle("hidden", !(busy || sending > 0));
+}
+async function abortAll() {
+  abortGen++;
+  const b = $("sbAbort"); b.disabled = true; b.lastChild.textContent = " ABORTING…";
+  try {
+    const r = await api("/api/jobs/abort", {});
+    const bad = Object.entries(r.servers || {}).filter(([, v]) => !/^https?:/.test(v));
+    showErr(bad.length ? `Stopped pixelmon, but couldn't reach ComfyUI on ${bad.map(([k, v]) => `${k}: ${v}`).join("; ")}` : "");
+  } catch (e) { showErr(e); }
+  b.disabled = false; b.lastChild.textContent = " CANCEL AND ABORT";
+  lastJobsJSON = ""; poll();
+}
 
 async function render(p) {
   showErr();

@@ -1041,6 +1041,47 @@ class JobQueue:
                 removed += 1
         return {"cancelled": cancelled, "removed": removed}
 
+    def abort(self):
+        """⛔ CANCEL AND ABORT: cancel every waiting job, stop the running one, then empty the render
+        server's own ComfyUI queue and interrupt what it's sampling (every server of a farm list)."""
+        servers = set(render_server().split(","))
+        with self.lock:
+            proc = None
+            cancelled = 0
+            for jid in self.order:
+                job = self.jobs[jid]
+                if job["status"] == "queued":
+                    job["status"] = "cancelled"
+                    cancelled += 1
+                elif job["status"] == "running":
+                    argv = job["argv"]
+                    if "--server" in argv:               # the server this job was sent to, even if Setup changed since
+                        servers.update(argv[argv.index("--server") + 1].split(","))
+                    if self.current == jid and self.proc:
+                        job["status"] = "cancelled"
+                        proc = self.proc
+                        proc.terminate()
+                        cancelled += 1
+        if proc:                                         # let pixelmon exit first, so it can't send one more prompt
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        comfy = {}
+        for name in sorted(s.strip() for s in servers if s.strip()):
+            url = server_url(name)
+            if not url or url in comfy.values():
+                continue
+            try:
+                for path, body in (("/queue", {"clear": True}), ("/interrupt", {})):
+                    req = urllib.request.Request(url + path, data=json.dumps(body).encode(), method="POST",
+                                                 headers={"Content-Type": "application/json"})
+                    urllib.request.urlopen(req, timeout=4).close()
+                comfy[name] = url
+            except Exception as e:
+                comfy[name] = f"unreachable ({e})"
+        return {"cancelled": cancelled, "servers": comfy}
+
     def snapshot(self):
         with self.lock:
             return [dict(self.jobs[j], log=self.jobs[j]["log"][-40:]) for j in self.order[-60:]]
@@ -2646,6 +2687,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json(depth_preview(body, self.gallery))
             if u.path == "/api/jobs/clear":
                 return self._json(self.jobs.clear(bool(body.get("stop_running"))))
+            if u.path == "/api/jobs/abort":
+                return self._json(self.jobs.abort())
             if u.path == "/api/backups/restore":
                 r = restore_backup(body.get("name"), self.gallery)
                 return self._json(r)
