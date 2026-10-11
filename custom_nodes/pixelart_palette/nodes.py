@@ -55,19 +55,41 @@ def _pil_to_tensor(pil):
 # `pixels` is an (N, 3) int array of RGB values; `palette` is (P, 3) int.
 # Return an (N,) int array of indices into `palette` — one per pixel.
 # ---------------------------------------------------------------------------
+# How "nearest palette color" is measured; PixelArtPalette.process sets it per render.
+#   oklab   — distance in OKLab, a perceptual color space: keeps hue and lightness the way the eye sees them,
+#             so a color the palette lacks lands on the closest-looking swatch (default)
+#   redmean — the older cheap RGB approximation: green weighted most, red/blue weights shift with redness
+COLOR_METRIC = "oklab"
+
+
+def _oklab(rgb):
+    c = np.asarray(rgb, np.float64) / 255.0
+    c = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    lms = np.cbrt(c @ np.array([[0.4122214708, 0.5363325363, 0.0514459929],
+                                [0.2119034982, 0.6806995451, 0.1073969566],
+                                [0.0883024619, 0.2817188376, 0.6299787005]]).T)
+    return lms @ np.array([[0.2104542553, 0.7936177850, -0.0040720468],
+                           [1.9779984951, -2.4285922050, 0.4505937099],
+                           [0.0259040371, 0.7827717662, -0.8086757660]]).T
+
+
 def nearest_indices(pixels, palette):
-    # Perceptual "redmean" distance — a cheap approximation of human color
-    # vision. Green is weighted most (the eye is most sensitive to it), blue
-    # least, and red's weight shifts depending on how red the colors already
-    # are. Picks visually-closer palette swatches than plain RGB distance.
-    px = pixels.astype(np.float64)                              # (N,3)
-    pal = palette.astype(np.float64)                            # (P,3)
-    rmean = (px[:, None, 0] + pal[None, :, 0]) * 0.5            # (N,P)
-    dr = px[:, None, 0] - pal[None, :, 0]
-    dg = px[:, None, 1] - pal[None, :, 1]
-    db = px[:, None, 2] - pal[None, :, 2]
-    dist = (2 + rmean / 256.0) * dr * dr + 4 * dg * dg + (2 + (255 - rmean) / 256.0) * db * db
-    return dist.argmin(axis=1)
+    px = np.asarray(pixels).reshape(-1, 3).astype(np.float64)   # (N,3)
+    pal = np.asarray(palette).astype(np.float64)                # (P,3)
+    out = np.empty(len(px), np.int64)
+    step = 16384                                                # chunks: the (N,P) table stays small for big palettes
+    if COLOR_METRIC == "oklab":
+        P = _oklab(pal)
+        for i in range(0, len(px), step):
+            a = _oklab(px[i:i + step])
+            out[i:i + step] = ((a[:, None, :] - P[None]) ** 2).sum(-1).argmin(1)
+        return out
+    for i in range(0, len(px), step):
+        q = px[i:i + step]
+        rmean = (q[:, None, 0] + pal[None, :, 0]) * 0.5
+        dr, dg, db = (q[:, None, k] - pal[None, :, k] for k in range(3))
+        out[i:i + step] = ((2 + rmean / 256.0) * dr * dr + 4 * dg * dg + (2 + (255 - rmean) / 256.0) * db * db).argmin(1)
+    return out
 
 
 def _quantize_flat(small_rgb, palette_rgb):
@@ -336,6 +358,30 @@ def _unfake_tile(pil_img, k, tile):
     return _block_dominant(Image.fromarray(a), k)
 
 
+def _fit_subject(pil_img, aspect, tolerance):
+    """Crop the full-res render to its subject (the background is flood-filled in from the edges, as for a
+    transparent cutout), with a small margin, widened to the canvas aspect — so the subject FILLS the frame
+    before the big reduction. A 16px sprite gets twice the pixels on the subject. Unchanged if nothing is found."""
+    sw = 256
+    small = pil_img.convert("RGB").resize((sw, max(1, round(sw * pil_img.height / pil_img.width))), Image.NEAREST)
+    alpha = np.asarray(_make_transparent(small, max(tolerance, 32)))[:, :, 3]
+    ys, xs = np.nonzero(alpha)
+    if not len(xs) or alpha.all():
+        return pil_img
+    fx, fy = pil_img.width / small.width, pil_img.height / small.height
+    x0, y0, x1, y1 = xs.min() * fx, ys.min() * fy, (xs.max() + 1) * fx, (ys.max() + 1) * fy
+    pad = 0.04 * max(x1 - x0, y1 - y0)
+    w, h = x1 - x0 + 2 * pad, y1 - y0 + 2 * pad
+    w, h = (h * aspect, h) if w / h < aspect else (w, w / aspect)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    bx, by = round(cx - w / 2), round(cy - h / 2)
+    border = np.concatenate([np.asarray(small)[0], np.asarray(small)[-1]])
+    cols, counts = np.unique(border, axis=0, return_counts=True)
+    canvas = Image.new("RGB", (max(1, round(w)), max(1, round(h))), tuple(int(c) for c in cols[counts.argmax()]))
+    canvas.paste(pil_img.convert("RGB"), (-bx, -by))           # outside the render = background color
+    return canvas
+
+
 def _block_dominant(img, k):
     """Shrink by an exact integer k: each k x k block becomes its most common color (ties -> first seen)."""
     a = np.asarray(img.convert("RGB"))
@@ -372,6 +418,8 @@ class PixelArtPalette:
                 "snap_pixels": ("BOOLEAN", {"default": False}),
                 "snap_colors": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
                 "snap_method": (["unfake", "snapper"], {"default": "unfake"}),
+                "fit_subject": ("BOOLEAN", {"default": False}),
+                "color_match": (["oklab", "redmean"], {"default": "oklab"}),
                 "out_width": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "out_height": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1}),
                 "despeckle": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1}),
@@ -394,11 +442,16 @@ class PixelArtPalette:
     def process(self, image, downscale_to, palette, dithering,
                 downscale_filter, view_scale, smooth="mode", pixel_grid=128,
                 custom_hex="", transparent_bg=False, bg_tolerance=16,
-                snap_pixels=False, snap_colors=0, snap_method="snapper", out_width=0, out_height=0, despeckle=2,
+                snap_pixels=False, snap_colors=0, snap_method="snapper", fit_subject=False, color_match="oklab", out_width=0, out_height=0, despeckle=2,
                 dither_amount=0.75, pixel_angles=0.0, angle_grid="pixel", pixel_w=0, pixel_h=0, thin_lines_w=0, tile="off", **kw):
+        global COLOR_METRIC
+        COLOR_METRIC = color_match if color_match in ("oklab", "redmean") else "oklab"
         palette_rgb = None if palette == "none" else parse_palette(palette, custom_hex)
 
         pil = _tensor_to_pil(image)
+        if fit_subject and tile == "off":
+            ow, oh = (out_width, out_height) if out_width > 0 and out_height > 0 else (downscale_to, downscale_to)
+            pil = _fit_subject(pil, ow / oh, bg_tolerance)
 
         # --- Grid-aware, crisp downscale ---------------------------------------
         # Pixel Art XL paints ~8px blocks at 1024 — i.e. a ~128px LOGICAL image.
@@ -426,6 +479,14 @@ class PixelArtPalette:
                   and pil.width // out_width == pil.height // out_height else 0)
         if unfake and tile != "off" and not tile_k:
             unfake = snap_pixels = False
+        uf_small = None
+        if unfake and not tile_k:
+            uf_small = _unfake_pixels(pil)
+            if out_width > 0 and out_height > 0 and max(uf_small.size) < 0.95 * max(out_width, out_height):
+                # the grid unfake found is COARSER than the canvas (a model that draws no clean grid, e.g. a
+                # photoreal checkpoint, makes it guess big blocks) — stretching it up would lose detail, so
+                # step aside and shrink the render to the canvas the normal way
+                uf_small, unfake, snap_pixels = None, False, False
         grid = None
         if pixel_w > 0 and pixel_h > 0 and out_width > 0 and out_height > 0 and not unfake:
             grid = (max(1, round(out_width / pixel_w)), max(1, round(out_height / pixel_h)))
@@ -447,7 +508,7 @@ class PixelArtPalette:
         elif tile_k:
             small = _unfake_tile(pil, tile_k, tile)        # seamless: exact blocks, no crop
         elif unfake:
-            small = _unfake_pixels(pil)
+            small = uf_small
             if out_width > 0 and out_height > 0 and max(small.size) > max(out_width, out_height):
                 # the model drew finer than the canvas (Pixel Art XL: a 128 grid for a 64 sprite): reduce the
                 # CLEAN grid, block by block — far sharper than shrinking the raw render

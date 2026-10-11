@@ -56,7 +56,11 @@ body.cork-dragging { cursor: col-resize; user-select: none; }
 .statusbar .busy { color: var(--warn); } .statusbar .err { color: var(--bad); }
 
 /* ---- form panel ---- */
-.form { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 90px; }
+.form { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 90px; container-type: inline-size; }
+/* wide settings pane: two columns (prompt side | canvas + palette side); narrow: one column */
+.formcols { display: grid; grid-template-columns: 1fr; gap: 0 18px; align-items: start; }
+.formcol { min-width: 0; }
+@container (min-width: 760px) { .formcols { grid-template-columns: 1fr 1fr; } }
 .brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .brand h1 { font: 700 20px var(--mono); margin: 0; letter-spacing: 1px;
   background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -98,6 +102,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .chip { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 2px 9px; cursor: pointer; font-size: 12px; }
 .chip.on { border-color: var(--accent); color: var(--accent); }
+.optchips { margin: 2px 0 8px; }
+.sweepall { display: flex; flex-wrap: wrap; gap: 6px; }
+.optchips .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 3px; }
+.optchips .chip img { height: 16px; image-rendering: pixelated; border-radius: 3px; display: block; }
 .swatches { display: flex; flex-wrap: wrap; gap: 0; margin-top: 5px; min-height: 12px; }
 .swatches span { width: 14px; height: 12px; }
 details > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 4px 0; }
@@ -580,6 +588,7 @@ fieldset.closed { padding-bottom: 2px; }
 <div class="app" id="app">
   <!-- ================= FORM ================= -->
   <form class="form" id="form" autocomplete="off" onsubmit="return false">
+   <div class="formcols"><div class="formcol">
     <div class="brand"><a class="brandlink" href="https://github.com/grymmjack/pixelmon" target="_blank" rel="noopener"
         title="pixelmon on GitHub"><h1>PIXELMON</h1></a><span class="srv" id="srv">render server …</span>
       <a class="btn small" id="docsBtn" href="https://claude.ai/artifact/Howqpc3cfKV7Xjt4aAbrSS" target="_blank" rel="noopener"
@@ -677,70 +686,6 @@ fieldset.closed { padding-bottom: 2px; }
     </fieldset>
 
     <fieldset>
-      <legend>Canvas<i class="help" data-help="canvas">i</i></legend>
-      <div class="row">
-        <div><label>Output size (exact)<i class="help" data-help="outsize">i</i></label><select id="outPreset"></select></div>
-        <div><label>Custom W × H</label>
-          <div class="inline"><input type="number" id="outW" min="1" max="4096"><span>×</span><input type="number" id="outH" min="1" max="4096"></div></div>
-      </div>
-      <div class="checks">
-        <label style="white-space:nowrap"><input type="checkbox" id="snap_pixels"> snap pixels
-          <select id="snap_method" title="how the grid is found"><option value="unfake">unfake (model's own grid)</option><option value="snapper">snapper (fit canvas)</option></select>
-          <i class="help" data-help="snap">i</i></label>
-        <label><input type="checkbox" id="transparent"> transparent bg<i class="help" data-help="transparent">i</i></label>
-        <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
-        <label><input type="checkbox" id="raw"> raw (LoRA only, no pixel step)<i class="help" data-help="rawmode">i</i></label>
-        <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
-          <input type="checkbox" id="no_sprite_suffix"> no sprite suffix<i class="help" data-help="suffix">i</i></label>
-        <label style="white-space:nowrap"><input type="checkbox" id="tile"> seamless tile
-          <select id="tile_axes" title="which edges wrap"><option value="both">both axes</option><option value="x">x only</option><option value="y">y only</option></select>
-          <i class="help" data-help="tile">i</i></label>
-      </div>
-      <div class="row">
-        <div><label>Pixel size<i class="help" data-help="pxsize">i</i></label><select id="pixel_size">
-          <option value="">auto</option><option value="1x1">1×1 — full detail</option><option value="2x1">2×1 — wide (EGA/CGA low-res)</option>
-          <option value="1x2">1×2 — tall</option><option value="2x2">2×2</option><option value="3x3">3×3</option>
-          <option value="4x1">4×1 — very wide</option><option value="4x2">4×2</option><option value="4x4">4×4 — chunky</option></select></div>
-        <div></div>
-      </div>
-      <div class="hint" id="hPxSize"></div>
-    </fieldset>
-
-    <fieldset id="colorBox">
-      <legend>Palette &amp; dither<i class="help" data-help="palette">i</i></legend>
-      <select id="palette"></select>
-      <div class="swatches" id="swatches"></div>
-      <div class="artonly"><label>Palette strength <span id="psVal"></span><i class="help" data-help="pstrength">i</i></label>
-        <input type="range" id="palette_strength" min="0" max="1" step="0.05" value="0.6">
-        <div class="hint" id="hPStrength"></div></div>
-      <div class="row" id="ditherRow">
-        <div><label>Dither<i class="help" data-help="dither">i</i></label><select id="dither"></select></div>
-        <div><label>Amount <span id="amtVal"></span><i class="help" data-help="amount">i</i></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
-      </div>
-      <div class="row pxonly">
-        <div><label>Despeckle (px, 0 = off)<i class="help" data-help="despeckle">i</i></label><input type="number" id="despeckle" min="0" max="64"></div>
-        <div><label>1-px outlines — thin lines up to…<i class="help" data-help="thin">i</i></label>
-          <select id="thin_lines"><option value="0">off</option>
-            <option value="2">2 px thick → 1 px (only the thinnest)</option>
-            <option value="3">3 px thick → 1 px</option>
-            <option value="4">4 px thick → 1 px (recommended)</option>
-            <option value="6">6 px thick → 1 px</option>
-            <option value="8">8 px thick → 1 px — aggressive</option></select></div>
-      </div>
-      <div class="row pxonly">
-        <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
-          <input type="range" id="pixel_angles" min="0" max="3" step="0.25"></div>
-      </div>
-      <div class="row pxonly">
-        <div><label>Grid<i class="help" data-help="grid">i</i></label><select id="angle_grid">
-          <option value="pixel">pixel-art (free)</option><option value="square">square</option><option value="diagonal">diagonal</option>
-          <option value="isometric">isometric</option><option value="hex">hex</option><option value="triangle">triangle</option></select></div>
-        <div style="align-self:end"><button type="button" class="btn small" data-sweepall="angle_grid" style="width:100%">sweep grids</button></div>
-      </div>
-      <div class="hint" id="hAngles"></div>
-    </fieldset>
-
-    <fieldset>
       <legend>Seed &amp; batch<i class="help" data-help="seed">i</i></legend>
       <div class="row" style="grid-template-columns: 1fr auto auto">
         <input type="number" id="seed" min="0" placeholder="random each run">
@@ -751,11 +696,11 @@ fieldset.closed { padding-bottom: 2px; }
         <div><label>Count (-n)<i class="help" data-help="count">i</i></label><input type="number" id="n" min="1" max="32"></div>
         <div><label>Name (optional)<i class="help" data-help="name">i</i></label><input type="text" id="name" placeholder="from prompt"></div>
       </div>
-      <details><summary>Sampler</summary>
+      <details open><summary>Sampler</summary>
         <div class="row3">
           <div><label>Steps<i class="help" data-help="steps">i</i></label><input type="number" id="steps" min="1" max="150" placeholder="25"></div>
           <div><label>CFG<i class="help" data-help="cfg">i</i></label><input type="number" id="cfg" step="0.5" min="0" max="30" placeholder="7"></div>
-          <div><label>&nbsp;</label><label class="inline" style="margin:6px 0;color:var(--text)"><input type="checkbox" id="fast"> fast (LCM)<i class="help" data-help="fast">i</i></label></div>
+          <div><label>&nbsp;</label><span class="hint" style="display:block;margin:6px 0">fast: in the options above</span></div>
         </div>
         <!-- same settings as the ⚙ Advanced tab (kept in sync) -->
         <div class="row3">
@@ -796,6 +741,79 @@ fieldset.closed { padding-bottom: 2px; }
         <button type="button" class="btn" id="sweepBtn" style="width:100%;margin-top:4px">Run sweep</button>
       </details>
     </fieldset>
+   </div><div class="formcol">
+    <fieldset>
+      <legend>Canvas<i class="help" data-help="canvas">i</i></legend>
+      <div class="row">
+        <div><label>Output size (exact)<i class="help" data-help="outsize">i</i></label><select id="outPreset"></select></div>
+        <div><label>Custom W × H</label>
+          <div class="inline"><input type="number" id="outW" min="1" max="4096"><span>×</span><input type="number" id="outH" min="1" max="4096"></div></div>
+      </div>
+      <div class="sweepall" style="margin:2px 0 8px"><button type="button" class="btn small" id="sizeSweep">sweep sizes</button>
+        <i class="help" data-help="sizesweep">i</i></div>
+      <div class="checks">
+        <label style="white-space:nowrap"><input type="checkbox" id="snap_pixels"> snap pixels
+          <select id="snap_method" title="how the grid is found"><option value="unfake">unfake (model's own grid)</option><option value="snapper">snapper (fit canvas)</option></select>
+          <i class="help" data-help="snap">i</i></label>
+        <label><input type="checkbox" id="transparent"> transparent bg<i class="help" data-help="transparent">i</i></label>
+        <label><input type="checkbox" id="fit_subject"> fill frame<i class="help" data-help="fitsubject">i</i></label>
+        <label><input type="checkbox" id="fast"> fast (LCM)<i class="help" data-help="fast">i</i></label>
+        <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
+        <label><input type="checkbox" id="raw"> raw (LoRA only, no pixel step)<i class="help" data-help="rawmode">i</i></label>
+        <label title="drop 'game sprite, simple flat colors, solid background' (automatic when Kind = scene background)">
+          <input type="checkbox" id="no_sprite_suffix"> no sprite suffix<i class="help" data-help="suffix">i</i></label>
+        <label style="white-space:nowrap"><input type="checkbox" id="tile"> seamless tile
+          <select id="tile_axes" title="which edges wrap"><option value="both">both axes</option><option value="x">x only</option><option value="y">y only</option></select>
+          <i class="help" data-help="tile">i</i></label>
+      </div>
+      <div class="row">
+        <div><label>Pixel size<i class="help" data-help="pxsize">i</i></label><select id="pixel_size">
+          <option value="">auto</option><option value="1x1">1×1 — full detail</option><option value="2x1">2×1 — wide (EGA/CGA low-res)</option>
+          <option value="1x2">1×2 — tall</option><option value="2x2">2×2</option><option value="3x3">3×3</option>
+          <option value="4x1">4×1 — very wide</option><option value="4x2">4×2</option><option value="4x4">4×4 — chunky</option></select></div>
+        <div></div>
+      </div>
+      <div class="hint" id="hPxSize"></div>
+    </fieldset>
+
+    <fieldset id="colorBox">
+      <legend>Palette &amp; dither<i class="help" data-help="palette">i</i></legend>
+      <select id="palette"></select>
+      <div class="swatches" id="swatches"></div>
+      <div class="pxonly" style="display:flex;gap:8px;align-items:center;margin:2px 0 6px"><label style="margin:0">Color match<i class="help" data-help="colormatch">i</i></label>
+        <select id="color_match" style="width:auto"><option value="oklab">oklab (perceptual)</option><option value="redmean">redmean (classic)</option></select></div>
+      <div class="artonly"><label>Palette strength <span id="psVal"></span><i class="help" data-help="pstrength">i</i></label>
+        <input type="range" id="palette_strength" min="0" max="1" step="0.05" value="0.6">
+        <div class="hint" id="hPStrength"></div></div>
+      <div id="ditherRow">
+        <label>Dither<i class="help" data-help="dither">i</i></label><select id="dither" class="hidden"></select>
+        <div class="chips optchips" id="ditherChips"></div>
+        <div><label>Amount <span id="amtVal"></span><i class="help" data-help="amount">i</i></label><input type="range" id="dither_amount" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="row pxonly">
+        <div><label>Despeckle (px, 0 = off)<i class="help" data-help="despeckle">i</i></label><input type="number" id="despeckle" min="0" max="64"></div>
+        <div><label>1-px outlines — thin lines up to…<i class="help" data-help="thin">i</i></label>
+          <select id="thin_lines"><option value="0">off</option>
+            <option value="2">2 px thick → 1 px (only the thinnest)</option>
+            <option value="3">3 px thick → 1 px</option>
+            <option value="4">4 px thick → 1 px (recommended)</option>
+            <option value="6">6 px thick → 1 px</option>
+            <option value="8">8 px thick → 1 px — aggressive</option></select></div>
+      </div>
+      <div class="row pxonly">
+        <div><label>Pixel-art angles <b id="paVal"></b> <span style="color:var(--accent2)">beta</span><i class="help" data-help="angles">i</i></label>
+          <input type="range" id="pixel_angles" min="0" max="3" step="0.25"></div>
+      </div>
+      <div class="pxonly">
+        <div><label>Grid<i class="help" data-help="grid">i</i></label><div class="chips optchips" id="gridChips"></div><select id="angle_grid" class="hidden">
+          <option value="pixel">pixel-art (free)</option><option value="square">square</option><option value="diagonal">diagonal</option>
+          <option value="isometric">isometric</option><option value="hex">hex</option><option value="triangle">triangle</option></select></div>
+        <div><button type="button" class="btn small" data-sweepall="angle_grid">sweep grids</button></div>
+      </div>
+      <div class="hint" id="hAngles"></div>
+    </fieldset>
+
+   </div></div>
 
     <div class="actions">
       <button type="button" class="btn primary" id="renderBtn">Render</button>
@@ -1174,7 +1192,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "snap_method", "transparent", "art", "raw", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
+  "snap_pixels", "snap_method", "transparent", "fit_subject", "color_match", "art", "raw", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull", "exact", "exactPos", "exactNeg", "exactDirty"];
 let activeStyles = new Set();
 
@@ -1201,7 +1219,7 @@ function params(f = readForm()) {
   const out = f.outW && f.outH ? `${f.outW}x${f.outH}` : "";
   return {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
-    styles: f.styles, out, snap_pixels: f.snap_pixels, snap_method: f.snap_method, transparent: f.transparent, art: f.art, raw: !f.art && f.raw,
+    styles: f.styles, out, snap_pixels: f.snap_pixels, snap_method: f.snap_method, fit_subject: f.fit_subject, color_match: f.color_match, transparent: f.transparent, art: f.art, raw: !f.art && f.raw,
     no_sprite_suffix: f.no_sprite_suffix, tile: f.tile ? f.tile_axes || "both" : "",
     palette: f.palette, palette_strength: f.palette_strength, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
@@ -1245,6 +1263,8 @@ function cliFor(p) {
     if (+p.thin_lines > 0) a.push("--thin-lines", p.thin_lines);
     if (p.snap_pixels) a.push("--snap-pixels", "--snap-method", p.snap_method || "unfake");
     if (p.transparent) a.push("--transparent");
+    if (p.fit_subject) a.push("--fit-subject");
+    if (p.color_match === "redmean") a.push("--color-match", "redmean");
     if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
   }
   if (p.fast) a.push("--fast");
@@ -1268,6 +1288,19 @@ function cliFor(p) {
   if (+p.n > 1) a.push("-n", p.n);
   if (p.name) a.push("--name", q(p.name));
   return a.join(" ");
+}
+// option chips with thumbnails, mirroring a (hidden) <select> that stays the value holder for presets / CLI
+const OPT_CHIPS = [["dither", "ditherChips", "dither-"], ["angle_grid", "gridChips", "grid-"]];
+function renderOptChips() {
+  for (const [sel, box, pre] of OPT_CHIPS) {
+    $(box).innerHTML = [...$(sel).options].map(o => `<span class="chip" data-opt="${esc(o.value)}" title="${esc(o.textContent)}">`
+      + `<img src="/setup-img/${pre}${encodeURIComponent(o.value)}.png" alt="" loading="lazy">${esc(o.textContent)}</span>`).join("");
+    $(box).onclick = e => { const c = e.target.closest(".chip"); if (!c) return;
+      $(sel).value = c.dataset.opt; $(sel).dispatchEvent(new Event("input", { bubbles: true })); };
+  }
+}
+function syncOptChips() {
+  for (const [sel, box] of OPT_CHIPS) $(box).querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.opt === $(sel).value));
 }
 function refresh() {
   syncOptChips();
@@ -1587,14 +1620,15 @@ function initSteer() {
 
 // ---------------- fold-out sections (remembered) ----------------
 function initFolds() {
-  const folds = store.get("folds", {});
+  const folds = store.get("folds.v2", null) || { styles: true };   // v2 defaults: style guides folded, the rest open
+  store.set("folds.v2", folds);
   const keyOf = fs => fs.id || (fs.querySelector("legend").childNodes[0].nodeValue || "").trim().toLowerCase();
   document.querySelectorAll(".form fieldset").forEach(fs => {
     const lg = fs.querySelector(":scope > legend"); if (!lg) return;
     fs.classList.toggle("closed", !!folds[keyOf(fs)]);
     lg.addEventListener("click", e => {
       if (e.target.closest(".help")) return;
-      fs.classList.toggle("closed"); folds[keyOf(fs)] = fs.classList.contains("closed"); store.set("folds", folds);
+      fs.classList.toggle("closed"); folds[keyOf(fs)] = fs.classList.contains("closed"); store.set("folds.v2", folds);
     });
   });
   const sf = $("stylesFold"), apply = () => { sf.classList.toggle("closed", !!folds.styles); $("styles").classList.toggle("hidden", !!folds.styles); };
@@ -1602,12 +1636,12 @@ function initFolds() {
   const anyClosed = () => sets().some(fs => fs.classList.contains("closed")) || !!folds.styles;
   const label = () => { $("foldAll").textContent = anyClosed() ? "+" : "−";
                         $("foldAll").title = anyClosed() ? "expand all sections" : "collapse all sections"; };
-  sf.addEventListener("click", e => { if (e.target.closest(".help")) return; folds.styles = !folds.styles; store.set("folds", folds); apply(); label(); });
+  sf.addEventListener("click", e => { if (e.target.closest(".help")) return; folds.styles = !folds.styles; store.set("folds.v2", folds); apply(); label(); });
   document.querySelectorAll(".form fieldset > legend").forEach(lg => lg.addEventListener("click", () => setTimeout(label)));
   $("foldAll").onclick = () => {
     const close = !anyClosed();                   // everything open -> collapse all; anything closed -> expand all
     sets().forEach(fs => { fs.classList.toggle("closed", close); folds[keyOf(fs)] = close; });
-    folds.styles = close; store.set("folds", folds); apply(); label();
+    folds.styles = close; store.set("folds.v2", folds); apply(); label();
   };
   apply(); label();
 }
@@ -1694,9 +1728,22 @@ const HELP = {
   snap: `<span class="tipk">Snap pixels</span>: instead of shrinking the model's picture to your canvas, find the pixel
     grid the model actually drew and keep one color per block — much crisper, keeps small details.
     <b>unfake</b> (recommended) finds the grid the model really drew, then reduces that clean grid to your exact
-    canvas. Pixel size is ignored. If the model drew <i>chunkier</i> than your canvas (e.g. a 204-wide grid for 320),
-    the pixels get stretched to fit — they can come out a little uneven.
+    canvas. Pixel size is ignored. If the grid it finds is <i>coarser</i> than your canvas (a checkpoint that draws
+    no clean pixel grid makes it guess big blocks), it steps aside and the picture is shrunk to your canvas normally.
     <b>snapper</b> (the older one) — set a <b>Pixel size</b> with it, or it may pick very big pixels on its own.`,
+  sizesweep: `<span class="tipk">Sweep sizes</span>: the same picture (same seed) at a ladder of resolutions with your
+    canvas's shape — e.g. 320×200 → 64×40 … 1024×640 — to see which pixel resolution suits it best. The model's picture
+    is the same for all of them, so only the pixel step runs again: after the first one they're quick.
+    Lock the seed of a result you like first (or click 🧬 / reuse its settings).`,
+  colormatch: `<span class="tipk">Color match</span>: how the palette lock picks the nearest color for each pixel.
+    <b>oklab</b> measures in a perceptual color space, so hue and lightness stay the way your eye sees them — when the
+    palette doesn't have the model's color, it lands on the closest-<i>looking</i> one (flatter, fewer blotches).
+    <b>redmean</b> is the older approximation (pixelmon's look before this). Neither can invent a color the palette
+    lacks: a LoRA trained on EGA art looks most like itself with EGA or "none".`,
+  fitsubject: `<span class="tipk">Fill frame</span>: the model draws its subject at full resolution with empty space
+    around it. This crops to the subject first (the background is found from the edges, like transparent bg), then
+    shrinks — so the subject fills your canvas instead of sitting small in the middle. A must for 16×16 and 32×32
+    sprites and icons. For single subjects on a plain background; not for scenes or seamless tiles.`,
   transparent: `<span class="tipk">Transparent bg</span>: removes the plain background around a single sprite or
     character, so it can be placed in a game. Not for scenes.`,
   artmode: `<span class="tipk">Art mode</span>: makes a full-resolution painting/illustration instead of pixel art
@@ -3881,7 +3928,7 @@ function initCork() {
   const setFormW = w => $("app").style.setProperty("--form-w", w + "px");
   const corkW = () => (CORK.open ? $("cork").getBoundingClientRect().width : 0);
   const clampF = w => Math.round(Math.max(300, Math.min(w, innerWidth - corkW() - 480)));   // keep ≥480px for the middle
-  setFormW(clampF(store.get("formW", 420)));
+  setFormW(clampF(store.get("formW", 860)));
   $("formResize").addEventListener("pointerdown", e => {
     e.preventDefault(); const h = e.currentTarget; h.setPointerCapture(e.pointerId);
     h.classList.add("drag"); document.body.classList.add("cork-dragging");
@@ -3892,7 +3939,7 @@ function initCork() {
       store.set("formW", clampF(ev.clientX - left)); };
     h.addEventListener("pointermove", move); h.addEventListener("pointerup", up);
   });
-  $("formResize").addEventListener("dblclick", () => { store.set("formW", 420); setFormW(420); });
+  $("formResize").addEventListener("dblclick", () => { store.set("formW", 860); setFormW(clampF(860)); });
   // drag the corkboard's left edge to make it wider / narrower (remembered); double-click resets
   const setCorkW = w => { $("app").style.setProperty("--cork-w", w + "px"); };
   const clampW = w => Math.round(Math.max(180, Math.min(w, innerWidth - 420 - 480)));   // keep ≥480px for the middle
@@ -5452,6 +5499,29 @@ function sweepAllLabels() {
       + ` — ${vals.length} renders${vals.length < all.length ? `: ${vals.join(", ")}. Change the set in the Sweep checklist (★ use for one-click).` : ""}`;
   });
 }
+// same shape as the canvas, a ladder of resolutions: the model's picture is identical for all of them (same seed,
+// same generation size), so only the pixel step changes — and ComfyUI renders the model once
+function sizeLadder(W, H) {
+  W = +W; H = +H; if (!(W > 0 && H > 0)) return [];
+  const seen = new Map();
+  for (const l of [32, 48, 64, 96, 128, 160, 192, 256, 320, 384, 480, 640, 800, 1024]) {
+    const w = W >= H ? l : Math.round(l * W / H), h = W >= H ? Math.round(l * H / W) : l;
+    if (w >= 8 && h >= 8) seen.set(`${w}x${h}`, w);
+  }
+  if (Math.max(W, H) <= 1024) seen.set(`${W}x${H}`, W);
+  return [...seen].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+}
+function sizeSweepLabel() {
+  const f = readForm(), v = sizeLadder(f.outW, f.outH);
+  $("sizeSweep").textContent = `sweep sizes (${v.length})`; $("sizeSweep").disabled = !v.length;
+  $("sizeSweep").title = `same picture and seed at ${v.length} resolutions of the same shape: ${v.join(", ")}`;
+}
+async function sweepSizes() {
+  const f = readForm(), vals = sizeLadder(f.outW, f.outH);
+  if (!vals.length) return showErr("set an output size first");
+  $("sweepField").value = "out"; $("sweepValues").value = vals.join(", "); renderSweepPick();
+  await sweep();
+}
 async function sweepAll(field) {
   const vals = sweepSet(field).vals;
   if (!vals.length) return showErr("the render server hasn't listed any yet (is it answering?)");
@@ -5467,6 +5537,7 @@ async function sweepAll(field) {
 }
 function initSweepPick() {
   document.addEventListener("click", e => { const b = e.target.closest("[data-sweepall]"); if (b) sweepAll(b.dataset.sweepall); });
+  $("sizeSweep").onclick = sweepSizes;
   sweepAllLabels();
   $("sweepField").addEventListener("change", () => { $("sweepValues").value = ""; renderSweepPick(); });
   $("sweepValues").addEventListener("input", () => { renderSweepPick(); });
@@ -5759,6 +5830,7 @@ async function init() {
   $("palette").innerHTML = `<option value="none">none — keep model colors</option><option value="random">random</option>`
     + Object.entries(META.palettes).map(([k, v]) => `<option value="${esc(k)}">${esc(k)} (${v.length})</option>`).join("");
   $("dither").innerHTML = META.dithers.map(d => `<option>${d}</option>`).join("");
+  renderOptChips();
   $("outPreset").innerHTML = SIZES.reduce((h, r, i) => h + (r.length === 1 ? `${i ? "</optgroup>" : ""}<optgroup label="${esc(r[0])}">`
     : `<option value="${r[0]}">${r[1]}</option>`), "") + "</optgroup>";
   renderStyles(); advCount(); syncAdvMirrors();
@@ -5772,6 +5844,7 @@ async function init() {
   initLab();
   initBundles();
   initSteer();
+  initDepth();
   initEvo();
   initPresets();
   initBatch();
@@ -5789,10 +5862,11 @@ async function init() {
   $("openGallery").onclick = () => reveal("gallery");
 
   const saved = store.get("form", null);
+  if (saved && !store.get("defaults.v2", false)) { saved.showFull = true; store.set("defaults.v2", true); }   // new default, once
   FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
-    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, snap_method: "unfake", transparent: false,
+    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, snap_method: "unfake", transparent: false, fit_subject: false, color_match: "oklab",
     art: false, raw: false, no_sprite_suffix: false, tile: false, tile_axes: "both", palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
-    seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: false, exact: false, exactPos: "", exactNeg: "", exactDirty: false, styles: [] };
+    seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: true, exact: false, exactPos: "", exactNeg: "", exactDirty: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));
   if (!saved) applyPreset();
   $("resetAll").onclick = () => {
@@ -5802,6 +5876,7 @@ async function init() {
     Object.assign(STEER, { use: false, sel: [], strength: 0.7, weight: "style transfer", combine: "concat", start: 0, end: 1 });
     $("useSteer").checked = false; $("steerStrength").value = 0.7; $("steerWeight").value = STEER.weight;
     $("steerCombine").value = STEER.combine; $("steerStart").value = 0; $("steerEnd").value = 1; renderRefs(); saveSteer();
+    applyDepth(null);
     Object.assign(EVO, EVO_DEFAULTS, { parent: null }); renderEvo(); $("hEvoEz").textContent = "";
     $("presetSel").value = ""; showErr();
   };

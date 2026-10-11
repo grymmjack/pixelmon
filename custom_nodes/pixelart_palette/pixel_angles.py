@@ -10,7 +10,7 @@ stair-steps an AI render leaves after downscaling.
 How: at the art's native resolution (after the palette lock), each color's connected regions are
 traced, simplified to polygons (Douglas-Peucker), and every polygon edge is snapped to the nearest
 allowed angle; corners move to where consecutive snapped edges meet. Regions are then repainted
-largest-first (holes included), and small or thin details — windows, highlights, 1px lines, dither —
+largest-first (holes included; any pixel no region covers keeps its own color), and small or thin details — windows, highlights, 1px lines, dither —
 are kept exactly as they were and painted back on top. Finally, any change that isn't a thin sliver
 along an edge (i.e. the snap altered a shape rather than straightening an edge) is reverted.
 """
@@ -119,8 +119,9 @@ def snap_angles(pil_rgb, strength=1.0, keep_area=10, angle_set="pixel"):
             thin = area < 2.2 * max(bw, bh) or min(bw, bh) <= 2
             (keep if area < keep_area or thin else big).append((area, c, comp))
 
-    out = np.zeros((h, w), dtype=np.int32)
-    out[:] = np.bincount(idx.ravel()).argmax()          # background = most common color
+    # -1 = not repainted yet. Pixels no snapped region covers keep their OWN color in the end — filling them
+    # with one background color left slivers of it (e.g. sky blue) along every edge that snapped inward
+    out = np.full((h, w), -1, dtype=np.int32)
     for area, c, comp in sorted(big, key=lambda t: -t[0]):
         m = comp.astype(np.uint8)
         contours, hier = cv2.findContours(m, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
@@ -146,6 +147,7 @@ def snap_angles(pil_rgb, strength=1.0, keep_area=10, angle_set="pixel"):
         out[layer.astype(bool)] = c
     for area, c, comp in sorted(keep, key=lambda t: -t[0]):   # details back on top, untouched
         out[comp] = c
+    out = np.where(out < 0, idx, out)
     # Keep the snap only where it STRAIGHTENS an edge (thin slivers of change along a boundary);
     # where it CHANGED A SHAPE (a solid blob of changed pixels — a lost timber line, a bent roof),
     # put the original pixels back.

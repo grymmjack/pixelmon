@@ -281,6 +281,10 @@ def prompt_warnings(p, pm):
     if p.get("snap_pixels") and snapper and not p.get("pixel_size") and not art:
         warn("snap pixels on 'auto' pixel size — the snapper guesses its own grid and often makes pixels HUGE",
              setf("pixel size → 1×1", "pixel_size", "1x1"), setf("pixel size → 2×1", "pixel_size", "2x1"))
+    if 0 < max(w, h) <= 32 and not art and not p.get("fit_subject") and not p.get("tile") and kind != "scene background":
+        warn(f"a {w}×{h} sprite: the model leaves space around its subject, so it ends up only a few pixels wide — "
+             "fill frame crops to the subject first",
+             setf("fill frame on", "fit_subject", True))
     if p.get("snap_pixels") and not snapper and not art and int(p.get("despeckle") or 0) >= 2:
         warn("unfake keeps the model's real grid, where small details (book spines, eyes) are 1–2 pixel islands — "
              "despeckle 2+ wipes them out",
@@ -729,6 +733,10 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             argv += ["--snap-pixels", "--snap-method", sm]
         if p.get("transparent"):
             argv.append("--transparent")
+        if p.get("fit_subject"):
+            argv.append("--fit-subject")
+        if str(p.get("color_match") or "oklab") == "redmean":
+            argv += ["--color-match", "redmean"]
         if p.get("no_sprite_suffix"):
             argv.append("--no-sprite-suffix")
         ps = str(p.get("pixel_size") or "").lower()

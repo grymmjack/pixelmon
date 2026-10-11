@@ -136,6 +136,8 @@ def print_help():
         opt("--dither-amount F", "dither strength 0..1", "0.75"),
         opt("--snap-pixels", "find the model's own pixel grid instead of shrinking to --out — extra crisp"),
         opt("--snap-method M", "unfake (model's own grid, reduced to --out) or snapper", "unfake"),
+        opt("--color-match M", "palette lock: oklab (perceptual) or redmean (classic)", "oklab"),
+        opt("--fit-subject", "crop to the subject first so it fills the frame — tiny sprites stay readable"),
         opt("--despeckle N", "remove stray color islands of <= N px (0 = off)", "2"),
         opt("--pixel-angles F", "EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)", "0"),
         opt("--angle-grid G", "pixel / square / diagonal / isometric / hex / triangle", "pixel"),
@@ -446,7 +448,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
                               "downscale_filter": a.filter, "smooth": a.smooth,
                               "view_scale": a.view_scale, "custom_hex": a.custom_hex,
                               "transparent_bg": a.transparent, "bg_tolerance": a.bg_tolerance,
-                              "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors, "snap_method": a.snap_method,
+                              "snap_pixels": a.snap_pixels, "snap_colors": a.snap_colors, "snap_method": a.snap_method, "fit_subject": a.fit_subject, "color_match": a.color_match,
                               "out_width": a.ow, "out_height": a.oh, "despeckle": a.despeckle,
                               "pixel_angles": a.pixel_angles, "angle_grid": a.angle_grid,
                               "pixel_w": a.px_w, "pixel_h": a.px_h, "thin_lines": a.thin_lines,
@@ -1171,6 +1173,12 @@ def main():
     p.add_argument("--snap-pixels", dest="snap_pixels", action="store_true",
                    help="find the pixel grid the model actually drew and take one color per block, instead of "
                         "shrinking to --out (extra crisp). see --snap-method")
+    p.add_argument("--color-match", dest="color_match", choices=["oklab", "redmean"], default="oklab",
+                   help="how the palette lock picks the nearest color: oklab = perceptual (keeps hue and lightness "
+                        "as the eye sees them; default), redmean = the older RGB approximation")
+    p.add_argument("--fit-subject", dest="fit_subject", action="store_true",
+                   help="crop the full-res render to its subject (background found from the edges) so it FILLS the "
+                        "canvas before reducing — a 16x16 sprite gets twice the pixels on the subject")
     p.add_argument("--snap-method", dest="snap_method", choices=["unfake", "snapper"], default="unfake",
                    help="--snap-pixels engine: unfake = find the grid the model really drew, then reduce it cleanly "
                         "to --out (sharpest); snapper = spritefusion pixel-snapper, then fitted to --out. default unfake")
