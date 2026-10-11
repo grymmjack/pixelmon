@@ -630,7 +630,22 @@ def combo_count(ps):
     return g * ((1 if "none" in d else 0) + len([x for x in d if x != "none"]) * a) if d else g * a
 
 
-def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None):
+def depth_argv(d, src):
+    """The --depth flags for the Steering tab's depth slot ({ref, strength, start, end, raw, mask_bg})."""
+    st, en, sg = float(d.get("start", 0.0)), float(d.get("end", 0.65)), float(d.get("strength", 0.7))
+    if not (0 <= st < en <= 1 and 0 <= sg <= 2):
+        raise ValueError("depth: strength must be 0..2, and start before end within 0..1")
+    out = ["--depth", src, "--depth-strength", f"{sg:g}"]
+    if (st, en) != (0.0, 0.65):
+        out += ["--depth-start", f"{st:g}", "--depth-end", f"{en:g}"]
+    if d.get("raw"):
+        out.append("--depth-raw")
+    elif d.get("mask_bg"):
+        out.append("--depth-mask-bg")
+    return out
+
+
+def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None, depth=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
         v = p.get(key, default)
@@ -756,6 +771,8 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             raise ValueError("steering start must be before its end")
         if (st, en) != (0.0, 1.0):
             argv += ["--steer-start", f"{st:g}", "--steer-end", f"{en:g}"]
+    if depth:
+        argv += depth_argv(p.get("depth") or {}, depth)
     if init:
         d = num("evolve_denoise", float, 0.01, 1.0, 0.45)
         argv += ["--init", init, "--denoise", f"{d:g}"]
@@ -803,6 +820,29 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     if name:
         argv += ["--name", name]
     return argv
+
+
+def depth_preview(params, gallery):
+    """Run pixelmon --depth-only with the current settings: the exact depth map the sampler would get."""
+    d = params.get("depth") or {}
+    src = ref_path(str(d.get("ref") or ""))
+    root = os.path.join(gallery, "_preview")
+    rel = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}-depth"
+    out = os.path.join(root, rel)
+    os.makedirs(out, exist_ok=True)
+    p = {k: v for k, v in params.items() if k not in ("steer", "parent", "control", "inpaint", "lab_init", "post_sweep")}
+    argv = build_argv({**p, "n": 1}, depth=src) + ["--depth-only", "--output-to", out]
+    r = subprocess.run(argv, cwd=out, capture_output=True, text=True, timeout=600,
+                       env=dict(os.environ, NO_COLOR="1", PYTHONUNBUFFERED="1"))
+    maps = sorted(glob.glob(os.path.join(out, "depth", "*_depth.png")))
+    for old in sorted(x for x in os.listdir(root) if x.endswith("-depth") and x != rel)[:-8]:
+        shutil.rmtree(os.path.join(root, old), ignore_errors=True)        # keep the last few previews
+    if r.returncode or not maps:
+        tail = [ANSI.sub("", ln) for ln in (r.stdout + r.stderr).strip().splitlines()[-4:]]
+        raise ValueError("depth preview failed: " + (" / ".join(tail) or f"exit {r.returncode}"))
+    f = os.path.relpath(maps[-1], gallery)
+    return {"url": "/files/" + urllib.parse.quote(f), "size": image_size(maps[-1]),
+            "command": shjoin(["pixelmon"] + argv[1:])}
 
 
 class JobQueue:
@@ -923,7 +963,13 @@ class JobQueue:
             os.makedirs(steer_dir, exist_ok=True)
             for i, src in enumerate(srcs):           # numbered so same-named files can't collide
                 os.symlink(src, os.path.join(steer_dir, f"{i:02d}_{os.path.basename(src)}"))
-        argv = build_argv(params, steer_dir, len(srcs), init, control, mask)   # validate before queueing
+        depth = None
+        if (params.get("depth") or {}).get("ref"):   # depth lock: the run keeps its own copy, next to steer/
+            dsrc = ref_path(params["depth"]["ref"])
+            os.makedirs(os.path.join(jdir, "depth"), exist_ok=True)
+            depth = os.path.join(jdir, "depth", "source" + os.path.splitext(dsrc)[1].lower())
+            shutil.copy2(dsrc, depth)
+        argv = build_argv(params, steer_dir, len(srcs), init, control, mask, depth)   # validate before queueing
         export = export_target(params)
         job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
@@ -1046,6 +1092,9 @@ class JobQueue:
                         m = re.search(r"_s(\d+)_", f)
                         job["outputs"].append({"seed": int(m.group(1)) if m else None, "file": f})
                 job["outputs"] = [o for o in job["outputs"] if o["file"] in found]
+                dm = sorted(glob.glob(os.path.join(d, "depth", "*_depth.png")))
+                if dm:                               # --depth: the map the sampler actually got
+                    job["depth_map"] = "depth/" + os.path.basename(dm[-1])
                 for o in job["outputs"]:             # --tile: the 3x3 seam check saved beside each texture
                     t = re.sub(r"_(sprite|art)_(\d+_\.png)$", r"_tiled_\2", o["file"])
                     if t != o["file"] and os.path.isfile(os.path.join(d, t)):
@@ -1757,6 +1806,12 @@ def export_bundle(pid, gallery):
                 z.write(ref_path(ref), "steering/" + ref)
             except ValueError:
                 pass
+        dref = (snap.get("depth") or {}).get("ref")
+        if dref:
+            try:
+                z.write(ref_path(dref), "steering/" + dref)
+            except ValueError:
+                pass
         par = (snap.get("evo") or {}).get("parent")
         if par:
             try:
@@ -1767,7 +1822,8 @@ def export_bundle(pid, gallery):
         styles = {n: load_styles().get(n) for n in form.get("styles") or [] if n in load_styles()}
         z.writestr("styles.json", json.dumps(styles, indent=1))
         loras = sorted({x for x in [form.get("lora")] if x and x != "(none)"}
-                       | ({"controlnet-union-sdxl-promax.safetensors"} if lab.get("active") else set()))
+                       | ({"controlnet-union-sdxl-promax.safetensors"} if lab.get("active") else set())
+                       | ({"controlnet-depth-sdxl-1.0.safetensors"} if (snap.get("depth") or {}).get("use") else set()))
         commit = subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%h %s"], capture_output=True, text=True).stdout.strip()
         z.writestr("README.txt", "\n".join([
             f"pixelmon preset bundle: {rec.get('name')}",
@@ -1832,6 +1888,11 @@ def import_bundle(data, gallery, folder=""):
             sel.append(f"{col}/{put(member, os.path.join(REFS, col), os.path.basename(ref))}")
     if steer:
         steer["sel"] = sel
+    dep = snap.get("depth") or {}
+    dref = str(dep.get("ref") or "")
+    if "/" in dref and "steering/" + dref in names:
+        col = safe_name(dref.split("/", 1)[0])
+        dep["ref"] = f"{col}/{put('steering/' + dref, os.path.join(REFS, col), os.path.basename(dref))}"
     par = (snap.get("evo") or {}).get("parent")
     if par and f"evolve-parent/{par.get('file')}" in names:
         jid = "import-" + time.strftime("%Y%m%d-%H%M%S")
@@ -2553,6 +2614,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 out = unique_path(LAB, safe_name(os.path.basename(src), 120))
                 shutil.copy2(src, out)
                 return self._json({"file": os.path.basename(out), "size": image_size(out)})
+            if u.path == "/api/refs/import":
+                # copy a render / corkboard item / LAB input into a steering collection (the depth slot uses 'depth')
+                col = safe_name(body.get("collection") or "gui-drops") or "gui-drops"
+                if body.get("ref"):
+                    return self._json({"ref": f"{os.path.relpath(ref_path(body['ref']), REFS)}"})
+                if body.get("board"):
+                    d = board_dir(body["board"])
+                    src = os.path.realpath(os.path.join(d, os.path.basename(str(body.get("file") or ""))))
+                    if not src.startswith(os.path.realpath(d) + os.sep) or not os.path.isfile(src):
+                        raise ValueError("not on that board")
+                elif body.get("src"):
+                    src = self.jobs.gallery_path(body["src"])
+                elif body.get("lab"):
+                    src = lab_path(body["lab"])
+                else:
+                    raise ValueError("nothing to import")
+                os.makedirs(os.path.join(REFS, col), exist_ok=True)
+                out = unique_path(os.path.join(REFS, col), safe_name(os.path.basename(src), 120))
+                shutil.copy2(src, out)
+                return self._json({"ref": f"{col}/{os.path.basename(out)}"})
+            if u.path == "/api/depth/preview":
+                return self._json(depth_preview(body, self.gallery))
             if u.path == "/api/jobs/clear":
                 return self._json(self.jobs.clear(bool(body.get("stop_running"))))
             if u.path == "/api/backups/restore":

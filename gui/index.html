@@ -540,7 +540,19 @@ fieldset.closed { padding-bottom: 2px; }
 .ref .nm { font: 10px var(--mono); color: var(--dim); padding: 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ref.on { border-color: var(--accent); }
 .ref.on img { opacity: 1; } .refs.dim .ref:not(.on) img { opacity: .55; }
-.steer-sum { margin-top: 8px; font: 12px var(--mono); color: var(--accent2); cursor: pointer; }
+.steer-sum { margin-top: 8px; font: 12px var(--mono); color: var(--accent2); cursor: pointer; overflow-wrap: anywhere; }
+.depth-slot { align-items: flex-start; }
+.depth-slot .depth-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; flex: 1 1 360px; }
+.depth-pics { display: flex; gap: 10px; }
+.depth-pic { width: 128px; text-align: center; font: 10px var(--mono); color: var(--dim); }
+.depth-pic .box { width: 128px; height: 128px; border: 2px dashed var(--line); border-radius: 4px; display: grid; place-items: center;
+  background: var(--panel2); overflow: hidden; cursor: pointer; color: var(--dim); font-size: 11px; padding: 4px; }
+.depth-pic .box img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.depth-pic .box.over { border-color: var(--accent); color: var(--accent); }
+.depth-pic .box.stale img { opacity: .4; }
+.ref .dbtn { position: absolute; top: 4px; right: 4px; padding: 0 4px; font-size: 12px; line-height: 18px; border-radius: 3px;
+  background: rgba(0,0,0,.6); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+.ref.depth { box-shadow: 0 0 0 2px var(--accent2) inset; }
 
 /* ---- lightbox ---- */
 .lb { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: grid; grid-template-columns: 1fr 360px; z-index: 10; }
@@ -657,6 +669,7 @@ fieldset.closed { padding-bottom: 2px; }
       </div>
       <div class="warns hidden" id="promptWarns"></div>
       <div class="steer-sum hidden" id="steerSum" title="open the Steering tab"></div>
+      <div class="steer-sum hidden" id="depthSum" title="open the Steering tab"></div>
       <details><summary>Negative prompt<i class="help" data-help="negative">i</i></summary>
         <label>Replaces pixelmon's default — keep the defaults and add to them.
           <a href="#" id="negReset" style="color:var(--accent)">reset to default</a></label>
@@ -1025,6 +1038,25 @@ fieldset.closed { padding-bottom: 2px; }
       </div>
       <div class="steer-hints"><div class="hint" id="hSteerStrength"></div><div class="hint" id="hSteerWindow"></div>
         <div class="hint" id="hSteerWeight"></div><div class="hint" id="hSteerCombine"></div></div>
+      <div class="steer-top depth-slot" id="depthSlot">
+        <div class="depth-pics">
+          <div class="depth-pic"><div class="box" id="depthSrc" title="drop an image (or a render / ref / corkboard item), or click to pick one">drop or click<br>a reference</div>reference</div>
+          <div class="depth-pic"><div class="box" id="depthMap" title="the depth map the sampler gets (white = near) — click to make / refresh it">click to preview</div><span id="depthMapCap">depth map</span></div>
+          <input type="file" id="depthFile" accept="image/*" hidden>
+        </div>
+        <div class="depth-ctl">
+          <label class="use" title="depth ControlNet: keep the reference's camera angle and geometry; the prompt sets subject, backdrop and style"><input type="checkbox" id="useDepth"> Depth lock</label>
+          <span class="rng" title="how strictly to follow the depth map (0..2)">strength <input type="range" id="depthStrength" min="0" max="1.5" step="0.05"><b id="depthStrVal"></b></span>
+          <span class="rng" title="when during sampling the depth map applies — ending early leaves the last steps free for detail">
+            active from <input type="range" id="depthStart" min="0" max="0.95" step="0.05" style="width:90px"><b id="depthStartVal"></b>
+            to <input type="range" id="depthEnd" min="0.05" max="1" step="0.05" style="width:90px"><b id="depthEndVal"></b></span>
+          <label class="inline" title="the reference is already a depth map (white = near): skip Depth Anything V2"><input type="checkbox" id="depthRaw"> already a depth map</label>
+          <label class="inline" title="find the subject and black out everything else, so the reference's scenery doesn't come through"><input type="checkbox" id="depthMaskBg"> black out the background</label>
+          <button type="button" class="btn small" id="depthPreview" title="make the depth map with the current settings (the same step a render runs)">👁 preview depth map</button>
+          <button type="button" class="btn small" id="depthClear" title="remove the depth reference and turn the lock off">✕ clear depth</button>
+          <span id="depthNote" style="color:var(--dim)"></span>
+        </div>
+      </div>
       <div class="cols" id="cols"></div>
       <div class="drop" id="drop">Drop images here (or click) to add them to <b id="dropCol"></b> — dropped images are selected automatically
         <input type="file" id="dropFile" accept="image/*" multiple hidden></div>
@@ -1176,6 +1208,7 @@ function params(f = readForm()) {
     seed: f.seedLock && f.seed !== "" ? f.seed : -1, n: f.n || 1, name: f.name,
     steps: f.steps, cfg: f.cfg, fast: f.fast,
     ...steerParams(),
+    ...depthParams(),
     ...evoParams(),
     adv: advParams(),
     // the edited full prompt replaces everything composed above, word for word
@@ -1224,6 +1257,12 @@ function cliFor(p) {
            "--steer-weight-type", q(p.steer_weight_type), "--steer-combine", q(p.steer_combine));
     if (+p.steer_start > 0 || +p.steer_end < 1) a.push("--steer-start", p.steer_start, "--steer-end", p.steer_end);
   }
+  if (p.depth) {
+    const d = p.depth;
+    a.push("--depth", q(`${REFS_ROOT}/${d.ref}`), "--depth-strength", d.strength);
+    if (+d.start !== 0 || +d.end !== 0.65) a.push("--depth-start", d.start, "--depth-end", d.end);
+    if (d.raw) a.push("--depth-raw"); else if (d.mask_bg) a.push("--depth-mask-bg");
+  }
   a.push(...advCli(p.adv || {}, p.art, q));
   if (+p.seed >= 0) a.push("--seed", p.seed);
   if (+p.n > 1) a.push("-n", p.n);
@@ -1231,6 +1270,9 @@ function cliFor(p) {
   return a.join(" ");
 }
 function refresh() {
+  syncOptChips();
+  sizeSweepLabel();
+  if (DEPTH.ref && $("depthMap")) saveDepth();          // size / mode changes make the depth preview stale
   const f = readForm(), p = preset();
   $("kindsBox").classList.toggle("hidden", !(p && p.kinds));
   $("colorBox").classList.toggle("art", !!f.art);        // art: palette + strength only; the pixel steps dim
@@ -1362,10 +1404,92 @@ function steerParams() {
   return { steer: [...STEER.sel], steer_strength: STEER.strength, steer_weight_type: STEER.weight, steer_combine: STEER.combine,
            steer_start: STEER.start, steer_end: STEER.end };
 }
+// depth lock: one reference (a steering-library ref) -> depth ControlNet
+const DEPTH_DEFAULTS = { use: false, ref: null, strength: 0.7, start: 0, end: 0.65, raw: false, mask_bg: false };
+const DEPTH = Object.assign({}, DEPTH_DEFAULTS, store.get("depth", {}));
+let DEPTH_PREV = { key: null, url: null, busy: false };
+function depthParams() {
+  if (!DEPTH.use || !DEPTH.ref) return {};
+  return { depth: { ref: DEPTH.ref, strength: DEPTH.strength, start: DEPTH.start, end: DEPTH.end, raw: DEPTH.raw, mask_bg: DEPTH.mask_bg && !DEPTH.raw } };
+}
+// what the depth map depends on: the reference, its processing, and the render size it's made at
+function depthKey() {
+  let p = {};
+  try { p = params(); } catch {}          // the form may not be built yet
+  return JSON.stringify([DEPTH.ref, DEPTH.raw, DEPTH.mask_bg && !DEPTH.raw, p.out, p.art, p.raw, (p.adv || {}).res || ""]);
+}
+function saveDepth() {
+  store.set("depth", DEPTH);
+  const on = DEPTH.use && DEPTH.ref;
+  $("depthStrVal").textContent = (+DEPTH.strength).toFixed(2);
+  $("depthStartVal").textContent = (+DEPTH.start).toFixed(2); $("depthEndVal").textContent = (+DEPTH.end).toFixed(2);
+  $("depthMaskBg").disabled = DEPTH.raw;
+  $("depthSrc").innerHTML = DEPTH.ref ? `<img src="/refs/${DEPTH.ref.split("/").map(encodeURIComponent).join("/")}" alt="">` : "drop or click<br>a reference";
+  const stale = DEPTH_PREV.url && DEPTH_PREV.key !== depthKey();
+  $("depthMap").classList.toggle("stale", !!stale);
+  $("depthMap").innerHTML = DEPTH_PREV.busy ? "making the<br>depth map…" : DEPTH_PREV.url ? `<img src="${DEPTH_PREV.url}" alt="">` : "click to preview";
+  $("depthMapCap").textContent = stale ? "settings changed — click" : "depth map";
+  $("depthSum").classList.toggle("hidden", !on);
+  const win = +DEPTH.start > 0 || +DEPTH.end !== 0.65 ? ` · steps ${(+DEPTH.start).toFixed(2)}→${(+DEPTH.end).toFixed(2)}` : "";
+  $("depthSum").textContent = on ? `🗺 depth lock: ${DEPTH.ref.split("/").pop()} @ ${(+DEPTH.strength).toFixed(2)}${win}`
+    + `${DEPTH.raw ? " · raw map" : DEPTH.mask_bg ? " · background blacked out" : ""}` : "";
+  $("steerTabN").textContent = [STEER.sel.length ? `(${STEER.sel.length})` : "", on ? "🗺" : ""].filter(Boolean).join(" ");
+}
+async function setDepthRef(ref) {
+  DEPTH.ref = ref; DEPTH.use = true; $("useDepth").checked = true; saveDepth(); refresh();
+  await loadRefs(); depthPreview();
+}
+async function depthDropped(e) {
+  e.preventDefault(); e.stopPropagation(); $("depthSrc").classList.remove("over");
+  const raw = e.dataTransfer.getData(DRAG_MIME);
+  try {
+    if (raw) return setDepthRef((await api("/api/refs/import", { collection: "depth", ...JSON.parse(raw) })).ref);
+    const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) await depthUpload(f);
+  } catch (err) { showErr(err); }
+}
+async function depthUpload(f) {
+  const r = await fetch(`/api/refs/upload?collection=depth&filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error);
+  await setDepthRef(j.ref);
+}
+async function depthPreview() {
+  if (!DEPTH.ref || DEPTH_PREV.busy) return;
+  const key = depthKey();
+  DEPTH_PREV.busy = true; $("depthNote").textContent = ""; saveDepth();
+  try {
+    const r = await api("/api/depth/preview", { ...params(), depth: depthParams().depth || { ...DEPTH, use: true } });
+    Object.assign(DEPTH_PREV, { key, url: r.url });
+    $("depthNote").textContent = r.size ? `${r.size[0]}×${r.size[1]} — the size SDXL renders at` : "";
+  } catch (err) { showErr(err); }
+  DEPTH_PREV.busy = false; saveDepth();
+}
+function initDepth() {
+  $("useDepth").checked = DEPTH.use; $("depthStrength").value = DEPTH.strength;
+  $("depthStart").value = DEPTH.start; $("depthEnd").value = DEPTH.end;
+  $("depthRaw").checked = DEPTH.raw; $("depthMaskBg").checked = DEPTH.mask_bg;
+  $("useDepth").onchange = e => { DEPTH.use = e.target.checked; saveDepth(); refresh(); };
+  $("depthStrength").oninput = e => { DEPTH.strength = +e.target.value; saveDepth(); };
+  $("depthStart").oninput = e => { DEPTH.start = +e.target.value; if (DEPTH.end <= DEPTH.start) $("depthEnd").value = DEPTH.end = +(DEPTH.start + 0.05).toFixed(2); saveDepth(); };
+  $("depthEnd").oninput = e => { DEPTH.end = +e.target.value; if (DEPTH.start >= DEPTH.end) $("depthStart").value = DEPTH.start = +(DEPTH.end - 0.05).toFixed(2); saveDepth(); };
+  $("depthRaw").onchange = e => { DEPTH.raw = e.target.checked; saveDepth(); };
+  $("depthMaskBg").onchange = e => { DEPTH.mask_bg = e.target.checked; saveDepth(); };
+  $("depthPreview").onclick = depthPreview;
+  $("depthMap").onclick = depthPreview;
+  $("depthClear").onclick = () => { Object.assign(DEPTH, { use: false, ref: null }); $("useDepth").checked = false;
+    Object.assign(DEPTH_PREV, { key: null, url: null }); $("depthNote").textContent = ""; saveDepth(); renderRefs(); refresh(); };
+  $("depthSrc").onclick = () => $("depthFile").click();
+  $("depthFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (f) try { await depthUpload(f); } catch (err) { showErr(err); } };
+  const box = $("depthSrc");
+  box.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); box.classList.add("over"); });
+  box.addEventListener("dragleave", () => box.classList.remove("over"));
+  box.addEventListener("drop", depthDropped);
+  $("depthSum").onclick = () => switchTab("steer");
+  saveDepth();
+}
 function saveSteer() {
   store.set("steer", STEER);
   const n = STEER.sel.length, on = STEER.use && n;
-  $("steerTabN").textContent = n ? `(${n})` : "";
+  $("steerTabN").textContent = [n ? `(${n})` : "", DEPTH.use && DEPTH.ref ? "🗺" : ""].filter(Boolean).join(" ");
   $("steerCount").textContent = `${n} selected${n > 16 ? " — many refs dilute the effect" : ""}`;
   $("steerSum").classList.toggle("hidden", !on);
   const win = +STEER.start > 0 || +STEER.end < 1 ? ` · steps ${(+STEER.start).toFixed(2)}→${(+STEER.end).toFixed(2)}` : "";
@@ -1393,8 +1517,9 @@ function renderRefs() {
   $("refGrid").classList.toggle("dim", STEER.sel.length > 0);
   $("refGrid").innerHTML = files.length ? files.map(f => {
     const ref = `${STEER.col}/${f}`, on = STEER.sel.includes(ref);
-    return `<div class="ref ${on ? "on" : ""}" data-ref="${esc(ref)}" title="${esc(f)}">
+    return `<div class="ref ${on ? "on" : ""} ${DEPTH.ref === ref ? "depth" : ""}" data-ref="${esc(ref)}" title="${esc(f)}">
       <img src="/refs/${encodeURIComponent(STEER.col)}/${encodeURIComponent(f)}" loading="lazy" alt="">
+      <span class="dbtn" data-depth-ref="${esc(ref)}" title="use as the depth-lock reference">🗺</span>
       <input type="checkbox" class="cb" ${on ? "checked" : ""} tabindex="-1"><div class="nm">${esc(f)}</div></div>`;
   }).join("") : `<div class="empty" style="grid-column:1/-1">No images in “${esc(STEER.col)}” yet — drop some above.</div>`;
 }
@@ -1428,6 +1553,8 @@ function initSteer() {
   $("steerClear").onclick = () => { STEER.sel = []; renderRefs(); saveSteer(); };
   $("steerSum").onclick = () => switchTab("steer");
   $("steerPane").addEventListener("click", async e => {
+    const dr = e.target.closest("[data-depth-ref]");
+    if (dr) return setDepthRef(dr.dataset.depthRef);
     const r = e.target.closest(".ref");
     if (r) {
       const i = STEER.sel.indexOf(r.dataset.ref);
@@ -3080,13 +3207,14 @@ function labSnapshot(active) {
   return { ...l, adj: { ...LABS.adj }, active: !!active };
 }
 function snapshot(fromLab) {
-  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams() };
+  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, depth: { ...DEPTH }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams() };
 }
 function snapshotOfJob(job, o) {
   const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
   return { form: f,
     steer: { ...STEER, use: !!(p.steer && p.steer.length), sel: [...(p.steer || [])], strength: p.steer_strength ?? STEER.strength,
              weight: p.steer_weight_type || STEER.weight, combine: p.steer_combine || STEER.combine },
+    depth: p.depth ? { ...DEPTH_DEFAULTS, ...p.depth, use: true } : { ...DEPTH_DEFAULTS },
     evo: { ...EVO, parent: p.parent ? { ...p.parent, gen: (p.gen || 1) - 1 } : null },
     lab: p.control ? {          // a LAB result: the settings that made it
       ...labSnapshot(true), file: p.control.file, mode: p.control.mode, strength: p.control.strength,
@@ -3095,6 +3223,13 @@ function snapshotOfJob(job, o) {
       pseed: o.seed, n: LABS.n } : labSnapshot(false),
     adv: { ...(p.adv || {}) },
     from: { dir: job.dir, file: o.file, command: job.command } };
+}
+function applyDepth(d) {      // older presets have no depth: the lock goes off
+  Object.assign(DEPTH, DEPTH_DEFAULTS, d || {});
+  $("useDepth").checked = DEPTH.use; $("depthStrength").value = DEPTH.strength;
+  $("depthStart").value = DEPTH.start; $("depthEnd").value = DEPTH.end;
+  $("depthRaw").checked = DEPTH.raw; $("depthMaskBg").checked = DEPTH.mask_bg;
+  saveDepth(); renderRefs();
 }
 function applySnapshot(snap) {
   // start from defaults for anything the preset doesn't mention (older presets predate newer settings),
@@ -3105,6 +3240,7 @@ function applySnapshot(snap) {
   $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
   $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
   renderRefs(); saveSteer();
+  applyDepth(snap.depth);
   Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo();
   setAdv(snap.adv || {});                                // advanced overrides: none unless the preset has them
   refresh();
@@ -5432,7 +5568,8 @@ function jobCard(jobs) {
       ${group ? "" : `<button class="btn small" data-reveal-job="${esc(j.dir)}" title="open this job's folder">📂</button>`}
     </div>${bar}
     <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}
-      <button class="btn small copy" data-copy-job="${j.id}" title="copy this command">Copy</button></div>
+      <button class="btn small copy" data-copy-job="${j.id}" title="copy this command">Copy</button>
+      ${j.depth_map ? `<a class="btn small" href="/files/${encodeURIComponent(j.dir).replace(/%2F/g, "/")}/${j.depth_map.split("/").map(encodeURIComponent).join("/")}" target="_blank" title="the depth map the sampler got">🗺 depth map</a>` : ""}</div>
     ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
     ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
 }

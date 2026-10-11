@@ -170,6 +170,11 @@ def print_help():
         opt("--no-lora", "base model only (skip pixel LoRA)"),
         opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
         opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
+        opt("--depth IMG", "depth ControlNet: lock the camera angle + geometry of an image; the prompt sets the rest"),
+        opt("--depth-strength F", "how strictly to follow the depth map, 0..2", "0.7"),
+        opt("--depth-start/--depth-end F", "when (fraction of steps) the depth map applies", "0 / 0.65"),
+        opt("--depth-raw", "the --depth image is already a depth map (skip Depth Anything V2)"),
+        opt("--depth-mask-bg", "cut out the foreground: all background depth goes black (no scenery)"),
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
         opt("--canny-low/--canny-high F", "canny edge thresholds (lower = more edges)", "0.3 / 0.7"),
@@ -572,6 +577,22 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["3"]["inputs"]["positive"] = ["55", 0]
         g["3"]["inputs"]["negative"] = ["55", 1]
 
+    # --- Depth ControlNet (--depth): lock the camera angle + geometry of a reference while the prompt sets
+    # subject, backdrop and style. The map was made once up front (prepare_depth) at the render size, so
+    # every job — on any server — gets exactly the same picture. Chained after --control, so both can apply.
+    if getattr(a, "depth", None):
+        srv = server or SERVER
+        if srv not in _DEPTH_UPLOADS:
+            _DEPTH_UPLOADS[srv] = _upload_image(a._depth_map, srv, "--depth")
+        g["d1"] = {"class_type": "LoadImage", "inputs": {"image": _DEPTH_UPLOADS[srv]}}
+        g["d2"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": a.depth_model}}
+        g["d3"] = {"class_type": "ControlNetApplyAdvanced",
+                   "inputs": {"positive": g["3"]["inputs"]["positive"], "negative": g["3"]["inputs"]["negative"],
+                              "control_net": ["d2", 0], "image": ["d1", 0], "strength": a.depth_strength,
+                              "start_percent": a.depth_start, "end_percent": a.depth_end}}
+        g["3"]["inputs"]["positive"] = ["d3", 0]
+        g["3"]["inputs"]["negative"] = ["d3", 1]
+
     if inpaint_model:
         # the inpainting UNet needs the picture + mask as conditioning; its latent replaces the masked one
         g["61"] = {"class_type": "InpaintModelConditioning",
@@ -668,6 +689,52 @@ def _upload_image(path, server, what="--steer"):
 _INIT_UPLOADS = {}      # server -> uploaded --init image name
 _CONTROL_UPLOADS = {}   # server -> uploaded --control image name
 _MASK_UPLOADS = {}      # server -> uploaded --mask image name
+_DEPTH_UPLOADS = {}     # server -> uploaded processed depth map name
+
+
+def prepare_depth(a, dest_dir, name):
+    """Turn --depth into the exact depth map the sampler gets, once, before any render: the reference is
+    center-cropped to the native SDXL render size (a.gen_w x a.gen_h, not --out), run through Depth Anything
+    V2 (unless --depth-raw), optionally has its background blacked out (--depth-mask-bg, BiRefNet), and is
+    saved to <dest_dir>/depth/. Sets a._depth_map to that file and returns its path."""
+    srv = next((s for s in (POOL or [SERVER]) if server_up(s)), SERVER)
+    src = _upload_image(os.path.abspath(os.path.expanduser(a.depth)), srv, "--depth")
+    gw, gh = a.gen_w, a.gen_h
+    g = {"1": {"class_type": "LoadImage", "inputs": {"image": src}},
+         "2": {"class_type": "ImageScale", "inputs": {"image": ["1", 0], "upscale_method": "lanczos",
+                                                      "width": gw, "height": gh, "crop": "center"}}}
+    depth = ["2", 0]
+    if not a.depth_raw:
+        g["3"] = {"class_type": "DepthAnythingV2Preprocessor",
+                  "inputs": {"image": ["2", 0], "ckpt_name": "depth_anything_v2_vitl.pth",
+                             "resolution": max(64, int(round(max(gw, gh) / 64.0)) * 64)}}
+        g["4"] = {"class_type": "ImageScale", "inputs": {"image": ["3", 0], "upscale_method": "lanczos",
+                                                         "width": gw, "height": gh, "crop": "disabled"}}
+        depth = ["4", 0]
+    if a.depth_mask_bg:
+        # foreground mask from the (cropped) picture; outside it the depth map becomes pure black = "nothing there"
+        g["5"] = {"class_type": "LoadBackgroundRemovalModel", "inputs": {"bg_removal_name": a.depth_bg_model}}
+        g["6"] = {"class_type": "RemoveBackground", "inputs": {"bg_removal_model": ["5", 0], "image": ["2", 0]}}
+        g["7"] = {"class_type": "ThresholdMask", "inputs": {"mask": ["6", 0], "value": 0.5}}
+        g["8"] = {"class_type": "SolidMask", "inputs": {"value": 0.0, "width": gw, "height": gh}}
+        g["9"] = {"class_type": "MaskToImage", "inputs": {"mask": ["8", 0]}}
+        g["10"] = {"class_type": "ImageCompositeMasked",
+                   "inputs": {"destination": ["9", 0], "source": depth, "x": 0, "y": 0,
+                              "resize_source": False, "mask": ["7", 0]}}
+        depth = ["10", 0]
+    g["99"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": f"pixelmon/depth/{name}_{gw}x{gh}_depth",
+                                                     "images": depth}}
+    print(f"   \U0001f5fa depth: {'raw map' if a.depth_raw else 'Depth Anything V2'}"
+          f"{' + background masked' if a.depth_mask_bg else ''} at {gw}x{gh} on {_short(srv)}")
+    outs = wait(submit(g, srv), srv, resubmit=lambda fresh: submit(fresh_copy(g) if fresh else g, srv))
+    im = next(im for node in outs.values() for im in node.get("images", []))
+    out_dir = os.path.join(dest_dir, "depth")
+    got = fetch_image(im, out_dir, srv)
+    final = os.path.join(out_dir, f"{name}_{gw}x{gh}_depth.png")
+    os.replace(got, final)
+    a._depth_map = final
+    print(f"   \U0001f5fa depth map  ->  {final}")
+    return final
 
 
 def prepare_inpaint_crop(a, r64):
@@ -1169,6 +1236,29 @@ def main():
     # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
     p.add_argument("--steer", default=None, metavar="DIR|IMG",
                    help="steer output toward reference image(s) via IPAdapter (a folder, or one image)")
+    # --- depth ControlNet: lock camera angle + geometry of a reference, the prompt sets subject/backdrop/style ---
+    p.add_argument("--depth", default=None, metavar="IMG",
+                   help="depth ControlNet: keep the camera angle and geometry of this image (made into a depth map "
+                        "with Depth Anything V2) while the prompt sets subject, backdrop and style. needs "
+                        "comfyui_controlnet_aux + controlnet-depth-sdxl-1.0 on the server")
+    p.add_argument("--depth-strength", dest="depth_strength", type=float, default=0.7, metavar="F",
+                   help="how strictly to follow the depth map, 0..2. default 0.7")
+    p.add_argument("--depth-start", dest="depth_start", type=float, default=0.0, metavar="F",
+                   help="fraction of the steps at which the depth map switches ON (0..1). default 0")
+    p.add_argument("--depth-end", dest="depth_end", type=float, default=0.65, metavar="F",
+                   help="fraction of the steps at which the depth map switches OFF; the rest are free for detail. "
+                        "default 0.65")
+    p.add_argument("--depth-raw", dest="depth_raw", action="store_true",
+                   help="the --depth image is already a depth map (white = near): skip preprocessing")
+    p.add_argument("--depth-mask-bg", dest="depth_mask_bg", action="store_true",
+                   help="find the foreground subject (BiRefNet) and set all background depth to black, so the "
+                        "reference's scenery doesn't come through — only the subject's shape is kept")
+    p.add_argument("--depth-model", dest="depth_model", default="controlnet-depth-sdxl-1.0.safetensors",
+                   help="depth ControlNet file in the server's models/controlnet/")
+    p.add_argument("--depth-bg-model", dest="depth_bg_model", default="birefnet.safetensors",
+                   help="background-removal model for --depth-mask-bg, in the server's models/background_removal/")
+    p.add_argument("--depth-only", dest="depth_only", action="store_true",
+                   help="with --depth: make and save the processed depth map (what the sampler would get), then stop")
     p.add_argument("--control", default=None, metavar="IMG",
                    help="ControlNet: keep the SHAPE of this image while the prompt/LoRA/palette restyle it "
                         "(photo of a dog -> EGA dog). needs the SDXL union ControlNet on the server")
@@ -1364,6 +1454,20 @@ def main():
         p.error(f"--control: no such image: {a.control}")
     if not (0 < a.control_end <= 1.0 and 0 <= a.control_strength <= 2.0):
         p.error("--control-end must be in (0, 1] and --control-strength in [0, 2]")
+    if a.depth:
+        if not os.path.isfile(os.path.expanduser(a.depth)):
+            p.error(f"--depth: no such image: {a.depth}")
+        if not 0.0 <= a.depth_start < a.depth_end <= 1.0:
+            p.error("--depth-start/--depth-end must satisfy 0 <= start < end <= 1")
+        if not 0.0 <= a.depth_strength <= 2.0:
+            p.error("--depth-strength must be 0..2")
+        if a.depth_raw and a.depth_mask_bg:
+            p.error("--depth-mask-bg finds the subject in a picture; with --depth-raw there's only a depth map "
+                    "(black out its background yourself)")
+        if a.mask or a.animate:
+            p.error("--depth can't be combined with --mask or --animate")
+    elif a.depth_raw or a.depth_mask_bg or a.depth_only:
+        p.error("--depth-raw / --depth-mask-bg / --depth-only need --depth IMG")
     if not (0 < a.canny_low < a.canny_high < 1):
         p.error("--canny-low / --canny-high must be 0..1 with low < high")
     if a.init:
@@ -1524,6 +1628,12 @@ def main():
             pal = random.choice(PALETTES) if a.palette == "random" else a.palette
             work.append((subj, seed, pal, dests[subj]))
             k += 1
+
+    if a.depth:
+        prepare_depth(a, next((d for d in dests.values() if d), None) or os.path.join(OUTPUT, "pixelmon"),
+                      a.name or slug(subjects[0]))
+        if a.depth_only:
+            return
 
     t0 = time.time()
     first_open = None

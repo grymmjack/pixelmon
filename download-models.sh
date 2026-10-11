@@ -5,6 +5,7 @@
 #   ./download-models.sh              core: SDXL + the LoRAs every style guide needs      (~7.9 GB)
 #   ./download-models.sh --lab        + LAB: ControlNet (convert/restyle) + SDXL inpainting (~7.5 GB)
 #   ./download-models.sh --steer      + steering / evolve: IPAdapter + CLIP-vision        (~3.2 GB)
+#   ./download-models.sh --depth      + depth lock (--depth): depth ControlNet + BiRefNet  (~2.9 GB)
 #   ./download-models.sh --juggernaut + Juggernaut XL v9, an optional alternative checkpoint (~6.6 GB)
 #   ./download-models.sh --all        everything above                                     (~25 GB)
 #   ./download-models.sh --list       show what's installed and what's missing, download nothing
@@ -15,15 +16,16 @@ set -euo pipefail
 
 COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
 M="$COMFY/models"
-WANT_LAB=0 WANT_STEER=0 WANT_JUGG=0 LIST=0
+WANT_LAB=0 WANT_STEER=0 WANT_DEPTH=0 WANT_JUGG=0 LIST=0
 for a in "$@"; do
     case "$a" in
         --lab) WANT_LAB=1 ;;
         --steer) WANT_STEER=1 ;;
+        --depth) WANT_DEPTH=1 ;;
         --juggernaut) WANT_JUGG=1 ;;
-        --all) WANT_LAB=1; WANT_STEER=1; WANT_JUGG=1 ;;
+        --all) WANT_LAB=1; WANT_STEER=1; WANT_DEPTH=1; WANT_JUGG=1 ;;
         --list) LIST=1 ;;
-        -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
         *) echo "unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -77,6 +79,13 @@ if [ "$WANT_STEER" = 1 ] || [ "$LIST" = 1 ]; then
     get "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors" \
         clip_vision CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors "2.5 GB" "the image encoder IPAdapter uses"
 fi
+if [ "$WANT_DEPTH" = 1 ] || [ "$LIST" = 1 ]; then
+    echo "== depth lock (camera angle + geometry from a reference)"
+    get "https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0/resolve/main/diffusion_pytorch_model.fp16.safetensors" \
+        controlnet controlnet-depth-sdxl-1.0.safetensors "2.5 GB" "--depth / the Steering tab's depth lock"
+    get "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/model.safetensors" \
+        background_removal birefnet.safetensors "444 MB" "--depth-mask-bg (find the subject, black out the rest)"
+fi
 if [ "$WANT_JUGG" = 1 ] || [ "$LIST" = 1 ]; then
     echo "== optional checkpoint"
     get "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors" \
@@ -87,9 +96,10 @@ echo
 echo "ℹ  not downloaded here:"
 echo "   • ega-art-v2 / dosart-vga — LoRAs trained on your own art collection (see README: 'Your own LoRAs')"
 echo "   • CLIPSeg (LAB 'select by words', --animate) — fetched automatically (~600 MB) the first time it's used"
+echo "   • Depth Anything V2 (--depth) — fetched by comfyui_controlnet_aux (~1.3 GB) the first time it's used"
 if [ "${#MISSING[@]}" -gt 0 ]; then
     echo; echo "✗ missing: ${MISSING[*]}"
-    if [ "$LIST" = 1 ]; then echo "  fetch a group with --lab / --steer / --juggernaut, or everything with --all"; else exit 1; fi
+    if [ "$LIST" = 1 ]; then echo "  fetch a group with --lab / --steer / --depth / --juggernaut, or everything with --all"; else exit 1; fi
 else
     echo; echo "✅ models ready in $M/"
 fi

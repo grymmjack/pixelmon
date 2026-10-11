@@ -222,7 +222,7 @@ commands into place (`pixelmon`, `pixelmon-gui`), and copies the shipped preset 
 ./download-models.sh            # core: SDXL + the style LoRAs              (~7.9 GB)
 ./download-models.sh --all      # + LAB, steering, Juggernaut XL           (~25 GB)
 ```
-Pick groups with `--lab`, `--steer`, `--juggernaut` instead of `--all`. Files you already have are
+Pick groups with `--lab`, `--steer`, `--depth`, `--juggernaut` instead of `--all`. Files you already have are
 skipped. If a Civitai download asks for a login, make a free key at civitai.com (Account → API
 keys) and run `CIVITAI_TOKEN=<key> ./download-models.sh`.
 
@@ -238,7 +238,10 @@ keys) and run `CIVITAI_TOKEN=<key> ./download-models.sh`.
 | `--lab` | `unet/sdxl-inpainting-0.1.fp16.safetensors` — [SDXL inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1) | 5.1 GB | LAB edits that paint something new, `--inpaint-model` |
 | `--steer` | `ipadapter/ip-adapter-plus_sdxl_vit-h.safetensors` — [IP-Adapter](https://huggingface.co/h94/IP-Adapter) | 848 MB | Steering tab, evolve, `--steer` |
 | `--steer` | `clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | 2.5 GB | the image encoder for IP-Adapter |
+| `--depth` | `controlnet/controlnet-depth-sdxl-1.0.safetensors` — [ControlNet depth SDXL](https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0) | 2.5 GB | Steering tab depth lock, `--depth` |
+| `--depth` | `background_removal/birefnet.safetensors` — [BiRefNet](https://huggingface.co/ZhengPeng7/BiRefNet) | 444 MB | `--depth-mask-bg` |
 | `--juggernaut` | `checkpoints/juggernautXL_v9.safetensors` — [Juggernaut XL v9](https://huggingface.co/RunDiffusion/Juggernaut-XL-v9) | 6.6 GB | optional alternative checkpoint (⚙ Advanced) |
+| automatic | Depth Anything V2 (via [comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux)) | ~1.3 GB | `--depth`; fetched on first use |
 | automatic | CLIPSeg ([CIDAS/clipseg-rd64-refined](https://huggingface.co/CIDAS/clipseg-rd64-refined)) | ~600 MB | LAB "select by words", `--animate`; fetched on first use |
 
 The GUI only offers what the render server actually has: LoRAs, checkpoints, ControlNet,
@@ -374,6 +377,31 @@ pixelmon "a knight" --steer ~/refs/wasteland --steer-strength 0.5
 **Setup:** the `ComfyUI_IPAdapter_plus` node (cloned by `install.sh`) + the IPAdapter
 models (`./download-models.sh --steer`, ~3.4 GB). **VRAM:** the CLIP-ViT-H encoder is
 heavy — on an 8 GB card launch ComfyUI with `--lowvram` or it OOMs; 12 GB+ is fine.
+
+### Depth lock — camera angle + geometry from a reference (`--depth`)
+
+Keep the *shape* of a reference — camera angle, pose, what's near and far — while the prompt
+decides the subject, backdrop and style. The reference becomes a depth map with
+**Depth Anything V2** and drives the SDXL **depth ControlNet**. Built for things like FPS weapon
+viewmodels: one render that has the angle right locks every variation to it.
+
+```bash
+pixelmon "a laser pistol held in a right hand, plain solid magenta backdrop" --art \
+  --depth gun-from-behind.png --depth-mask-bg -n 6
+```
+
+- `--depth IMG` — the reference. The depth map is made **once**, at the native SDXL render size
+  (e.g. 1024×1024 — not the `--out` size), saved to `<output>/depth/`, and every render (on any
+  farm GPU) gets that exact map.
+- `--depth-mask-bg` — finds the subject (BiRefNet) and sets all background depth to black, so a
+  reference's scenery (a Mars landscape behind the gun) doesn't come back — only the subject's shape.
+- `--depth-strength` (0.7), `--depth-start` / `--depth-end` (0 / 0.65) — how hard, and for which
+  part of the sampling steps; ending early leaves the last steps free for detail.
+- `--depth-raw` — the image already *is* a depth map (white = near): no preprocessing.
+- `--depth-only` — make and save the depth map, then stop (the GUI's preview uses this).
+- Works alongside `--steer` (look) and `--control` (edges) in the same run; not with `--mask` / `--animate`.
+
+**Setup:** the `comfyui_controlnet_aux` node pack (cloned by `install.sh`) + `./download-models.sh --depth`.
 
 ### Animation (experimental)
 
@@ -515,7 +543,9 @@ serves it locally at `/docs/settings-atlas.html`.
   target, a docked **zoom loupe** (600 / 300 / 200 / 50 / 33 / 10 %) follows your pointer, and
   **use as thumbnail** picks the saved preset's picture.
 - **Steering:** push renders toward reference images (IPAdapter), with strength, weight
-  type and a start/end window.
+  type and a start/end window. Its **🗺 depth lock** slot takes one reference (drop a file, drag
+  in a render / ref / corkboard item, or press 🗺 on a ref) and shows the depth map the sampler
+  will get; the run folder keeps it in `depth/`, next to `steer/`.
 - **🔬 Analyze:** right-click any image anywhere → **Send to Analysis**, tick two or more and
   compare them against a ★ reference: a difference mask (color / tolerance / opacity, as in
   Kaleidotron) with the % of pixels that differ, a loupe that shows the same spot in every
@@ -632,6 +662,11 @@ ADVANCED
   --no-lora           base model only (skip pixel LoRA)
   --steer DIR         steer toward a folder of reference images (IPAdapter)
   --steer-start/--steer-end F when (fraction of steps) the refs apply  [0 / 1]
+  --depth IMG         depth ControlNet: lock the camera angle + geometry of an image; the prompt sets the rest
+  --depth-strength F  how strictly to follow the depth map, 0..2  [0.7]
+  --depth-start/--depth-end F when (fraction of steps) the depth map applies  [0 / 0.65]
+  --depth-raw         the --depth image is already a depth map (skip Depth Anything V2)
+  --depth-mask-bg     cut out the foreground: all background depth goes black (no scenery)
   --init IMG          img2img: start from an image (keeps its composition)
   --control IMG       ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)
   --canny-low/--canny-high F canny edge thresholds (lower = more edges)  [0.3 / 0.7]
@@ -673,7 +708,7 @@ OUTPUT
 prompt ──► ComfyUI API
             CheckpointLoader (SDXL base)
               └─ LoraLoader (Pixel Art XL / ega-art / dosart-vga …)  [─ LoraLoader (LCM) if --fast]
-                   └─ [IPAdapter --steer] ─ [ControlNet --control] ─ KSampler ─► VAEDecode ─► PixelArtPalette ─► SaveImage
+                   └─ [IPAdapter --steer] ─ [ControlNet --control] ─ [depth ControlNet --depth] ─ KSampler ─► VAEDecode ─► PixelArtPalette ─► SaveImage
                                                                         ▲
                                                    [--init img2img / --mask inpaint]
 ```

@@ -93,6 +93,15 @@ link "$REPO/custom_nodes/pixelart_palette" "$COMFY/custom_nodes/pixelart_palette
 # large, so they're fetched separately: ./download-models.sh --steer
 IPADIR="$COMFY/custom_nodes/ComfyUI_IPAdapter_plus"
 [ -d "$IPADIR/.git" ] || git clone --depth 1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git "$IPADIR" || true
+# ControlNet preprocessors (Depth Anything V2 for --depth). Its requirements pull opencv-python, which
+# needs libGL (absent on servers / WSL); the headless build of the same version works everywhere.
+AUXDIR="$COMFY/custom_nodes/comfyui_controlnet_aux"
+if [ ! -d "$AUXDIR/.git" ] && git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux.git "$AUXDIR"; then
+    grep -v -E '^(torch|torchvision)$' "$AUXDIR/requirements.txt" > "$AUXDIR/.pixelmon-req.txt"
+    pip install -r "$AUXDIR/.pixelmon-req.txt" || echo "   ⚠ controlnet_aux requirements failed — --depth preprocessing unavailable"
+    pip uninstall -y opencv-python opencv-contrib-python >/dev/null 2>&1 || true
+    pip install opencv-contrib-python-headless || true
+fi
 link "$REPO/bin/pixelmon"                  "$HOME/.local/bin/pixelmon"
 link "$REPO/bin/pixelmon-gui"              "$HOME/.local/bin/pixelmon-gui"
 link "$REPO/launch-comfyui.sh"             "$HOME/launch-comfyui.sh"
