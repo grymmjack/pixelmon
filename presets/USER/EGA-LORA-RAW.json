@@ -1,0 +1,65 @@
+{
+ "name": "EGA-LORA-RAW",
+ "saved": 1791123861.712037,
+ "note": "Just the ega-art-v2 LoRA at 0.8 \u2014 the model's full-res picture (1024x640), no downscale, palette or cleanup. The atlas 'LoRA -> the look' shot. Seed 1000 locked; unlock it for new pictures.",
+ "snapshot": {
+  "form": {
+   "subject": "a (wizard's cluttered study:1.3), (bookshelves:1.1), a (glowing crystal ball:1.2) on a desk, an arched window",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": 0.8,
+   "kind": "scene background",
+   "genre": "adventure game",
+   "era": "1980s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": 320,
+   "outH": 200,
+   "snap_pixels": false,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 2,
+   "pixel_size": "1x1",
+   "thin_lines": "4",
+   "pixel_angles": 1.5,
+   "angle_grid": "pixel",
+   "seed": 1000,
+   "seedLock": true,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "scene"
+   ],
+   "raw": true
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "EGA-LORA-RAW.png",
+ "sample_command": "pixelmon 'a (wizard'\"'\"'s cluttered study:1.3), (bookshelves:1.1), a (glowing crystal ball:1.2) on a desk, an arched window, ega_art, EGA 16-color pixel art, scene background, adventure game, 1980s DOS game' --server rtx --no-open --show-prompt --raw --lora ega-art-v2.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border' --style scene --out 320x200 --palette EGA --despeckle 2 --pixel-size 1x1 --thin-lines 4 --pixel-angles 1.5 --seed 1000"
+}

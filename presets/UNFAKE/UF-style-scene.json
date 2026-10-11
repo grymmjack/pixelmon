@@ -1,0 +1,65 @@
+{
+ "name": "UF-style-scene",
+ "saved": 1791131168.6329916,
+ "note": "scene \u2014 full environment with depth: DOS VGA LoRA, 320x200. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 0. Twin of FACTORY/style-scene.  (sample: seed 1587)",
+ "snapshot": {
+  "form": {
+   "subject": "a (bustling medieval market square:1.3), (market stalls:1.1), banners, a (stone fountain:1.1)",
+   "lora": "dosart-vga.safetensors",
+   "lora_strength": 0.8,
+   "kind": "scene background",
+   "genre": "adventure game",
+   "era": "1990s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": 320,
+   "outH": 200,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 0,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "scene"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-style-scene.png",
+ "sample_command": "pixelmon 'a (bustling medieval market square:1.3), (market stalls:1.1), banners, a (stone fountain:1.1), dosart_vga, 256-color VGA pixel art, scene background, adventure game, 1990s DOS game' --server rtx --no-open --show-prompt --lora dosart-vga.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border' --style scene --out 320x200 --palette none --despeckle 0 --snap-pixels --snap-method unfake --pixel-size 1x1 --seed 1587"
+}

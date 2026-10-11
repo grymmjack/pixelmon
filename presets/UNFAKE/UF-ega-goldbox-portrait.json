@@ -1,0 +1,63 @@
+{
+ "name": "UF-ega-goldbox-portrait",
+ "saved": 1791131295.5312774,
+ "note": "EGA RPG character portrait, 128x128 (Gold Box / Ultima era). Outlines \u22642, no angle snap \u2014 at this size they'd eat the face. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/ega-goldbox-portrait.  (sample: seed 1028)",
+ "snapshot": {
+  "form": {
+   "subject": "a (grizzled dwarf warrior:1.3), (braided beard:1.2), horned helmet, stern face",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": 0.8,
+   "kind": "character portrait",
+   "genre": "role-playing game",
+   "era": "1980s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)",
+   "outW": 128,
+   "outH": 128,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "2",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-ega-goldbox-portrait.png",
+ "sample_command": "pixelmon 'a (grizzled dwarf warrior:1.3), (braided beard:1.2), horned helmet, stern face, ega_art, EGA 16-color pixel art, character portrait, role-playing game, 1980s DOS game' --server rtx --no-open --show-prompt --lora ega-art-v2.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)' --out 128x128 --palette EGA --despeckle 1 --snap-pixels --snap-method unfake --pixel-size 1x1 --thin-lines 2 --seed 1028"
+}

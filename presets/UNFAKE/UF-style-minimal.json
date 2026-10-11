@@ -1,0 +1,65 @@
+{
+ "name": "UF-style-minimal",
+ "saved": 1791131586.6688952,
+ "note": "minimal \u2014 few colors, lots of empty space. PICO-8 palette, 128x128. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/style-minimal.  (sample: seed 1485)",
+ "snapshot": {
+  "form": {
+   "subject": "a lone (lighthouse:1.3) on a small rocky island at dusk, (calm sea:0.9)",
+   "lora": "pixel-art-xl.safetensors",
+   "lora_strength": 1.0,
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (busy, cluttered:1.2)",
+   "outW": 128,
+   "outH": 128,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "PICO-8",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "minimal"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-style-minimal.png",
+ "sample_command": "pixelmon 'a lone (lighthouse:1.3) on a small rocky island at dusk, (calm sea:0.9)' --server rtx --no-open --show-prompt --lora pixel-art-xl.safetensors --lora-strength 1 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (busy, cluttered:1.2)' --style minimal --out 128x128 --palette PICO-8 --despeckle 1 --snap-pixels --snap-method unfake --pixel-size 1x1 --seed 1485"
+}

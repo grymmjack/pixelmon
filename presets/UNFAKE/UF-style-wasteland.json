@@ -1,0 +1,66 @@
+{
+ "name": "UF-style-wasteland",
+ "saved": 1791131959.5719514,
+ "note": "wasteland \u2014 1988 Wasteland CRPG portrait: EGA palette with Bayer dither, 128x128. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/style-wasteland.  (sample: seed 1552)",
+ "snapshot": {
+  "form": {
+   "subject": "a (post-apocalyptic desert ranger:1.3), (goggles:1.2), holding a rifle",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": 0.8,
+   "kind": "character portrait",
+   "genre": "role-playing game",
+   "era": "1980s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)",
+   "outW": 128,
+   "outH": 128,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "bayer4",
+   "dither_amount": 0.4,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "2",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "wasteland",
+    "portrait"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-style-wasteland.png",
+ "sample_command": "pixelmon 'a (post-apocalyptic desert ranger:1.3), (goggles:1.2), holding a rifle, ega_art, EGA 16-color pixel art, character portrait, role-playing game, 1980s DOS game' --server rtx --no-open --show-prompt --lora ega-art-v2.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)' --style wasteland,portrait --out 128x128 --palette EGA --dither bayer4 --dither-amount 0.4 --despeckle 1 --snap-pixels --snap-method unfake --pixel-size 1x1 --thin-lines 2 --seed 1552"
+}

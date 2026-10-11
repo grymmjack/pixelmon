@@ -1,0 +1,65 @@
+{
+ "name": "UF-ega-sprite-transparent",
+ "saved": 1791131313.7904122,
+ "note": "64x64 EGA game sprite with the background cut out, ready for a game. Post-fx off: every stroke is a feature. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/ega-sprite-transparent.  (sample: seed 1237)",
+ "snapshot": {
+  "form": {
+   "subject": "a (green goblin warrior:1.3) holding a (spear:1.2), full body, standing",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": 0.8,
+   "kind": "game sprite",
+   "genre": "action game",
+   "era": "1980s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped",
+   "outW": 64,
+   "outH": 64,
+   "snap_pixels": true,
+   "transparent": true,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "solo"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-ega-sprite-transparent.png",
+ "sample_command": "pixelmon 'a (green goblin warrior:1.3) holding a (spear:1.2), full body, standing, ega_art, EGA 16-color pixel art, game sprite, action game, 1980s DOS game' --server rtx --no-open --show-prompt --lora ega-art-v2.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped' --style solo --out 64x64 --palette EGA --despeckle 1 --snap-pixels --snap-method unfake --transparent --pixel-size 1x1 --seed 1237"
+}

@@ -1,0 +1,69 @@
+{
+ "name": "UF-char-topdown-hero-32",
+ "saved": 1791133735.225273,
+ "note": "Top-down hero, 32px. unfake grid snap.  (sample: seed 4139)",
+ "snapshot": {
+  "form": {
+   "subject": "a young hero in a green tunic, whole body, top-down view, facing down, (large, filling the whole frame:1.3)",
+   "lora": "pixel-art-xl.safetensors",
+   "lora_strength": 1.0,
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped, (background scenery:1.2), (tiny, small in frame, distant:1.2)",
+   "outW": 32,
+   "outH": 32,
+   "snap_pixels": true,
+   "transparent": true,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "solo",
+    "zelda"
+   ],
+   "snap_method": "unfake",
+   "tile": false,
+   "tile_axes": "both"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "adv": {}
+ },
+ "image": "UF-char-topdown-hero-32.png",
+ "sample_command": "pixelmon 'a young hero in a green tunic, whole body, top-down view, facing down, (large, filling the whole frame:1.3)' --server rtx --no-open --show-prompt --lora pixel-art-xl.safetensors --lora-strength 1 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped, (background scenery:1.2), (tiny, small in frame, distant:1.2)' --style solo,zelda --out 32x32 --palette none --despeckle 1 --snap-pixels --snap-method unfake --transparent --pixel-size 1x1 --seed 4139"
+}

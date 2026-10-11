@@ -1,0 +1,66 @@
+{
+ "name": "UF-EGA-ISO-DUNGEON-CHUNK",
+ "saved": 1791131229.5694873,
+ "note": "Isometric dungeon room: Pixel Art XL at 0.4 on the EGA palette, isometric angle grid, 2x2 Bayer, heavy emphasis on clean lines. Seed locked, 5 per render. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 0. Twin of FACTORY/EGA-ISO-DUNGEON-CHUNK.  (sample: seed 1709864019)",
+ "snapshot": {
+  "form": {
+   "subject": "((isometric:2.0)) view of a small ((stone)) dungeon room with a treasure chest, torches and a wooden door, ((perfect lines)) and ((pixel perfect)) ((highly detailed:2.0))",
+   "lora": "pixel-art-xl.safetensors",
+   "lora_strength": 0.4,
+   "kind": "scene background",
+   "genre": "role-playing game",
+   "era": "1990s DOS game",
+   "negative": "3d render, realistic, photograph, blurry, smooth gradient, antialiased, jpeg artifacts, text, watermark, signature, ((vegetation:1.7)), ((character:1.5))",
+   "outW": 320,
+   "outH": 200,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "bayer2",
+   "dither_amount": 0.15,
+   "despeckle": 0,
+   "pixel_size": "1x1",
+   "thin_lines": "4",
+   "pixel_angles": 2,
+   "angle_grid": "isometric",
+   "seed": 1709864019,
+   "seedLock": true,
+   "n": 5,
+   "name": "",
+   "steps": "",
+   "cfg": 7,
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "scene"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "adv": {}
+ },
+ "image": "UF-EGA-ISO-DUNGEON-CHUNK.png",
+ "sample_command": "pixelmon '((isometric:2.0)) view of a small ((stone)) dungeon room with a treasure chest, torches and a wooden door, ((perfect lines)) and ((pixel perfect)) ((highly detailed:2.0))' --server rtx --no-open --show-prompt --lora pixel-art-xl.safetensors --lora-strength 0.4 --negative '3d render, realistic, photograph, blurry, smooth gradient, antialiased, jpeg artifacts, text, watermark, signature, ((vegetation:1.7)), ((character:1.5))' --style scene --out 320x200 --palette EGA --dither bayer2 --dither-amount 0.15 --despeckle 0 --snap-pixels --snap-method unfake --pixel-size 1x1 --thin-lines 4 --pixel-angles 2 --angle-grid isometric --cfg 7 --seed 1709864019"
+}

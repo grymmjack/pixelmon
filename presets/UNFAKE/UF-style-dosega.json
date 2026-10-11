@@ -1,0 +1,66 @@
+{
+ "name": "UF-style-dosega",
+ "saved": 1791131993.0753477,
+ "note": "dosega \u2014 the dosegafx EGA LoRA (its trigger comes from the style) + EGA palette, 128x128. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/style-dosega.  (sample: seed 1465)",
+ "snapshot": {
+  "form": {
+   "subject": "a (desert raider:1.3) with a (spiked shoulder pad:1.2), scarred face",
+   "lora": "dosegafx.safetensors",
+   "lora_strength": 0.9,
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)",
+   "outW": 128,
+   "outH": 128,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "EGA",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "2",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "dosega",
+    "portrait"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-style-dosega.png",
+ "sample_command": "pixelmon 'a (desert raider:1.3) with a (spiked shoulder pad:1.2), scarred face' --server rtx --no-open --show-prompt --lora dosegafx.safetensors --lora-strength 0.9 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2)' --style dosega,portrait --out 128x128 --palette EGA --despeckle 1 --snap-pixels --snap-method unfake --pixel-size 1x1 --thin-lines 2 --seed 1465"
+}

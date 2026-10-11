@@ -1,0 +1,65 @@
+{
+ "name": "UF-gameboy-4-shade",
+ "saved": 1791131538.0199623,
+ "note": "Game Boy DMG: 160x144, 4 green shades, clean 1-px lines. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 0. Twin of FACTORY/gameboy-4-shade.  (sample: seed 1363)",
+ "snapshot": {
+  "form": {
+   "subject": "a (small village:1.3), (cottage:1.2), wooden fences, round trees",
+   "lora": "ega-art-v2.safetensors",
+   "lora_strength": 0.8,
+   "kind": "scene background",
+   "genre": "adventure game",
+   "era": "1990s handheld game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border",
+   "outW": 160,
+   "outH": 144,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "GAMEBOY",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 0,
+   "pixel_size": "1x1",
+   "thin_lines": "2",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "scene"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-gameboy-4-shade.png",
+ "sample_command": "pixelmon 'a (small village:1.3), (cottage:1.2), wooden fences, round trees, ega_art, EGA 16-color pixel art, scene background, adventure game, 1990s handheld game' --server rtx --no-open --show-prompt --lora ega-art-v2.safetensors --lora-strength 0.8 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (user interface, hud, health bar:1.2), border' --style scene --out 160x144 --palette GAMEBOY --despeckle 0 --snap-pixels --snap-method unfake --pixel-size 1x1 --thin-lines 2 --seed 1363"
+}

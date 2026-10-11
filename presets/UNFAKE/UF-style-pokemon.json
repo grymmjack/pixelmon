@@ -1,0 +1,66 @@
+{
+ "name": "UF-style-pokemon",
+ "saved": 1791131929.043181,
+ "note": "pokemon \u2014 cute creature, bold outline. 96x96 transparent sprite. \u2014 unfake grid snap (true model grid, reduced to the canvas), despeckle 1. Twin of FACTORY/style-pokemon.  (sample: seed 1538)",
+ "snapshot": {
+  "form": {
+   "subject": "a small (electric fox creature:1.3) with a (lightning-bolt tail:1.3)",
+   "lora": "pixel-art-xl.safetensors",
+   "lora_strength": 1.0,
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped",
+   "outW": 96,
+   "outH": 96,
+   "snap_pixels": true,
+   "transparent": true,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 1,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "pokemon",
+    "solo"
+   ],
+   "snap_method": "unfake"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  }
+ },
+ "image": "UF-style-pokemon.png",
+ "sample_command": "pixelmon 'a small (electric fox creature:1.3) with a (lightning-bolt tail:1.3)' --server rtx --no-open --show-prompt --lora pixel-art-xl.safetensors --lora-strength 1 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (multiple, sprite sheet, collage:1.3), cropped' --style pokemon,solo --out 96x96 --palette none --despeckle 1 --snap-pixels --snap-method unfake --transparent --pixel-size 1x1 --seed 1538"
+}

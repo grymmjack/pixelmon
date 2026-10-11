@@ -1,0 +1,68 @@
+{
+ "name": "UF-tex-dungeon-floor-tiles",
+ "saved": 1791132215.7776704,
+ "note": "Seamless cracked stone floor tiles. unfake grid snap.  (sample: seed 3035)",
+ "snapshot": {
+  "form": {
+   "subject": "square stone dungeon floor tiles, cracked, worn, dark grout",
+   "lora": "pixel-art-xl.safetensors",
+   "lora_strength": 1.0,
+   "kind": "",
+   "genre": "",
+   "era": "",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3)",
+   "outW": 64,
+   "outH": 64,
+   "snap_pixels": true,
+   "transparent": false,
+   "art": false,
+   "no_sprite_suffix": false,
+   "palette": "none",
+   "dither": "none",
+   "dither_amount": 0.5,
+   "despeckle": 0,
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "pixel_angles": 0,
+   "angle_grid": "pixel",
+   "seed": "",
+   "seedLock": false,
+   "n": 1,
+   "name": "",
+   "steps": "",
+   "cfg": "",
+   "fast": false,
+   "showFull": false,
+   "styles": [
+    "dark"
+   ],
+   "snap_method": "unfake",
+   "tile": true,
+   "tile_axes": "both"
+  },
+  "steer": {
+   "use": false,
+   "strength": 0.7,
+   "weight": "style transfer",
+   "combine": "concat",
+   "sel": [],
+   "start": 0,
+   "end": 1
+  },
+  "evo": {
+   "parent": null,
+   "init": true,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "adv": {}
+ },
+ "image": "UF-tex-dungeon-floor-tiles.png",
+ "sample_command": "pixelmon 'square stone dungeon floor tiles, cracked, worn, dark grout' --server rtx --no-open --show-prompt --tile --lora pixel-art-xl.safetensors --lora-strength 1 --negative '(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3)' --style dark --out 64x64 --palette none --despeckle 0 --snap-pixels --snap-method unfake --pixel-size 1x1 --seed 3035"
+}

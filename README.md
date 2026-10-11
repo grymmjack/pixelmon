@@ -301,6 +301,10 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--palette-strength F` | with `--art` and a `--palette`: how far colors move toward the palette, 0–1 (1 = exact palette colors) | `0.6` |
 | `--post-sweep SPEC` | render **once**, then save every combination of post-processing settings — e.g. `'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'` (fields: `angle_grid`, `dither`, `dither_amount`, `pixel_angles`, `thin_lines`, `despeckle`, `palette`); ~1–2 s per picture after the render | — |
 | `--snap-pixels` | snap to a perfect grid with the [pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — extra crisp (picks its own grid; add `--out` for an exact size) | off |
+| `--snap-method M` | `--snap-pixels` engine: `unfake` finds the grid the model really drew and reduces it to `--out` (sharpest); `snapper` = pixel-snapper | `unfake` |
+| `--fit-subject` | **fill frame**: crop the full-res render to its subject before shrinking, so tiny sprites (16–32 px) spend their pixels on the subject, not the background | off |
+| `--color-match M` | how the palette lock picks each pixel's nearest color: `oklab` (perceptual: keeps hue and lightness as the eye sees them) or `redmean` (the pre-1.9 RGB approximation) | `oklab` |
+| `--depth IMG` | **depth lock**: keep a reference's camera angle + geometry, the prompt sets the rest — see [Depth lock](#depth-lock--camera-angle--geometry-from-a-reference---depth) | — |
 | `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
 | `--tile [x\|y]` | **seamless tileable texture**: the model and VAE wrap at the edges (circular padding) and the pixel pass filters across them, so the result repeats with no seam (both axes, or just `x` / `y`). Drops the sprite wording and adds an edge/object negative. Also saves a 3×3 `_tiled_` preview for checking seams. Needs the updated `pixelart_palette` nodes on the render server | off |
@@ -308,6 +312,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
 | `--dither [NAME]` | dither between palette colors: `bayer2/4/8/16`, `clustered`, `floyd-steinberg`, `jarvis`, `stucki`, `burkes`, `sierra`, `sierra2`, `sierra-lite`, `atkinson` (bare = floyd-steinberg) | off |
 | `--dither-amount F` | dither strength 0..1 | `0.75` |
+| `--exact-prompt` | send the prompt and `--negative` word for word: no added prefix/suffix, style guides or default negative (the GUI's ✎ edit the full prompt) | off |
 | `--show-prompt` | print the exact positive + negative prompts sent to the model (after styles and pixelmon's additions) | off |
 | `--no-sprite-suffix` | don't append `game sprite, simple flat colors, solid background` (automatic when the prompt contains `scene background`) | off |
 | `--fast` | LCM mode: ~5× faster (8 steps), slightly softer | off |
@@ -624,10 +629,14 @@ OPTIONS
   --palette NAME      none / random / a name (--list-palettes)  [none]
   --style NAMES       append proven style guide(s) — see --list-styles
   --transparent       cut out background -> transparent PNG
+  --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
                         jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]
   --dither-amount F   dither strength 0..1  [0.75]
-  --snap-pixels       snap to a perfect grid (pixel-snapper) — extra crisp
+  --snap-pixels       find the model's own pixel grid instead of shrinking to --out — extra crisp
+  --snap-method M     unfake (model's own grid, reduced to --out) or snapper  [unfake]
+  --color-match M     palette lock: oklab (perceptual) or redmean (classic)  [oklab]
+  --fit-subject       crop to the subject first so it fills the frame — tiny sprites stay readable
   --despeckle N       remove stray color islands of <= N px (0 = off)  [2]
   --pixel-angles F    EXPERIMENTAL: clean pixel-art edge angles (0 off, ~1.5)  [0]
   --angle-grid G      pixel / square / diagonal / isometric / hex / triangle  [pixel]
@@ -676,6 +685,7 @@ ADVANCED
   --steer-strength N  how strongly the refs influence the result  [0.7]
   --no-open           don't auto-open the result
   --show-prompt       print the exact positive/negative prompts sent to the model
+  --exact-prompt      send the prompt + --negative word for word: no added prefix/suffix/styles/default negative
   --no-sprite-suffix  drop 'game sprite … solid background' (auto for 'scene background')
   --output-to DIR     move outputs into DIR (relative to cwd)
   --move-to-dirs      put a run in its own ./<prompt>/ folder
@@ -803,6 +813,7 @@ pixelmon/
 ├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets),
 │                              make_starter_presets.py (builds the factory presets), presets_sync.py (tuned
 │                              presets ↔ repo), layered.py (reads/writes layered PSD · XCF · ORA · DRAW files)
+├── native/                    build_dataset.py: native-pixel EGA training sets from the LoRA dataset (experimental, not used by pixelmon yet)
 ├── docs/                      settings-atlas.html (every setting + how a render is built) and its pipeline/ images
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/
