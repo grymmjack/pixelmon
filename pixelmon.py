@@ -952,17 +952,55 @@ def _queued(pid, server):
         return False
 
 
+def _known(pid, server):
+    """True while the server still has the prompt waiting or running. True when unsure (no answer),
+    so a slow server never looks like one that forgot the prompt."""
+    try:
+        with urllib.request.urlopen(f"{server}/queue", timeout=10) as r:
+            q = json.loads(r.read())
+        return any(item[1] == pid for item in q.get("queue_running", []) + q.get("queue_pending", []))
+    except Exception:
+        return True
+
+
+SERVER_GRACE = 240    # seconds wait() rides out a render server that stops answering (a restart takes ~10-30s)
+
+
 def wait(pid, server=None, timeout=600, resubmit=None):
     """Wait for a prompt's outputs. timeout = seconds of actual rendering; time spent queued behind
     other jobs doesn't count. A server-side error stops at once with the node's message — except a
     transient model-loading hiccup, which is resubmitted once when resubmit(fresh) is given. An identical
-    re-run that ComfyUI answers from its cache with no images is resubmitted once with fresh=True."""
+    re-run that ComfyUI answers from its cache with no images is resubmitted once with fresh=True.
+    A server that restarts mid-wait (pixelmon-gui restarts a stuck one) is waited out, and a prompt it
+    forgot (not done, waiting or running) is sent again, up to twice."""
     server = server or SERVER
     waited = 0
     refreshed = False
+    again, relost, lost, n, down = resubmit, 2, 0, 0, None
     while waited < timeout:
-        with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
-            hist = json.loads(r.read())
+        try:
+            with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
+                hist = json.loads(r.read())
+        except OSError as e:                      # connection refused / reset / timed out: restarting?
+            if down is None:
+                down = time.time()
+                print(f"   … render server stopped answering ({getattr(e, 'reason', e)}) — waiting for it")
+            elif time.time() - down > SERVER_GRACE:
+                sys.exit(f"The render server has been unreachable for {SERVER_GRACE}s ({getattr(e, 'reason', e)}).")
+            time.sleep(3)
+            continue
+        if down is not None:
+            print(f"   … render server is back after {time.time() - down:.0f}s")
+            down, lost = None, 0
+        n += 1
+        if pid not in hist and n % 5 == 0:        # every ~5s: does the server still know this prompt?
+            lost = 0 if _known(pid, server) else lost + 1
+            if lost >= 3:                         # forgotten three checks running: the server restarted
+                if not (again and relost):
+                    sys.exit("The render server restarted and lost this render.")
+                print("   ↻ the render server restarted and lost this render — sending it again")
+                pid, relost, lost, waited = again(False), relost - 1, 0, 0
+                continue
         if pid in hist:
             err = _render_error(hist[pid])
             if err and resubmit and _transient(err):

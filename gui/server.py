@@ -549,18 +549,87 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill", rough=False):
     return out
 
 
-SERVER_STATE = {"server": None, "url": None, "up": None}
+SERVER_STATE = {"server": None, "url": None, "up": None, "stuck": None, "restart": None}
+STUCK_AFTER = 20      # seconds the same prompt may wait at the head of an idle ComfyUI queue
+DOWN_AFTER = 30       # seconds of no answer before a render server with a restart command is restarted
+RESTART_EVERY = 180   # at most one automatic restart per server this often (it needs time to come up)
+
+
+def restart_command(name):
+    """servers.json "_restart": {"<alias>": "<shell command>"} — how to restart that server's ComfyUI."""
+    cmds = _servers_json().get("_restart")
+    return cmds.get(name) if isinstance(cmds, dict) and isinstance(cmds.get(name), str) else None
+
+
+def restart_server(name, why):
+    """Run the server's restart command in the background; SERVER_STATE["restart"] reports how it went."""
+    cmd = restart_command(name)
+    state = {"server": name, "why": why, "at": time.time(), "status": "running", "output": ""}
+    SERVER_STATE["restart"] = state
+    print(f"[pixelmon-gui] render server {name} {why}: restarting it ({cmd})", flush=True)
+
+    def run():
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL)
+            state.update(status="done" if r.returncode == 0 else "failed",
+                         output=(r.stdout + r.stderr).strip()[-400:])
+        except Exception as e:
+            state.update(status="failed", output=str(e))
+        print(f"[pixelmon-gui] restart of {name}: {state['status']} {state['output']}", flush=True)
+    threading.Thread(target=run, daemon=True).start()
 
 
 def watch_server():
-    """Background check of the render server every few seconds, so pages and polls never wait on a dead one."""
+    """Background check of the render server every few seconds, so pages and polls never wait on a dead one.
+    Also catches a ComfyUI that answers but no longer runs anything (its prompt worker died): prompts
+    waiting, nothing running, and the same one stuck at the head of the queue for STUCK_AFTER seconds."""
+    head = None                                     # (server, first waiting prompt id, first seen)
+    down_since, last_restart = None, {}
     while True:
         name = render_server()
         up = server_up(name)
         if up and SERVER_STATE["up"] is False:
             _ADV_CACHE["v"] = None                  # it came back: read its model lists again
-        SERVER_STATE.update(server=name, url=server_url(name), up=up)
+        down_since = None if up else (down_since or time.time())
+        stuck = None
+        q = server_queue(name) if up else None
+        if q and not q["queue_running"] and q["queue_pending"]:
+            first = min(q["queue_pending"], key=lambda p: p[0])[1]
+            if not head or head[:2] != (name, first):
+                head = (name, first, time.time())
+            elif time.time() - head[2] >= STUCK_AFTER:
+                stuck = {"pending": len(q["queue_pending"]), "since": head[2]}
+        else:
+            head = None
+        SERVER_STATE.update(server=name, url=server_url(name), up=up, stuck=stuck)
+        why = ("is stuck: prompts waiting, nothing running" if stuck
+               else f"hasn't answered for {DOWN_AFTER}s" if down_since and time.time() - down_since >= DOWN_AFTER else None)
+        if why and restart_command(name) and time.time() - last_restart.get(name, 0) >= RESTART_EVERY:
+            last_restart[name] = time.time()
+            head = None
+            restart_server(name, why)
         time.sleep(4)
+
+
+def server_queue(name=None):
+    """The render server's ComfyUI /queue ({queue_running, queue_pending}), or None."""
+    url = server_url(name)
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/queue", timeout=3) as r:
+            return json.load(r)
+    except Exception:
+        return None
+
+
+def server_stuck():
+    """{'pending': n, 'since': t} while the current render server's queue isn't moving, else None."""
+    return SERVER_STATE["stuck"] if SERVER_STATE["server"] == render_server() else None
+
+
+def server_restart():
+    """The last automatic restart (any server) while it's recent, so the page can say so."""
+    r = SERVER_STATE["restart"]
+    return dict(r, auto=bool(restart_command(render_server()))) if r and time.time() - r["at"] < 600 else None
 
 
 def server_is_up():
@@ -2278,7 +2347,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "server_up": server_is_up()})
         if u.path == "/api/jobs":
             return self._json({"jobs": self.jobs.snapshot(),
-                               "render": {"server": render_server(), "url": server_url(), "up": server_is_up()}})
+                               "render": {"server": render_server(), "url": server_url(), "up": server_is_up(),
+                                          "stuck": server_stuck(), "restart": server_restart(),
+                                          "auto_restart": bool(restart_command(render_server()))}})
         if u.path in ("/api/colors", "/api/colors.gpl"):
             q = urllib.parse.parse_qs(u.query)
             d, f = q.get("dir", [""])[0], q.get("file", [""])[0]

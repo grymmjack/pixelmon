@@ -4031,10 +4031,14 @@ function statusUpdate(jobs) {
   abortShow(jobs);
   const run = jobs.find(j => j.status === "running"), queued = jobs.filter(j => j.status === "queued").length;
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
-  $("sbStatus").innerHTML = run
+  const rs = SRV.restart, srvNote = rs && rs.status !== "done"
+      ? `<span class="${rs.status === "failed" ? "err" : "busy"}">↻ ${rs.status === "failed" ? `couldn't restart ${esc(rs.server)}` : `restarting ${esc(rs.server)}`}: it ${esc(rs.why)}</span> · `
+    : SRV.stuck ? `<span class="err">● ${esc(META.server)} is stuck: ${SRV.stuck.pending} prompt${SRV.stuck.pending > 1 ? "s" : ""} waiting, nothing running`
+      + `${SRV.auto ? "" : " — restart its ComfyUI"}</span> · ` : "";
+  $("sbStatus").innerHTML = srvNote + (run
     ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
     : queued ? `<span class="busy">● ${queued} queued</span>` : META && !META.server_up ? (SRV.local ? `<span class="busy">● ComfyUI isn't running yet: it starts with your first render</span>`
-      : `<span class="err">● ${esc(META.server)} unreachable</span>`) : "● idle";
+      : `<span class="err">● ${esc(META.server)} unreachable</span>`) : "● idle");
   // 🪙 per image: a coin for every newly finished image (previews excluded), staggered if several land at once
   const outs = Object.fromEntries(jobs.map(j => [j.id, j.outputs.length]));
   if (prevOutputs && NF.coin) {
@@ -5708,10 +5712,17 @@ async function loadGallery() {
   fillPalettes($("galleryPane"));
 }
 // ---- render server watch: /api/jobs carries the server's state; a dead server blacks out the center pane ----
-const SRV = { up: null, since: 0, hidden: false };
+const SRV = { up: null, since: 0, hidden: false, stuck: null, restart: null, auto: false };
 function srvState(r) {
   if (!r || !META) return false;
-  const changed = r.up !== SRV.up || r.server !== META.server;
+  const rs = r.restart || null, prevRs = SRV.restart;
+  const changed = r.up !== SRV.up || r.server !== META.server || JSON.stringify(r.stuck || null) !== JSON.stringify(SRV.stuck)
+    || (rs && rs.status) !== (prevRs && prevRs.status) || (rs && rs.at) !== (prevRs && prevRs.at);
+  // a ComfyUI that answers but runs nothing, and pixelmon-gui restarting it (servers.json "_restart")
+  if (r.stuck && !SRV.stuck && !r.auto_restart) notify("pixelmon", `render server ${r.server} is stuck: prompts waiting, nothing running — restart its ComfyUI`, true);
+  if (rs && (!prevRs || prevRs.at !== rs.at)) notify("pixelmon", `render server ${rs.server} ${rs.why} — restarting it`, true);
+  else if (rs && prevRs && prevRs.status === "running" && rs.status === "failed") notify("pixelmon", `couldn't restart ${rs.server}: ${rs.output || "the restart command failed"}`, true);
+  SRV.stuck = r.stuck || null; SRV.restart = rs; SRV.auto = !!r.auto_restart;
   SRV.local = /\/\/(127\.0\.0\.1|localhost)[:/]/.test(r.url || "");   // pixelmon starts a local ComfyUI by itself
   if (r.up !== SRV.up) {
     if (r.up === false && SRV.local) SRV.since = Date.now();

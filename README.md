@@ -499,6 +499,21 @@ If the render server stops answering, the center pane blacks out with a notice (
 setup / hide) and clears by itself when it's back; a `local` ComfyUI that isn't running yet
 just starts with your first render.
 
+A ComfyUI can also answer but stop running anything (its prompt worker died): prompts wait and
+nothing runs. The status bar calls that out as **stuck** after 20 seconds. Give the server a restart
+command in `servers.json` and pixelmon-gui restarts it by itself, when it's stuck or hasn't
+answered for 30 seconds, at most once every 3 minutes:
+
+```json
+"_restart": {"gpubox": "ssh gpubox 'sudo systemctl restart comfyui'"}
+```
+
+Renders waiting on it ride out the restart, and one the server forgot is sent again.
+
+**⛔ CANCEL AND ABORT** (left end of the status bar, while anything is queued or rendering) stops
+everything at once: every queued job, the running render, the render server's own ComfyUI queue
+and what it's sampling, and any batch still being sent.
+
 **📖 DOCS** (top of the form) opens the [settings atlas](docs/settings-atlas.html):
 every GUI control, CLI flag and ComfyUI node input with its range, default and an
 example, plus a picture-by-picture walkthrough of how a render is built. The GUI also
