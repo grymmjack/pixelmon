@@ -311,6 +311,11 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--cutout-key [TOL]` | with `--cutout`, also keep anything further than TOL from the background colour (parts as grey as the backdrop) | off (34 when given) |
 | `--fit-to OLD.png` | fit the cut-out into an old picture's footprint: same width-or-height, centred, standing on the same line; implies `--cutout` | — |
 | `--fit-scale N` | `--fit-to` canvas = the old picture's size × N | 4 with `--art`/`--raw`, 1 for pixel art |
+| `--mesh IMG` | make a 3D model (`.glb`) of the picture's subject with Hunyuan3D 2, plus a Blender preview — see [3D](#3d-models-turnarounds-and-low-poly---mesh---turnaround---lowpoly) | — |
+| `--turnaround SRC` | rotation sprites from a picture (or a `.glb/.gltf/.obj/.stl/.ply/.fbx` model): N views, each painted to match | — |
+| `--angles N` / `--elev DEG` | `--turnaround`: how many views around the model / camera height above eye level | 8 / 0 |
+| `--lowpoly FACES` | also make a faceted low-poly model of about FACES faces; a turnaround renders and paints that one | off |
+| `--blender CMD` | how to run Blender (3D) | `$PIXELMON_BLENDER`, `blender`, or the `org.blender.Blender` flatpak |
 | `--tile [x\|y]` | **seamless tileable texture**: the model and VAE wrap at the edges (circular padding) and the pixel pass filters across them, so the result repeats with no seam (both axes, or just `x` / `y`). Drops the sprite wording and adds an edge/object negative. Also saves a 3×3 `_tiled_` preview for checking seams. Needs the updated `pixelart_palette` nodes on the render server | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
@@ -411,6 +416,43 @@ In **pixelmon-gui**: ✂ **cut out** and **+ colour key** sit with the canvas op
 different folder, or a second run would fit into the new pictures.
 
 **Setup:** `./download-models.sh --depth` fetches BiRefNet (444 MB), together with the depth model.
+
+### 3D models, turnarounds and low-poly (`--mesh`, `--turnaround`, `--lowpoly`)
+
+One picture → a **3D model** → **rotation sprites** that all match: the same monster, the same
+size, from every side (Doom-style 8 directions, or 4, or 16).
+
+```bash
+pixelmon --mesh monster.png                         # -> monster.glb + a 4-view preview
+pixelmon "a green battle mech" --turnaround monster.png --art              # 8 painted angles
+pixelmon "a green battle mech" --turnaround monster.glb --steer monster.png \
+    --lowpoly 1500 --angles 4 --palette EGA --out 64                        # low-poly, pixel-art angles
+```
+
+1. **The model**: Hunyuan3D 2 on the render server turns the picture's subject into a mesh
+   (`.glb`, about a minute). An opaque picture is cut out first with BiRefNet. Best from a full-body,
+   front-on picture on a plain background.
+2. **The angles**: Blender, on the machine running pixelmon, renders the model from `--angles`
+   directions with one camera size, so the model is the same size in every view. Each view gets
+   an exact depth map. Azimuth 0 is the side the picture showed. `--elev` raises the camera.
+3. **The sprites**: each view is painted by pixelmon with **depth lock** on that view's depth map,
+   **steering** from the picture (its colours and style), **✂ cut out**, and one seed for all. Every
+   other flag applies, so `--palette`, `--out`, `--art`, `--fit-to` and the rest work as usual.
+   Files are `<name>_a000…`, `<name>_a045…`, and so on. The Blender renders and depth maps are kept
+   in `turn/`.
+
+`--lowpoly FACES` remeshes and decimates the model to about that many faces with flat shading.
+That's the faceted low-poly look: 400 is chunky, 1500 detailed. The low-poly `.glb` is kept, and
+a turnaround renders and paints it, so the sprites come out faceted too.
+
+In **pixelmon-gui**, the **🧊** button on any picture opens its 🧊 3D row. **make 3D model** makes
+the model; **turnaround** makes the sprites, with angles, camera height and low-poly options. A
+model's card (and the lightbox of its preview) links the `.glb` to download, to view in
+**Kaleidotron**, or to open with your default 3D program, plus **🧊 turnaround** from that model.
+
+**Setup:** `./download-models.sh --3d` (Hunyuan3D 2, 4.9 GB) plus `--steer` and `--depth`, and
+**Blender** on the machine running pixelmon (`blender` on the PATH or the `org.blender.Blender`
+flatpak; it runs headless on the CPU). An 8 GB card is enough.
 
 ### Depth lock — camera angle + geometry from a reference (`--depth`)
 
@@ -678,6 +720,12 @@ OPTIONS
   --cutout-key [TOL]  --cutout: also keep what's far from the bg colour (grey-on-grey parts)  [34]
   --fit-to OLD.png    fit the cut-out into an old sprite's footprint (same size + ground line)
   --fit-scale N       --fit-to canvas = old size x N  [4 art / 1 pixel]
+  --mesh IMG          make a 3D model (.glb) of the picture's subject (Hunyuan3D 2 + Blender preview)
+  --turnaround SRC    rotation sprites from a picture or a model: 3D -> N views -> painted to match
+  --angles N          --turnaround: views around the model  [8]
+  --elev DEG          --turnaround: camera height above eye level  [0]
+  --lowpoly FACES     --mesh/--turnaround: faceted low-poly model (e.g. 400 faces)
+  --blender CMD       Blender for 3D  [blender / org.blender.Blender flatpak]
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
                         jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]
@@ -855,6 +903,8 @@ pixelmon/
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API); `pixelmon --version`
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
+├── turnaround.py              --mesh / --turnaround: picture → 3D model (Hunyuan3D 2) → N angles → painted sprites
+├── blender/turnaround.py      the Blender side: renders a model from every angle (+ depth maps), low-poly, .glb export
 ├── styles.json                --style guide snippets (edit / add your own)
 ├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py

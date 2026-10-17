@@ -6,8 +6,10 @@
 #   ./download-models.sh --lab        + LAB: ControlNet (convert/restyle) + SDXL inpainting (~7.5 GB)
 #   ./download-models.sh --steer      + steering / evolve: IPAdapter + CLIP-vision        (~3.2 GB)
 #   ./download-models.sh --depth      + depth lock (--depth) + cut-outs (--cutout): depth ControlNet + BiRefNet  (~2.9 GB)
+#   ./download-models.sh --3d         + 3D models / turnarounds (--mesh, --turnaround): Hunyuan3D 2  (~4.9 GB)
+#                                      (they also need --steer, --depth, and Blender on the machine running pixelmon)
 #   ./download-models.sh --juggernaut + Juggernaut XL v9, an optional alternative checkpoint (~6.6 GB)
-#   ./download-models.sh --all        everything above                                     (~25 GB)
+#   ./download-models.sh --all        everything above                                     (~30 GB)
 #   ./download-models.sh --list       show what's installed and what's missing, download nothing
 #
 # Civitai sometimes asks for a login on downloads; if one fails, create a free API key at
@@ -16,16 +18,17 @@ set -euo pipefail
 
 COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
 M="$COMFY/models"
-WANT_LAB=0 WANT_STEER=0 WANT_DEPTH=0 WANT_JUGG=0 LIST=0
+WANT_LAB=0 WANT_STEER=0 WANT_DEPTH=0 WANT_3D=0 WANT_JUGG=0 LIST=0
 for a in "$@"; do
     case "$a" in
         --lab) WANT_LAB=1 ;;
         --steer) WANT_STEER=1 ;;
         --depth) WANT_DEPTH=1 ;;
+        --3d) WANT_3D=1 ;;
         --juggernaut) WANT_JUGG=1 ;;
-        --all) WANT_LAB=1; WANT_STEER=1; WANT_DEPTH=1; WANT_JUGG=1 ;;
+        --all) WANT_LAB=1; WANT_STEER=1; WANT_DEPTH=1; WANT_3D=1; WANT_JUGG=1 ;;
         --list) LIST=1 ;;
-        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
         *) echo "unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -85,6 +88,11 @@ if [ "$WANT_DEPTH" = 1 ] || [ "$LIST" = 1 ]; then
         controlnet controlnet-depth-sdxl-1.0.safetensors "2.5 GB" "--depth / the Steering tab's depth lock"
     get "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/model.safetensors" \
         background_removal birefnet.safetensors "444 MB" "--cutout and --depth-mask-bg (find the subject)"
+fi
+if [ "$WANT_3D" = 1 ] || [ "$LIST" = 1 ]; then
+    echo "== 3D (a model of a picture, rotation sprites)"
+    get "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2_fp16.safetensors" \
+        checkpoints hunyuan3d-dit-v2_fp16.safetensors "4.9 GB" "--mesh / --turnaround (Hunyuan3D 2, picture -> 3D model)"
 fi
 if [ "$WANT_JUGG" = 1 ] || [ "$LIST" = 1 ]; then
     echo "== optional checkpoint"

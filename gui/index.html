@@ -484,7 +484,14 @@ fieldset.closed { padding-bottom: 2px; }
 .evo-btn { position: absolute; top: 4px; right: 4px; border: 1px solid var(--line); background: rgba(0,0,0,.7);
   border-radius: 4px; padding: 1px 5px; cursor: pointer; font-size: 14px; opacity: .8; }
 .evo-btn:hover { opacity: 1; border-color: var(--accent2); }
-.evo-btn.refine-btn { right: 36px; } .evo-btn.refine-btn:hover { border-color: var(--accent); }
+.evo-btn.refine-btn { right: 36px; } .evo-btn.t3-btn { right: auto; left: 4px; }
+.lb-3d { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius); }
+.lb-3d.flash { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.lb-3d label { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+.t3-model { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 100%; }
+.t3-model > a { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lb3dModels { display: flex; flex-direction: column; gap: 4px; width: 100%; } .evo-btn.refine-btn:hover { border-color: var(--accent); }
 /* mask mode: the pointer is the brush — a circle its size (solid = paint, dashed = erase) */
 .cropwrap.masking, .cropwrap.masking img { cursor: none; }
 #brushCur { position: fixed; z-index: 30; pointer-events: none; border-radius: 50%; border: 1.5px solid #fff;
@@ -1149,6 +1156,13 @@ fieldset.closed { padding-bottom: 2px; }
     <div class="pal big" id="lbPal" style="justify-content:flex-start"></div>
     <div id="lbInfo"></div>
     <div class="cmd" id="lbCmd"></div>
+    <div class="lb-3d" id="lb3d"><b>🧊 3D</b>
+      <button class="btn" id="lbMesh" title="make a 3D model (.glb) of this picture's subject: Hunyuan3D 2 on the render server, a Blender preview here">make 3D model</button>
+      <button class="btn" id="lbTurn" title="rotation sprites: a 3D model of this picture, rendered from every angle, each painted to match it (your form settings apply)">turnaround</button>
+      <label>angles <select id="t3Angles"><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
+      <label>camera <select id="t3Elev"><option value="0">eye level</option><option value="15">a little above</option><option value="30">above</option></select></label>
+      <label>low-poly <select id="t3Low"><option value="0">off</option><option value="400">400 faces</option><option value="1500">1500 faces</option><option value="5000">5000 faces</option></select></label>
+      <i class="help" data-help="threed">i</i><span id="lb3dModels"></span></div>
     <div class="lb-actions">
       <button class="btn hidden" id="lbTiled" title="show this texture repeated 3×3 to check the seams">▦ 3×3 seam check</button>
       <button class="btn" id="lbEvolve">🧬 Evolve from this</button>
@@ -1761,6 +1775,13 @@ const HELP = {
     around it. This crops to the subject first (the background is found from the edges, like transparent bg), then
     shrinks — so the subject fills your canvas instead of sitting small in the middle. A must for 16×16 and 32×32
     sprites and icons. For single subjects on a plain background; not for scenes or seamless tiles.`,
+  threed: `<span class="tipk">🧊 3D</span>: <b>make 3D model</b> turns the picture's subject into a 3D model (.glb) with
+    Hunyuan3D 2 on the render server, cut out first if it isn't already, plus a 4-view preview rendered by Blender on this
+    computer. <b>turnaround</b> goes on: Blender renders the model from every angle, and each view is painted to match the
+    picture (depth lock on that view's exact depth, steering from the picture, cut out, one seed). Your form settings
+    apply to those sprites, palette and pixel size included. <b>low-poly</b> decimates the model to about that many faces
+    with flat shading, so the sprites get the faceted look; the low-poly .glb is kept too. Best from a full-body,
+    front-on picture on a plain background, in art mode.`,
   cutout: `<span class="tipk">✂ Cut out</span>: BiRefNet, a background-removal model on the render server, finds the subject in the
     full-size picture before it's pixelated, and everything else goes transparent. Unlike transparent bg it copes with any
     background, busy or the same colour as the subject. Pixel art gets hard-edged whole pixels; art mode a soft edge whose
@@ -2042,6 +2063,34 @@ function renderEvo() {
 function setParent(job, o) {
   EVO.parent = { dir: job.dir, file: o.file, seed: o.seed, gen: job.params.gen || 0 };
   renderEvo();
+}
+// 🧊 3D: a model of a picture's subject, or rotation sprites from it (pixelmon --mesh / --turnaround)
+function modelLinks(j) {
+  return (j.models || []).map(m => `<span class="t3-model">🧊 <a class="btn small" href="/files/${encodeURIComponent(j.dir).replace(/%2F/g, "/")}/${encodeURIComponent(m)}" download title="download the 3D model">${esc(m)}</a>
+    <button class="btn small" data-open-model="${esc(m)}" data-dir="${esc(j.dir)}" data-app="kaleidotron" title="look at it in Kaleidotron">👁 Kaleidotron</button>
+    <button class="btn small" data-open-model="${esc(m)}" data-dir="${esc(j.dir)}" data-app="os" title="open it with this computer's default 3D program (e.g. Blender)">open</button>
+    <button class="btn small" data-t3-model="${esc(m)}" data-t3-mjob="${j.id}" title="rotation sprites from this model, steered by the picture it was made from (angles / camera / low-poly as set in the 🧊 3D row)">🧊 turnaround</button></span>`).join("");
+}
+const T3 = Object.assign({ angles: 8, elev: 0, lowpoly: 0 }, store.get("t3", {}));
+async function turnFrom(job, o, mode) {
+  const f = readForm(), subj = ((job.params && job.params.form && job.params.form.subject) || f.subject || "").trim();
+  if (mode === "turn" && !subj) return showErr("Turnaround needs to know what the subject is: put it in the prompt.");
+  // a turnaround is of one subject: a "scene background" kind would paint scenery round it
+  const g = { ...f, subject: subj, ...(f.kind === "scene background" ? { kind: "game sprite" } : {}) }, p = { ...params(g), form: g, n: 1 };
+  for (const k of ["parent", "evolve_init", "evolve_steer", "gen", "depth", "steer", "control", "inpaint", "lab", "lab_init", "post_sweep"]) delete p[k];
+  const full = (job.models || []).find(m => !/_lowpoly\.glb$/i.test(m)) || (job.models || [])[0];
+  if (full && !/\.(glb|gltf|obj|stl|ply|fbx)$/i.test(o.file)) {   // a model job's preview: work from its model
+    if (mode === "mesh") return showErr("That's already a 3D model's preview — use its 🧊 links.");
+    o = { file: full };
+  }
+  const isModel = /\.(glb|gltf|obj|stl|ply|fbx)$/i.test(o.file);
+  const made = isModel && job.params.turnaround && job.params.turnaround.src;     // the picture the model was made from,
+  const ref = made && !/\.(glb|gltf|obj|stl|ply|fbx)$/i.test(made.file)          // as that job kept it
+    ? { dir: job.dir, file: "input-turn" + made.file.slice(made.file.lastIndexOf(".")).toLowerCase() } : null;
+  p.turnaround = { src: { dir: job.dir, file: o.file }, mode, angles: T3.angles, elev: T3.elev, lowpoly: T3.lowpoly, ...(ref ? { ref } : {}) };
+  p.label = mode === "mesh" ? `🧊 3D model${T3.lowpoly ? " + low-poly" : ""}` : `🧊 turnaround ×${T3.angles}${T3.lowpoly ? " · low-poly" : ""}`;
+  showErr();
+  try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
 }
 function evolveFrom(job, o) {
   if (job.params.form) loadJobSettings(job, null);   // breed with the settings that made it
@@ -5656,6 +5705,7 @@ function thumbHtml(job, o, scale, caption) {
   return `<div class="thumb" data-job="${job.id}" data-file="${o.file}">
     <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
     <button class="evo-btn" data-evo-job="${job.id}" data-evo-file="${esc(o.file)}" title="evolve: breed children from this">🧬</button>
+    <button class="evo-btn t3-btn" data-t3-job="${job.id}" data-t3-file="${esc(o.file)}" title="🧊 3D: a model of this, or rotation sprites from it">🧊</button>
     ${job.params && (job.params.inpaint || job.params.control) ? `<button class="evo-btn refine-btn" data-refine-job="${job.id}" data-refine-file="${esc(o.file)}"
       title="🎯 refine: make this the LAB input and edit it again — each round stays closer to it">🎯</button>` : ""}
     <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div>
@@ -5714,6 +5764,7 @@ function jobCard(jobs) {
     </div>${bar}
     <div class="cmd">${esc(j.command)}${group ? `  (sweep: ${esc(jobs.map(x => x.label).join(" | "))})` : ""}
       <button class="btn small copy" data-copy-job="${j.id}" title="copy this command">Copy</button>
+      ${modelLinks(j)}
       ${j.depth_map ? `<a class="btn small" href="/files/${encodeURIComponent(j.dir).replace(/%2F/g, "/")}/${j.depth_map.split("/").map(encodeURIComponent).join("/")}" target="_blank" title="the depth map the sampler got">🗺 depth map</a>` : ""}</div>
     ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
     ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
@@ -5828,6 +5879,8 @@ function lbStep(d) {
 function openLb(jobId, file, stack) {
   const job = JOBS[jobId] || GALLERY.find(j => j.id === jobId); if (!job) return;
   const o = job.outputs.find(x => x.file === file); if (!o) return; lbItem = { job, o };
+  $("lb3dModels").innerHTML = modelLinks(job);
+  $("lbMesh").classList.toggle("hidden", !!(job.models && job.models.length));
   lbStack = stack && stack.length ? stack : [{ job: jobId, file }];
   lbIdx = Math.max(0, lbStack.findIndex(x => x.job === jobId && x.file === file));
   const many = lbStack.length > 1;
@@ -6005,6 +6058,21 @@ async function init() {
       if (o) labRefine(job, o);
       return;
     }
+    const t3 = e.target.closest("[data-t3-job]");
+    if (t3) {                                       // 🧊: the lightbox, at its 3D row
+      openLb(t3.dataset.t3Job, t3.dataset.t3File);
+      const row = $("lb3d"); row.scrollIntoView({ block: "nearest" }); row.classList.add("flash");
+      setTimeout(() => row.classList.remove("flash"), 1200);
+      return;
+    }
+    const tm = e.target.closest("[data-t3-model]");
+    if (tm) {
+      const job = JOBS[tm.dataset.t3Mjob] || GALLERY.find(j => j.id === tm.dataset.t3Mjob);
+      if (job) turnFrom(job, { file: tm.dataset.t3Model }, "turn");
+      return;
+    }
+    const om = e.target.closest("[data-open-model]");
+    if (om) { api("/api/open", { app: om.dataset.app, target: { src: { dir: om.dataset.dir, file: om.dataset.openModel } } }).catch(showErr); return; }
     const ev = e.target.closest("[data-evo-job]");
     if (ev) {
       const job = JOBS[ev.dataset.evoJob] || GALLERY.find(j => j.id === ev.dataset.evoJob);
@@ -6036,6 +6104,11 @@ async function init() {
   $("lbPrev").onclick = () => lbStep(-1);
   $("lbNext").onclick = () => lbStep(1);
   $("lbEvolve").onclick = () => { const { job, o } = lbItem; closeLb(); evolveFrom(job, o); };
+  $("lbMesh").onclick = () => { const { job, o } = lbItem; closeLb(); turnFrom(job, o, "mesh"); };
+  $("lbTurn").onclick = () => { const { job, o } = lbItem; closeLb(); turnFrom(job, o, "turn"); };
+  for (const [id, k] of [["t3Angles", "angles"], ["t3Elev", "elev"], ["t3Low", "lowpoly"]]) {
+    $(id).value = String(T3[k]); $(id).onchange = () => { T3[k] = +$(id).value; store.set("t3", T3); };
+  }
   $("lbParent").onclick = () => { const { job, o } = lbItem; closeLb(); setParent(job, o); };
   $("lbPreset").onclick = () => { const { job, o } = lbItem;
     savePreset(snapshotOfJob(job, o), `${(job.params.form && job.params.form.subject || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); };

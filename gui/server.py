@@ -568,7 +568,7 @@ DOWN_AFTER = 30       # seconds of no answer before a render server with a resta
 RESTART_EVERY = 180   # at most one automatic restart per server this often (it needs time to come up)
 # errors that leave ComfyUI failing every prompt until it's restarted (a model it freed is still on its
 # loaded list; seen after Stable Audio jobs swap Qwen / T5Gemma / SA3 through an 8GB card)
-POISONED = ("object has no attribute 'model_size'",)
+POISONED = ("object has no attribute 'model_size'", "object has no attribute 'is_dynamic'")
 
 
 def restart_command(name):
@@ -753,7 +753,7 @@ def depth_argv(d, src):
     return out
 
 
-def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None, depth=None):
+def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None, depth=None, turn=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
         v = p.get(key, default)
@@ -859,6 +859,22 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
                 raise ValueError(f"unknown angle grid {grid!r}")
             if grid != "pixel":
                 argv += ["--angle-grid", grid]
+    if turn:                                     # 🧊 3D: a model of the picture, or rotation sprites from it
+        t = p.get("turnaround") or {}
+        if t.get("mode") == "mesh":
+            argv += ["--mesh", turn]
+        else:
+            n, e = int(t.get("angles") or 8), float(t.get("elev") or 0)
+            if not 2 <= n <= 64 or not -10 <= e <= 80:
+                raise ValueError("turnaround: 2..64 angles, -10..80° elevation")
+            argv += ["--turnaround", turn, "--angles", str(n), "--elev", f"{e:g}"]
+        if t.get("ref_path") and t.get("mode") != "mesh":
+            argv += ["--steer", t["ref_path"]]
+        lp = int(t.get("lowpoly") or 0)
+        if lp:
+            if not 50 <= lp <= 100000:
+                raise ValueError("low-poly: 50..100000 faces")
+            argv += ["--lowpoly", str(lp)]
     fit = fit_target(p)
     if p.get("cutout") or fit:                   # ✂ BiRefNet cut-out (+ fit into an old sprite's footprint)
         if p.get("transparent"):
@@ -1095,11 +1111,24 @@ class JobQueue:
             os.makedirs(os.path.join(jdir, "depth"), exist_ok=True)
             depth = os.path.join(jdir, "depth", "source" + os.path.splitext(dsrc)[1].lower())
             shutil.copy2(dsrc, depth)
-        argv = build_argv(params, steer_dir, len(srcs), init, control, mask, depth)   # validate before queueing
+        turn = None
+        if (params.get("turnaround") or {}).get("src"):    # 🧊 3D: the job keeps its own copy of the picture / model
+            tsrc = self.gallery_path(params["turnaround"]["src"])
+            os.makedirs(jdir, exist_ok=True)
+            turn = os.path.join(jdir, "input-turn" + os.path.splitext(tsrc)[1].lower())
+            shutil.copy2(tsrc, turn)
+            if params["turnaround"].get("ref"):     # a model's turnaround steers from the picture it was made from
+                rsrc = self.gallery_path(params["turnaround"]["ref"])
+                ref = os.path.join(jdir, "input-ref" + os.path.splitext(rsrc)[1].lower())
+                shutil.copy2(rsrc, ref)
+                params["turnaround"]["ref_path"] = ref
+        argv = build_argv(params, steer_dir, len(srcs), init, control, mask, depth, turn)   # validate before queueing
         export = export_target(params)
         job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
-               "total": combo_count(params.get("post_sweep")) or int(params.get("n") or 1), "export": export, "exported": None,
+               "total": combo_count(params.get("post_sweep")) or (
+                   (1 if params["turnaround"].get("mode") == "mesh" else int(params["turnaround"].get("angles") or 8))
+                   if turn else int(params.get("n") or 1)), "export": export, "exported": None,
                "created": time.time(), "started": None, "finished": None, "dir": dirname}
         with self.lock:
             self.jobs[jid] = job
@@ -1243,6 +1272,9 @@ class JobQueue:
                             lab = re.search(r"✅\s*\[\d+/\d+\]\s+(\S.*?)\s+seed=", line)   # a combo sweep names each picture
                             if lab and job["params"].get("post_sweep"):
                                 o["label"] = lab.group(1).strip()
+                            ang = re.search(r"_a(\d{3})_", o["file"]) if job["params"].get("turnaround") else None
+                            if ang:                  # 🧊 turnaround: each picture is an angle
+                                o["label"] = f"{int(ang.group(1))}°"
                             job["outputs"].append(o)
                 rc = self.proc.wait()
             except Exception as e:
@@ -1260,6 +1292,10 @@ class JobQueue:
                         m = re.search(r"_s(\d+)_", f)
                         job["outputs"].append({"seed": int(m.group(1)) if m else None, "file": f})
                 job["outputs"] = [o for o in job["outputs"] if o["file"] in found]
+                models = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.glb"))
+                                if not os.path.basename(f).startswith("input"))   # not the job's copy of its source
+                if models:                           # 🧊 3D models the job made
+                    job["models"] = models
                 dm = sorted(glob.glob(os.path.join(d, "depth", "*_depth.png")))
                 if dm:                               # --depth: the map the sampler actually got
                     job["depth_map"] = "depth/" + os.path.basename(dm[-1])
@@ -1268,7 +1304,7 @@ class JobQueue:
                     if t != o["file"] and os.path.isfile(os.path.join(d, t)):
                         o["tiled"] = t
                 if job["status"] != "cancelled":
-                    job["status"] = "done" if rc == 0 and job["outputs"] else "failed"
+                    job["status"] = "done" if rc == 0 and (job["outputs"] or job.get("models")) else "failed"
                 if job["status"] == "done" and job.get("export"):
                     try:                             # batch rows: drop a clean <path>.png where the game loads it
                         os.makedirs(os.path.dirname(job["export"]), exist_ok=True)

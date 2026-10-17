@@ -134,6 +134,12 @@ def print_help():
         opt("--cutout-key [TOL]", "--cutout: also keep what's far from the bg colour (grey-on-grey parts)", "34"),
         opt("--fit-to OLD.png", "fit the cut-out into an old sprite's footprint (same size + ground line)"),
         opt("--fit-scale N", "--fit-to canvas = old size x N", "4 art / 1 pixel"),
+        opt("--mesh IMG", "make a 3D model (.glb) of the picture's subject (Hunyuan3D 2 + Blender preview)"),
+        opt("--turnaround SRC", "rotation sprites from a picture or a model: 3D -> N views -> painted to match"),
+        opt("--angles N", "--turnaround: views around the model", "8"),
+        opt("--elev DEG", "--turnaround: camera height above eye level", "0"),
+        opt("--lowpoly FACES", "--mesh/--turnaround: faceted low-poly model (e.g. 400 faces)"),
+        opt("--blender CMD", "Blender for 3D", "blender / org.blender.Blender flatpak"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
@@ -1058,7 +1064,7 @@ def _transient(err):
 
 # errors after which the server fails every prompt until its ComfyUI is restarted (pixelmon-gui does that
 # by itself when servers.json has a "_restart" command for it)
-POISONED = ("object has no attribute 'model_size'",)
+POISONED = ("object has no attribute 'model_size'", "object has no attribute 'is_dynamic'")
 
 
 def _wait_restart(pid, server, limit=120):
@@ -1393,6 +1399,27 @@ def main():
                         "the same size in the game). implies --cutout")
     p.add_argument("--fit-scale", dest="fit_scale", type=int, default=0, metavar="N",
                    help="--fit-to canvas = the old picture's size x N. default 4 with --art/--raw, 1 for pixel art")
+    p.add_argument("--mesh", default=None, metavar="IMG",
+                   help="make a 3D model (.glb) of the picture's subject with Hunyuan3D 2 on the render server "
+                        "(+ a Blender preview). the prompt is optional (it names the files)")
+    p.add_argument("--turnaround", default=None, metavar="IMG|MODEL",
+                   help="rotation sprites: the picture -> a 3D model (or use a .glb/.obj/... you have) -> Blender "
+                        "renders --angles views -> each painted with depth lock + steering from the picture, cut "
+                        "out, one seed. the prompt says what the subject is; every other flag applies to the sprites")
+    p.add_argument("--angles", type=int, default=8, help="--turnaround: how many views around the model (default 8)")
+    p.add_argument("--elev", type=float, default=0.0, metavar="DEG",
+                   help="--turnaround: camera height in degrees above the model's middle (default 0, eye level)")
+    p.add_argument("--lowpoly", type=int, default=0, metavar="FACES",
+                   help="--mesh/--turnaround: also make a faceted low-poly copy with about FACES faces (e.g. 400); "
+                        "the turnaround renders and paints that one")
+    p.add_argument("--blender", default=None, metavar="CMD",
+                   help="how to run Blender for --mesh/--turnaround. default $PIXELMON_BLENDER, blender on the "
+                        "PATH, or the org.blender.Blender flatpak")
+    p.add_argument("--mesh-model", dest="mesh_model", default="hunyuan3d-dit-v2_fp16.safetensors", metavar="FILE",
+                   help="Hunyuan3D 2 checkpoint (models/checkpoints/). default hunyuan3d-dit-v2_fp16.safetensors")
+    p.add_argument("--mesh-steps", dest="mesh_steps", type=int, default=20, help=argparse.SUPPRESS)
+    p.add_argument("--mesh-cfg", dest="mesh_cfg", type=float, default=5.5, help=argparse.SUPPRESS)
+    p.add_argument("--mesh-octree", dest="mesh_octree", type=int, default=256, help=argparse.SUPPRESS)
     p.add_argument("--fit-subject", dest="fit_subject", action="store_true",
                    help="crop the full-res render to its subject (background found from the edges) so it FILLS the "
                         "canvas before reducing — a 16x16 sprite gets twice the pixels on the subject")
@@ -1615,9 +1642,12 @@ def main():
         REMOTE = not any(h in SERVER for h in ("127.0.0.1", "localhost", "[::1]"))
 
     # Friendly help on -h/--help, or when run with no prompt at all.
-    if a.show_help or (not a.prompt and not a.batch and not a.list_palettes and not a.list_styles):
+    if a.show_help or (not a.prompt and not a.batch and not a.list_palettes and not a.list_styles and not a.mesh):
         print_help()
         return
+    if a.mesh or a.turnaround:               # 3D: a model, and rotation sprites painted from it (turnaround.py)
+        import turnaround
+        return turnaround.run(sys.modules[__name__], a, p)
     if a.list_palettes:
         print_palettes()
         return
