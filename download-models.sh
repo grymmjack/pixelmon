@@ -5,7 +5,7 @@
 #   ./download-models.sh              core: SDXL + the LoRAs every style guide needs      (~7.9 GB)
 #   ./download-models.sh --lab        + LAB: ControlNet (convert/restyle) + SDXL inpainting (~7.5 GB)
 #   ./download-models.sh --steer      + steering / evolve: IPAdapter + CLIP-vision        (~3.2 GB)
-#   ./download-models.sh --depth      + depth lock (--depth): depth ControlNet + BiRefNet  (~2.9 GB)
+#   ./download-models.sh --depth      + depth lock (--depth) + cut-outs (--cutout): depth ControlNet + BiRefNet  (~2.9 GB)
 #   ./download-models.sh --juggernaut + Juggernaut XL v9, an optional alternative checkpoint (~6.6 GB)
 #   ./download-models.sh --all        everything above                                     (~25 GB)
 #   ./download-models.sh --list       show what's installed and what's missing, download nothing
@@ -84,7 +84,7 @@ if [ "$WANT_DEPTH" = 1 ] || [ "$LIST" = 1 ]; then
     get "https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0/resolve/main/diffusion_pytorch_model.fp16.safetensors" \
         controlnet controlnet-depth-sdxl-1.0.safetensors "2.5 GB" "--depth / the Steering tab's depth lock"
     get "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/model.safetensors" \
-        background_removal birefnet.safetensors "444 MB" "--depth-mask-bg (find the subject, black out the rest)"
+        background_removal birefnet.safetensors "444 MB" "--cutout and --depth-mask-bg (find the subject)"
 fi
 if [ "$WANT_JUGG" = 1 ] || [ "$LIST" = 1 ]; then
     echo "== optional checkpoint"

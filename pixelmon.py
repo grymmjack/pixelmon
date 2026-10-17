@@ -130,6 +130,10 @@ def print_help():
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
+        opt("--cutout", "cut out the subject with BiRefNet on the render server (any background)"),
+        opt("--cutout-key [TOL]", "--cutout: also keep what's far from the bg colour (grey-on-grey parts)", "34"),
+        opt("--fit-to OLD.png", "fit the cut-out into an old sprite's footprint (same size + ground line)"),
+        opt("--fit-scale N", "--fit-to canvas = old size x N", "4 art / 1 pixel"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
@@ -610,6 +614,15 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         if "11" in g:
             g["71"] = {"class_type": "TilePreview", "inputs": {"image": g["11"]["inputs"]["images"], "repeat": 3, "tiling": a.tile}}
             g["72"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix + "_tiled", "images": ["71", 0]}}
+    if getattr(a, "cutout", False) and ("10" in g or "11" in g) and not (a.fit_subject and "10" in g):
+        # (--fit-subject crops before pixelating, so its mask wouldn't line up: that one is cut out after)
+        # --cutout: BiRefNet finds the subject in the full-size picture (before any pixelation, where it's
+        # clearest); cutout_output() shrinks this mask onto the finished file the same way the picture was
+        src = g["10"]["inputs"]["image"] if "10" in g else g["11"]["inputs"]["images"]
+        g["c1"] = {"class_type": "LoadBackgroundRemovalModel", "inputs": {"bg_removal_name": a.cutout_model}}
+        g["c2"] = {"class_type": "RemoveBackground", "inputs": {"bg_removal_model": ["c1", 0], "image": src}}
+        g["c3"] = {"class_type": "MaskToImage", "inputs": {"mask": ["c2", 0]}}
+        g["c4"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix + "_cutmask", "images": ["c3", 0]}}
     g["6"]["inputs"]["clip"] = clip_src
     g["7"]["inputs"]["clip"] = clip_src
     g["3"]["inputs"]["model"] = model_src
@@ -829,6 +842,131 @@ def enlarge_output(a, sprite):
     im.resize((im.width * k, im.height * k), Image.NEAREST).save(sprite)
 
 
+def _bbox(alpha, thr):
+    """(x0, y0, x1, y1) of the pixels at or above thr in a 2-D alpha array, or None."""
+    import numpy as np
+    ys, xs = np.nonzero(alpha >= thr)
+    return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1) if len(xs) else None
+
+
+def _edge_key(rgb, tol):
+    """True where a pixel is further than tol from the background colour (the median of the border)."""
+    import numpy as np
+    e = max(1, min(8, min(rgb.shape[:2]) // 16))
+    edge = np.concatenate([rgb[:e].reshape(-1, 3), rgb[-e:].reshape(-1, 3), rgb[:, :e].reshape(-1, 3), rgb[:, -e:].reshape(-1, 3)])
+    return np.sqrt(((rgb - np.median(edge, 0)) ** 2).sum(-1)) > tol
+
+
+def _bleed(im, rounds=12):
+    """Colour the see-through pixels from their solid neighbours, so a game that smooths the edge gets no dark halo."""
+    import numpy as np
+    from PIL import Image
+    a = np.array(im)
+    acc = a[..., :3].astype(np.float32) * (a[..., 3] > 0)[..., None]
+    filled = a[..., 3] > 0
+    for _ in range(rounds):
+        if filled.all():
+            break
+        p, m = np.pad(acc, ((1, 1), (1, 1), (0, 0))), np.pad(filled, 1).astype(np.float32)
+        h, w = filled.shape
+        tot = sum(p[1 + dy:1 + dy + h, 1 + dx:1 + dx + w] for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+        cnt = sum(m[1 + dy:1 + dy + h, 1 + dx:1 + dx + w] for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+        new = ~filled & (cnt > 0)
+        acc[new] = tot[new] / cnt[new][:, None]
+        filled |= new
+    a[..., :3] = np.clip(acc, 0, 255).astype(np.uint8)
+    return Image.fromarray(a, "RGBA")
+
+
+def _cutout_mask(a, src, sprite, server):
+    """BiRefNet's mask of a finished picture (a separate pass, for a render that didn't make its own)."""
+    import tempfile
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as tmp:
+        big = src
+        if max(src.size) < 1024:                # BiRefNet sees a small sprite at a size it was trained on
+            k = max(1, 1024 // max(src.size))
+            big = src.resize((src.width * k, src.height * k), Image.NEAREST)
+        up = os.path.join(tmp, "cut_" + os.path.basename(sprite))
+        big.save(up)
+        name = _upload_image(up, server, "--cutout")
+        g = {"1": {"class_type": "LoadImage", "inputs": {"image": name}},
+             "2": {"class_type": "LoadBackgroundRemovalModel", "inputs": {"bg_removal_name": a.cutout_model}},
+             "3": {"class_type": "RemoveBackground", "inputs": {"bg_removal_model": ["2", 0], "image": ["1", 0]}},
+             "4": {"class_type": "MaskToImage", "inputs": {"mask": ["3", 0]}},
+             "5": {"class_type": "SaveImage", "inputs": {"images": ["4", 0], "filename_prefix": "pixelmon/cutout/mask"}}}
+        outs = wait(submit(g, server), server, resubmit=lambda fresh: submit(fresh_copy(g) if fresh else g, server))
+        im = next(im for node in outs.values() for im in node.get("images", []))
+        mask = Image.open(fetch_image(im, tmp, server)).convert("L")
+        mask.load()
+    return mask
+
+
+def cutout_output(a, sprite, server=None, files=()):
+    """--cutout: cut the subject out with BiRefNet (the background goes transparent), widened by a colour key
+    with --cutout-key (parts as grey as the backdrop), then with --fit-to fitted into an old picture's
+    footprint at --fit-scale: the same width-or-height, centred the same way, standing on the same line, so
+    a remade sprite is the same size in the game as the one it replaces. The mask comes from the render's
+    full-size picture (build_graph saves it as *_cutmask_*), shrunk onto the file the way the picture was."""
+    if not (getattr(a, "cutout", False) and sprite and os.path.isfile(sprite)):
+        return
+    import numpy as np
+    from PIL import Image
+    server = server or SERVER
+    smooth = a.art or a.raw                     # pixel art keeps hard 0/255 edges and whole pixels
+    src = Image.open(sprite).convert("RGB")
+    made = next((f for f in files if "_cutmask_" in os.path.basename(f) and os.path.isfile(f)), None)
+    if made:                                    # the render's own mask, from the full-size picture
+        mask = Image.open(made).convert("L")
+        mask.load()
+        os.remove(made)
+    else:                                       # no mask in the render: cut the finished file out instead
+        mask = _cutout_mask(a, src, sprite, server)
+    if not mask.getbbox():
+        print("      ⚠ cut-out: BiRefNet found no subject — left the picture as it was")
+        return
+    if smooth:
+        m = np.array(mask.resize(src.size, Image.LANCZOS))
+    else:                                       # a sprite pixel is solid when most of its block is subject
+        m = np.where(np.array(mask.resize(src.size, Image.BOX)) >= 128, 255, 0).astype(np.uint8)
+    if a.cutout_key:
+        key = _edge_key(np.asarray(src, np.float32), a.cutout_key)
+        try:
+            from scipy import ndimage
+            if smooth:                          # drop specks of noise; a pixel sprite has none to drop
+                key = ndimage.binary_opening(key, iterations=2)
+            key = ndimage.binary_fill_holes(key | (m > 128))
+        except ImportError:
+            pass
+        m = np.maximum(m, (key * 255).astype(np.uint8))
+    m[m < 24] = 0                               # the faint haze BiRefNet leaves round the edge
+    cut = src.convert("RGBA")
+    cut.putalpha(Image.fromarray(m, "L"))
+    note = "cut out"
+    if a.fit_to:
+        old = Image.open(a.fit_to).convert("RGBA")
+        oa = np.array(old)
+        if oa[..., 3].min() == 255:             # an opaque old picture: its footprint is what isn't background
+            ob = _bbox(_edge_key(oa[..., :3].astype(np.float32), a.cutout_key or 34).astype(np.uint8), 1)
+        else:
+            ob = _bbox(oa[..., 3], 128)
+        nb = _bbox(m, 96)
+        scale = a.fit_scale or (4 if smooth else 1)
+        canvas = Image.new("RGBA", (old.width * scale, old.height * scale), (0, 0, 0, 0))
+        if ob and nb:
+            x0, y0, x1, y1 = [v * scale for v in ob]
+            bw, bh = x1 - x0, y1 - y0
+            piece = cut.crop(nb)
+            k = min(bw / piece.width, bh / piece.height)
+            pw, ph = max(1, round(piece.width * k)), max(1, round(piece.height * k))
+            piece = piece.resize((pw, ph), Image.LANCZOS if smooth else Image.NEAREST)
+            canvas.alpha_composite(piece, (max(0, round(x0 + (bw - pw) / 2)), max(0, y1 - ph)))   # standing where it stood
+        cut = canvas
+        note = f"cut out, fitted to {os.path.basename(a.fit_to)}'s footprint at {scale}x ({cut.width}x{cut.height})"
+    (_bleed(cut) if smooth else cut).save(sprite)
+    print(f"      ✂ {note}")
+
+
 def art_palette(a, sprite, pal):
     """--art + --palette: move the finished picture's colors toward the palette WITHOUT pixelating it.
     Each pixel is blended toward its nearest palette color by --palette-strength (1 = exactly that color)."""
@@ -918,6 +1056,26 @@ def _transient(err):
     return bool(err) and (("Loader" in err.split(" (node")[0] and "IndexError" in err) or "out of memory" in err.lower())
 
 
+# errors after which the server fails every prompt until its ComfyUI is restarted (pixelmon-gui does that
+# by itself when servers.json has a "_restart" command for it)
+POISONED = ("object has no attribute 'model_size'",)
+
+
+def _wait_restart(pid, server, limit=120):
+    """After a POISONED error: wait (up to `limit` s) for the server to be restarted, which shows as the
+    prompt dropping out of its history. True once it has been."""
+    t = time.time()
+    while time.time() - t < limit:
+        time.sleep(3)
+        try:
+            with urllib.request.urlopen(f"{server}/history/{pid}", timeout=10) as r:
+                if pid not in json.loads(r.read()):
+                    return True
+        except OSError:                            # down: restarting
+            pass
+    return False
+
+
 class CachedNoOutput(RuntimeError):
     """ComfyUI answered an identical, fully cached prompt with 'success' but no image list."""
 
@@ -1003,6 +1161,12 @@ def wait(pid, server=None, timeout=600, resubmit=None):
                 continue
         if pid in hist:
             err = _render_error(hist[pid])
+            if err and again and relost and any(p in err for p in POISONED):
+                print("   ↻ the render server broke (it needs a restart) — waiting for it to come back, then sending this again")
+                if not _wait_restart(pid, server):
+                    sys.exit(f"Render failed on the server — {err}\n   Its ComfyUI needs a restart.")
+                pid, relost, lost, waited = again(False), relost - 1, 0, 0
+                continue
             if err and resubmit and _transient(err):
                 print(f"   ↻ server hiccup ({err.split(': ', 1)[-1][:60]}) — retrying once")
                 pid, resubmit, waited = resubmit(False), None, 0
@@ -1144,11 +1308,12 @@ def run_farm(a, work):
             imgs = [im for node in outs.values() for im in node.get("images", [])]
             dest_dir = d or os.path.join(OUTPUT, "pixelmon")
             files = [fetch_image(im, dest_dir, srv) for im in imgs]
-            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f or "_raw_" in f), None)
+            sprite = next((f for f in files if ("_sprite_" in f or "_art_" in f or "_raw_" in f) and "_cutmask_" not in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)
             enlarge_output(a, sprite)
+            cutout_output(a, sprite, srv, files)
             done += 1
             sj = f"{subj}  " if a.batch else ""
             print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
@@ -1214,6 +1379,20 @@ def main():
     p.add_argument("--color-match", dest="color_match", choices=["oklab", "redmean"], default="oklab",
                    help="how the palette lock picks the nearest color: oklab = perceptual (keeps hue and lightness "
                         "as the eye sees them; default), redmean = the older RGB approximation")
+    p.add_argument("--cutout", action="store_true",
+                   help="cut the subject out with BiRefNet (a background-removal model on the render server): "
+                        "the background goes transparent, even a busy one. see --cutout-key, --fit-to")
+    p.add_argument("--cutout-key", dest="cutout_key", type=float, nargs="?", const=34.0, default=0.0, metavar="TOL",
+                   help="with --cutout: also keep anything further than TOL (default 34) from the background's "
+                        "colour, for parts as grey as the backdrop that BiRefNet drops")
+    p.add_argument("--cutout-model", dest="cutout_model", default="birefnet.safetensors", metavar="FILE",
+                   help="background-removal model for --cutout (models/background_removal/). default birefnet.safetensors")
+    p.add_argument("--fit-to", dest="fit_to", default=None, metavar="OLD.png",
+                   help="with --cutout: fit the cut-out into this old picture's footprint at --fit-scale: the same "
+                        "width-or-height, centred the same way, standing on the same line (a remade sprite stays "
+                        "the same size in the game). implies --cutout")
+    p.add_argument("--fit-scale", dest="fit_scale", type=int, default=0, metavar="N",
+                   help="--fit-to canvas = the old picture's size x N. default 4 with --art/--raw, 1 for pixel art")
     p.add_argument("--fit-subject", dest="fit_subject", action="store_true",
                    help="crop the full-res render to its subject (background found from the edges) so it FILLS the "
                         "canvas before reducing — a 16x16 sprite gets twice the pixels on the subject")
@@ -1516,6 +1695,20 @@ def main():
         p.error("--depth-raw / --depth-mask-bg / --depth-only need --depth IMG")
     if not (0 < a.canny_low < a.canny_high < 1):
         p.error("--canny-low / --canny-high must be 0..1 with low < high")
+    if a.fit_to:
+        a.fit_to = os.path.expanduser(a.fit_to)
+        if not os.path.isfile(a.fit_to):
+            p.error(f"--fit-to: no such image: {a.fit_to}")
+        a.cutout = True
+    if a.cutout:
+        if a.transparent:
+            p.error("--cutout replaces --transparent's colour match with a model cut-out: use one of them")
+        if a.animate or a.tile or a.post_sweep:
+            p.error("--cutout works on single pictures (not --animate, --tile or --post-sweep)")
+    elif a.cutout_key or a.fit_scale:
+        p.error("--cutout-key / --fit-scale need --cutout (or --fit-to)")
+    if a.cutout_key < 0 or a.fit_scale < 0:
+        p.error("--cutout-key and --fit-scale can't be negative")
     if a.init:
         if not os.path.isfile(os.path.expanduser(a.init)):
             p.error(f"--init: no such image: {a.init}")
@@ -1722,11 +1915,12 @@ def main():
                     print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={seed}  ->  {f}")
                 first_open = first_open or (shots[0] if shots else None)
                 continue
-            sprite = next((f for f in files if "_sprite_" in f or "_art_" in f or "_raw_" in f), None)
+            sprite = next((f for f in files if ("_sprite_" in f or "_art_" in f or "_raw_" in f) and "_cutmask_" not in f), None)
             keep_outside_mask(a, sprite)
             stitch_inpaint(a, sprite)
             art_palette(a, sprite, pal)
             enlarge_output(a, sprite)
+            cutout_output(a, sprite, files=files)
             preview = next((f for f in files if "_preview_" in f), None)
             tiled = next((f for f in files if "_tiled_" in f), None)
             first_open = first_open or tiled or preview or sprite   # open the seam check / preview if saved, else the sprite

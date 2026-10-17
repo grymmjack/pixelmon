@@ -307,6 +307,10 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--depth IMG` | **depth lock**: keep a reference's camera angle + geometry, the prompt sets the rest — see [Depth lock](#depth-lock--camera-angle--geometry-from-a-reference---depth) | — |
 | `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
+| `--cutout` | cut the subject out with BiRefNet (a background-removal model on the render server); copes with any background — see [Cut-outs](#cut-outs--remake-a-games-sprites-at-the-same-size---cutout---fit-to) | off |
+| `--cutout-key [TOL]` | with `--cutout`, also keep anything further than TOL from the background colour (parts as grey as the backdrop) | off (34 when given) |
+| `--fit-to OLD.png` | fit the cut-out into an old picture's footprint: same width-or-height, centred, standing on the same line; implies `--cutout` | — |
+| `--fit-scale N` | `--fit-to` canvas = the old picture's size × N | 4 with `--art`/`--raw`, 1 for pixel art |
 | `--tile [x\|y]` | **seamless tileable texture**: the model and VAE wrap at the edges (circular padding) and the pixel pass filters across them, so the result repeats with no seam (both axes, or just `x` / `y`). Drops the sprite wording and adds an edge/object negative. Also saves a 3×3 `_tiled_` preview for checking seams. Needs the updated `pixelart_palette` nodes on the render server | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
@@ -382,6 +386,31 @@ pixelmon "a knight" --steer ~/refs/wasteland --steer-strength 0.5
 **Setup:** the `ComfyUI_IPAdapter_plus` node (cloned by `install.sh`) + the IPAdapter
 models (`./download-models.sh --steer`, ~3.4 GB). **VRAM:** the CLIP-ViT-H encoder is
 heavy — on an 8 GB card launch ComfyUI with `--lowvram` or it OOMs; 12 GB+ is fine.
+
+### Cut-outs — remake a game's sprites at the same size (`--cutout`, `--fit-to`)
+
+`--cutout` cuts the subject out with **BiRefNet**, a background-removal model on the render
+server. It runs on the full-size picture, before pixelation, so it copes with busy backgrounds
+and with a subject the palette later turns the same colour as its backdrop. Pixel art gets
+hard-edged whole pixels. Art mode gets a soft edge whose see-through pixels carry the edge colour,
+so a game that smooths sprites shows no dark halo. `--cutout-key` adds a colour key for parts
+as grey as the background, which BiRefNet drops.
+
+`--fit-to OLD.png` then fits the cut-out into an old picture's **footprint**: the same
+width-or-height, centred the same way, standing on the same line, on a canvas the old picture's
+size × `--fit-scale` (4 for art, 1 for pixel art). Remade monsters stay the same size and stand
+on the same line in the game.
+
+```bash
+pixelmon "a sci-fi supply crate, plain grey backdrop" --art --fit-to ~/game/crate.png   # 64x64 -> 256x256
+```
+
+In **pixelmon-gui**: ✂ **cut out** and **+ colour key** sit with the canvas options. The
+**Batch** tab's **✂ fit into the old sprites' footprints** fits every row into
+`<old sprites folder>/<row path>.png` (rows with no old picture just render). Export to a
+different folder, or a second run would fit into the new pictures.
+
+**Setup:** `./download-models.sh --depth` fetches BiRefNet (444 MB), together with the depth model.
 
 ### Depth lock — camera angle + geometry from a reference (`--depth`)
 
@@ -499,10 +528,11 @@ If the render server stops answering, the center pane blacks out with a notice (
 setup / hide) and clears by itself when it's back; a `local` ComfyUI that isn't running yet
 just starts with your first render.
 
-A ComfyUI can also answer but stop running anything (its prompt worker died): prompts wait and
-nothing runs. The status bar calls that out as **stuck** after 20 seconds. Give the server a restart
-command in `servers.json` and pixelmon-gui restarts it by itself, when it's stuck or hasn't
-answered for 30 seconds, at most once every 3 minutes:
+A ComfyUI can also answer and still be broken. Either its prompt worker died, so prompts wait and
+nothing runs (**stuck**, after 20 seconds). Or its model manager broke, so every prompt fails at
+once with `'NoneType' object has no attribute 'model_size'` (**broken**). The status bar calls out
+both. Give the server a restart command in `servers.json` and pixelmon-gui restarts it by itself,
+when it's stuck, broken, or hasn't answered for 30 seconds, at most once every 3 minutes:
 
 ```json
 "_restart": {"gpubox": "ssh gpubox 'sudo systemctl restart comfyui'"}
@@ -644,6 +674,10 @@ OPTIONS
   --palette NAME      none / random / a name (--list-palettes)  [none]
   --style NAMES       append proven style guide(s) — see --list-styles
   --transparent       cut out background -> transparent PNG
+  --cutout            cut out the subject with BiRefNet on the render server (any background)
+  --cutout-key [TOL]  --cutout: also keep what's far from the bg colour (grey-on-grey parts)  [34]
+  --fit-to OLD.png    fit the cut-out into an old sprite's footprint (same size + ground line)
+  --fit-scale N       --fit-to canvas = old size x N  [4 art / 1 pixel]
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
                         jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]

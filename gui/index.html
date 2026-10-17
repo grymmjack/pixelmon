@@ -761,6 +761,8 @@ fieldset.closed { padding-bottom: 2px; }
           <select id="snap_method" title="how the grid is found"><option value="unfake">unfake (model's own grid)</option><option value="snapper">snapper (fit canvas)</option></select>
           <i class="help" data-help="snap">i</i></label>
         <label><input type="checkbox" id="transparent"> transparent bg<i class="help" data-help="transparent">i</i></label>
+        <label><input type="checkbox" id="cutout"> ✂ cut out<i class="help" data-help="cutout">i</i></label>
+        <label><input type="checkbox" id="cutout_key"> + colour key<i class="help" data-help="cutoutkey">i</i></label>
         <label><input type="checkbox" id="fit_subject"> fill frame<i class="help" data-help="fitsubject">i</i></label>
         <label><input type="checkbox" id="fast"> fast (LCM)<i class="help" data-help="fast">i</i></label>
         <label><input type="checkbox" id="art"> art mode (no pixelation)<i class="help" data-help="artmode">i</i></label>
@@ -1037,6 +1039,11 @@ fieldset.closed { padding-bottom: 2px; }
         <button class="btn small" id="batchOpenExport" title="open the export folder">📂</button>
       </div>
       <div class="steer-top">
+        <label class="inline" title="cut each picture out (BiRefNet) and fit it into the old sprite's footprint: the same width-or-height, centred the same way, standing on the same line, so it's the same size in the game"><input type="checkbox" id="batchFit"> ✂ fit into the old sprites' footprints</label>
+        <input type="text" id="batchFitDir" class="grow" placeholder="old sprites folder: <folder>/<row path>.png (e.g. ~/git/neon-caster) — export somewhere else">
+        <span>at <select id="batchFitScale"><option value="0">auto (4× art, 1× pixel)</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></span>
+      </div>
+      <div class="steer-top">
         <input type="text" id="batchFilter" class="grow" placeholder="filter rows (path, style or prompt)…">
         <button class="btn small" id="batchAll">select shown</button><button class="btn small" id="batchNone">select none</button>
         <span id="batchCount" style="color:var(--dim)"></span>
@@ -1199,7 +1206,7 @@ const store = {
 
 // ---------------- form state ----------------
 const FIELDS = ["subject", "lora", "lora_strength", "kind", "genre", "era", "negative", "outW", "outH",
-  "snap_pixels", "snap_method", "transparent", "fit_subject", "color_match", "art", "raw", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
+  "snap_pixels", "snap_method", "transparent", "cutout", "cutout_key", "fit_subject", "color_match", "art", "raw", "no_sprite_suffix", "tile", "tile_axes", "palette", "palette_strength", "dither", "dither_amount", "despeckle", "pixel_angles", "angle_grid", "pixel_size", "thin_lines", "seed", "seedLock",
   "n", "name", "steps", "cfg", "fast", "showFull", "exact", "exactPos", "exactNeg", "exactDirty"];
 let activeStyles = new Set();
 
@@ -1226,7 +1233,7 @@ function params(f = readForm()) {
   const out = f.outW && f.outH ? `${f.outW}x${f.outH}` : "";
   return {
     prompt: composedPrompt(f), negative: f.negative.trim(), lora: f.lora, lora_strength: f.lora_strength,
-    styles: f.styles, out, snap_pixels: f.snap_pixels, snap_method: f.snap_method, fit_subject: f.fit_subject, color_match: f.color_match, transparent: f.transparent, art: f.art, raw: !f.art && f.raw,
+    styles: f.styles, out, snap_pixels: f.snap_pixels, snap_method: f.snap_method, fit_subject: f.fit_subject, color_match: f.color_match, transparent: f.transparent, cutout: f.cutout, cutout_key: f.cutout_key, art: f.art, raw: !f.art && f.raw,
     no_sprite_suffix: f.no_sprite_suffix, tile: f.tile ? f.tile_axes || "both" : "",
     palette: f.palette, palette_strength: f.palette_strength, dither: f.dither, dither_amount: f.dither_amount, despeckle: f.despeckle,
     pixel_angles: f.pixel_angles, angle_grid: f.angle_grid, pixel_size: f.pixel_size, thin_lines: f.thin_lines,
@@ -1274,6 +1281,9 @@ function cliFor(p) {
     if (p.color_match === "redmean") a.push("--color-match", "redmean");
     if (p.no_sprite_suffix) a.push("--no-sprite-suffix");
   }
+  if (p.cutout || p.fit) a.push("--cutout");
+  if ((p.cutout || p.fit) && p.cutout_key) a.push("--cutout-key");
+  if (p.fit) a.push("--fit-to", q(`${p.fit.dir.replace(/\/$/, "")}/${p.fit.path}.png`), "--fit-scale", p.fit.scale);
   if (p.fast) a.push("--fast");
   if (p.steps) a.push("--steps", p.steps);
   if (p.cfg) a.push("--cfg", p.cfg);
@@ -1751,6 +1761,14 @@ const HELP = {
     around it. This crops to the subject first (the background is found from the edges, like transparent bg), then
     shrinks — so the subject fills your canvas instead of sitting small in the middle. A must for 16×16 and 32×32
     sprites and icons. For single subjects on a plain background; not for scenes or seamless tiles.`,
+  cutout: `<span class="tipk">✂ Cut out</span>: BiRefNet, a background-removal model on the render server, finds the subject in the
+    full-size picture before it's pixelated, and everything else goes transparent. Unlike transparent bg it copes with any
+    background, busy or the same colour as the subject. Pixel art gets hard-edged whole pixels; art mode a soft edge whose
+    see-through pixels carry the edge colour, so a game that smooths sprites shows no dark halo. Batch › fit into the old
+    sprites' footprints uses it to remake a game's sprites at the same size.`,
+  cutoutkey: `<span class="tipk">+ Colour key</span>: with ✂ cut out, also keep anything clearly different from the background's
+    colour (the median of the picture's border). For parts as grey as the backdrop that BiRefNet drops, like a grey desk on
+    a grey floor.`,
   transparent: `<span class="tipk">Transparent bg</span>: removes the plain background around a single sprite or
     character, so it can be placed in a game. Not for scenes.`,
   artmode: `<span class="tipk">Art mode</span>: makes a full-resolution painting/illustration instead of pixel art
@@ -3187,6 +3205,9 @@ const LAB_DEFAULTS = () => ({ adj: { ...ADJ0 }, edges: false, file: null, size: 
   init: false, denoise: 0.7, w: 320, n: 4, group: null, live: false, pseed: null, mask: null, edit: { action: "change", strength: 1, what: "" } });
 function initPaneTools() {
   $("sbAbort").onclick = abortAll;
+  // ✂ cut out replaces transparent bg's colour match: one or the other
+  $("cutout").addEventListener("change", () => { if ($("cutout").checked) $("transparent").checked = false; });
+  $("transparent").addEventListener("change", () => { if ($("transparent").checked) $("cutout").checked = false; });
   $("queueClear").onclick = async () => {
     const js = Object.values(JOBS), waiting = js.filter(j => j.status === "queued").length,
           running = js.some(j => j.status === "running"), done = js.length - waiting - (running ? 1 : 0);
@@ -3521,6 +3542,10 @@ function renderBatch() {
 }
 async function queueBatch() {
   const skip = $("batchSkip").checked, dir = $("batchExport").value.trim();
+  const fitDir = $("batchFit").checked ? $("batchFitDir").value.trim() : "";
+  if ($("batchFit").checked && !fitDir) return showErr("Fill in the old sprites folder to fit into their footprints.");
+  if (fitDir && dir && fitDir.replace(/\/+$/, "") === dir.replace(/\/+$/, ""))
+    return showErr("Export somewhere other than the old sprites folder: a second run would fit into the new ones.");
   const todo = BATCH.sel.filter(i => !(skip && BATCH.exists.includes(BATCH.rows[i].path)));
   if (!todo.length) return showErr("Nothing selected to render.");
   const f = readForm(), base = { ...params(f), form: f };
@@ -3535,6 +3560,7 @@ async function queueBatch() {
                 name: r.path.split("/").pop(), group: BATCH.group, label: r.path,
                 form: { ...f, subject: r.prompt, styles } };
     if (dir) p.export = { dir, path: r.path };
+    if (fitDir) p.fit = { dir: fitDir, path: r.path, scale: +$("batchFitScale").value || (f.art || f.raw ? 4 : 1) };
     try { if (!(await sendJob(p, gen))) break; } catch (e) { showErr(`${r.path}: ${e.message}`); break; }
   }
   poll(); renderBatch();
@@ -3542,6 +3568,11 @@ async function queueBatch() {
 function initBatch() {
   $("batchPath").value = store.get("batchPath", "");
   $("batchExport").value = store.get("batchExport", "");
+  $("batchFit").checked = store.get("batchFit", false); $("batchFitDir").value = store.get("batchFitDir", "");
+  $("batchFitScale").value = store.get("batchFitScale", "0");
+  $("batchFit").onchange = () => store.set("batchFit", $("batchFit").checked);
+  $("batchFitDir").onchange = () => store.set("batchFitDir", $("batchFitDir").value.trim());
+  $("batchFitScale").onchange = () => store.set("batchFitScale", $("batchFitScale").value);
   $("batchLoad").onclick = async () => {
     try { const r = await api("/api/batch/read", { path: $("batchPath").value.trim() }); await setBatch(r.text, r.path); } catch (e) { showErr(e); }
   };
@@ -4033,7 +4064,8 @@ function statusUpdate(jobs) {
   const nm = j => `“${(j.params.form && j.params.form.subject || j.label || j.params.prompt || "").slice(0, 60)}”`;
   const rs = SRV.restart, srvNote = rs && rs.status !== "done"
       ? `<span class="${rs.status === "failed" ? "err" : "busy"}">↻ ${rs.status === "failed" ? `couldn't restart ${esc(rs.server)}` : `restarting ${esc(rs.server)}`}: it ${esc(rs.why)}</span> · `
-    : SRV.stuck ? `<span class="err">● ${esc(META.server)} is stuck: ${SRV.stuck.pending} prompt${SRV.stuck.pending > 1 ? "s" : ""} waiting, nothing running`
+    : SRV.stuck ? `<span class="err" title="${esc(SRV.stuck.error || "")}">● ${esc(META.server)} ${SRV.stuck.error ? "is broken: every prompt fails"
+      : `is stuck: ${SRV.stuck.pending} prompt${SRV.stuck.pending > 1 ? "s" : ""} waiting, nothing running`}`
       + `${SRV.auto ? "" : " — restart its ComfyUI"}</span> · ` : "";
   $("sbStatus").innerHTML = srvNote + (run
     ? `<span class="busy">● rendering ${Math.min(run.outputs.length + 1, run.total || 1)}/${run.total || 1}</span> ${esc(nm(run))}${queued ? ` · ${queued} job${queued > 1 ? "s" : ""} queued` : ""}`
@@ -5719,7 +5751,7 @@ function srvState(r) {
   const changed = r.up !== SRV.up || r.server !== META.server || JSON.stringify(r.stuck || null) !== JSON.stringify(SRV.stuck)
     || (rs && rs.status) !== (prevRs && prevRs.status) || (rs && rs.at) !== (prevRs && prevRs.at);
   // a ComfyUI that answers but runs nothing, and pixelmon-gui restarting it (servers.json "_restart")
-  if (r.stuck && !SRV.stuck && !r.auto_restart) notify("pixelmon", `render server ${r.server} is stuck: prompts waiting, nothing running — restart its ComfyUI`, true);
+  if (r.stuck && !SRV.stuck && !r.auto_restart) notify("pixelmon", `render server ${r.server} ${r.stuck.error ? "fails every prompt" : "is stuck: prompts waiting, nothing running"} — restart its ComfyUI`, true);
   if (rs && (!prevRs || prevRs.at !== rs.at)) notify("pixelmon", `render server ${rs.server} ${rs.why} — restarting it`, true);
   else if (rs && prevRs && prevRs.status === "running" && rs.status === "failed") notify("pixelmon", `couldn't restart ${rs.server}: ${rs.output || "the restart command failed"}`, true);
   SRV.stuck = r.stuck || null; SRV.restart = rs; SRV.auto = !!r.auto_restart;
@@ -5913,7 +5945,7 @@ async function init() {
   const saved = store.get("form", null);
   if (saved && !store.get("defaults.v2", false)) { saved.showFull = true; store.set("defaults.v2", true); }   // new default, once
   FORM_DEFAULTS = { subject: "", lora: ordered[0], lora_strength: 0.8, kind: "scene background", genre: "",
-    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, snap_method: "unfake", transparent: false, fit_subject: false, color_match: "oklab",
+    era: "1980s DOS game", negative: META.default_negative, outW: 320, outH: 200, snap_pixels: false, snap_method: "unfake", transparent: false, cutout: false, cutout_key: false, fit_subject: false, color_match: "oklab",
     art: false, raw: false, no_sprite_suffix: false, tile: false, tile_axes: "both", palette: "EGA", palette_strength: 0.6, dither: "none", dither_amount: 0.5, despeckle: 2, pixel_angles: 0, angle_grid: "pixel", pixel_size: "", thin_lines: "0", seed: "",
     seedLock: false, n: 1, name: "", steps: "", cfg: "", fast: false, showFull: true, exact: false, exactPos: "", exactNeg: "", exactDirty: false, styles: [] };
   writeForm(Object.assign({}, FORM_DEFAULTS, saved || {}));

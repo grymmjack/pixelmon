@@ -132,6 +132,19 @@ def export_target(p):
     return full
 
 
+def fit_target(p):
+    """A batch row's old picture to fit into (<dir>/<path>.png), or None when it doesn't exist (yet)."""
+    ft = p.get("fit") or {}
+    if not ft.get("dir") or not ft.get("path"):
+        return None
+    base = home_path(ft["dir"], must_exist=False)
+    rel = re.sub(r"\.(png|gif)$", "", str(ft["path"]).strip().lstrip("/"))
+    full = os.path.realpath(os.path.join(base, rel + ".png"))
+    if not full.startswith(base + os.sep):
+        raise ValueError(f"bad batch path {ft['path']!r}")
+    return full if os.path.isfile(full) else None
+
+
 def load_presets():
     try:
         with open(os.path.join(HERE, "presets.json"), encoding="utf-8") as f:
@@ -553,6 +566,9 @@ SERVER_STATE = {"server": None, "url": None, "up": None, "stuck": None, "restart
 STUCK_AFTER = 20      # seconds the same prompt may wait at the head of an idle ComfyUI queue
 DOWN_AFTER = 30       # seconds of no answer before a render server with a restart command is restarted
 RESTART_EVERY = 180   # at most one automatic restart per server this often (it needs time to come up)
+# errors that leave ComfyUI failing every prompt until it's restarted (a model it freed is still on its
+# loaded list; seen after Stable Audio jobs swap Qwen / T5Gemma / SA3 through an 8GB card)
+POISONED = ("object has no attribute 'model_size'",)
 
 
 def restart_command(name):
@@ -601,11 +617,13 @@ def watch_server():
                 stuck = {"pending": len(q["queue_pending"]), "since": head[2]}
         else:
             head = None
-        SERVER_STATE.update(server=name, url=server_url(name), up=up, stuck=stuck)
+        poisoned = server_poisoned(name) if up and not stuck else None
+        SERVER_STATE.update(server=name, url=server_url(name), up=up, stuck=stuck or poisoned)
         why = ("is stuck: prompts waiting, nothing running" if stuck
+               else f"fails every prompt ({poisoned['error']})" if poisoned
                else f"hasn't answered for {DOWN_AFTER}s" if down_since and time.time() - down_since >= DOWN_AFTER else None)
         if why and restart_command(name) and time.time() - last_restart.get(name, 0) >= RESTART_EVERY:
-            last_restart[name] = time.time()
+            last_restart[name] = time.time()           # a restart empties its history, so this can't loop
             head = None
             restart_server(name, why)
         time.sleep(4)
@@ -619,6 +637,23 @@ def server_queue(name=None):
             return json.load(r)
     except Exception:
         return None
+
+
+def server_poisoned(name=None):
+    """{'prompt': id, 'error': msg, 'pending': n} when the newest prompt the server finished died of one of
+    the POISONED errors (it will fail every prompt from now on), else None."""
+    url = server_url(name)
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/history?max_items=1", timeout=3) as r:
+            hist = json.load(r)
+    except Exception:
+        return None
+    for pid, h in hist.items():
+        for kind, msg in (h.get("status") or {}).get("messages") or []:
+            err = str((msg or {}).get("exception_message") or "") if kind == "execution_error" else ""
+            if any(p in err for p in POISONED):
+                return {"prompt": pid, "error": err.strip()[:120], "pending": 0}
+    return None
 
 
 def server_stuck():
@@ -824,6 +859,20 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
                 raise ValueError(f"unknown angle grid {grid!r}")
             if grid != "pixel":
                 argv += ["--angle-grid", grid]
+    fit = fit_target(p)
+    if p.get("cutout") or fit:                   # ✂ BiRefNet cut-out (+ fit into an old sprite's footprint)
+        if p.get("transparent"):
+            raise ValueError("✂ cut out replaces transparent bg: pick one")
+        if p.get("tile"):
+            raise ValueError("✂ cut out doesn't go with seamless tiles")
+        argv.append("--cutout")
+        if p.get("cutout_key"):
+            argv.append("--cutout-key")
+        if fit:
+            sc = int((p.get("fit") or {}).get("scale") or 0)
+            if not 0 <= sc <= 16:
+                raise ValueError("fit scale must be 1..16")
+            argv += ["--fit-to", fit] + (["--fit-scale", str(sc)] if sc else [])
     if p.get("fast"):
         argv.append("--fast")
     for key, flag, typ, lo, hi in (("steps", "--steps", int, 1, 150), ("cfg", "--cfg", float, 0.0, 30.0)):
@@ -1203,7 +1252,8 @@ class JobQueue:
                 # trust the folder over log parsing (covers moved/renamed files)
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
                                if not os.path.basename(f).startswith(("parent.", "input", "mask."))
-                               and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f))   # kept parent / LAB input / seam checks aren't output
+                               and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f)
+                               and "_cutmask_" not in os.path.basename(f))   # kept parent / LAB input / seam checks aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
