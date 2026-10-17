@@ -1,0 +1,122 @@
+{
+ "name": "FPS-Shotgun",
+ "saved": 1791728079.6430047,
+ "note": "",
+ "snapshot": {
+  "form": {
+   "subject": "(first-person POV:1.3), (view from directly behind the gun:1.3), a (shotgun:1.1)\nheld in a right hand, back of the gun facing the camera, rear sights and back\nof the grip visible, back of the hand and knuckles visible, barrel foreshortened,\nhand and forearm rising from the bottom edge of the frame",
+   "lora": "dosart-vga.safetensors",
+   "lora_strength": "0.8",
+   "kind": "game sprite",
+   "genre": "action game",
+   "era": "1990s DOS game",
+   "negative": "(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient, (antialiased:1.1), jpeg artifacts, (text, watermark, signature:1.3), (full body:1.2), cropped head, (multiple faces:1.2), (elf ears:2.0), (pointed ears:2.0)",
+   "outW": "96",
+   "outH": "96",
+   "snap_pixels": false,
+   "snap_method": "unfake",
+   "transparent": false,
+   "fit_subject": false,
+   "color_match": "oklab",
+   "art": true,
+   "raw": false,
+   "no_sprite_suffix": false,
+   "tile": false,
+   "tile_axes": "both",
+   "palette": "none",
+   "palette_strength": "0.65",
+   "dither": "none",
+   "dither_amount": "0.1",
+   "despeckle": "0",
+   "pixel_angles": "0.25",
+   "angle_grid": "pixel",
+   "pixel_size": "1x1",
+   "thin_lines": "0",
+   "seed": "",
+   "seedLock": false,
+   "n": "6",
+   "name": "",
+   "steps": "",
+   "cfg": "7",
+   "fast": false,
+   "showFull": false,
+   "exact": true,
+   "exactPos": "(first-person POV:1.3), (view from directly behind the gun:1.3), a laser pistol\nheld in a right hand, back of the gun facing the camera, rear sights and back\nof the grip visible, back of the hand and knuckles visible, barrel foreshortened,\nhand and forearm rising from the bottom edge of the frame",
+   "exactNeg": "(side profile:1.4), (profile shot:1.3), sideways, lateral angle, broadside,\nmuzzle opening, item icon, inventory icon,\nscenery, landscape, environment, sky, ground, horizon, corridor, room, HUD,\ncrosshair, fire, lava, explosion, screenshot, modern, cinematic, HDR, bloom,\nlens flare, volumetric, ray tracing,\n(3d render, realistic, photograph:1.3), (blurry:1.2), smooth gradient,\n(antialiased:1.1), (text, watermark, signature:1.3),character, soldier, standing figure, full body, torso, legs, head",
+   "exactDirty": true,
+   "styles": []
+  },
+  "steer": {
+   "use": true,
+   "strength": 0.8,
+   "weight": "strong style transfer",
+   "combine": "concat",
+   "sel": [],
+   "col": "gui-drops",
+   "start": 0,
+   "end": 1
+  },
+  "depth": {
+   "use": true,
+   "ref": "gui-drops/DOOM-SHOTGUN-padded.png",
+   "strength": 0.85,
+   "start": 0,
+   "end": 0.65,
+   "raw": false,
+   "mask_bg": false
+  },
+  "evo": {
+   "parent": null,
+   "init": false,
+   "denoise": 0.45,
+   "steerOn": true,
+   "steer": 0.6,
+   "weight": "style and composition",
+   "n": 4,
+   "start": 0,
+   "end": 1,
+   "perChild": false
+  },
+  "lab": {
+   "file": null,
+   "size": [
+    0,
+    0
+   ],
+   "subject": "",
+   "mode": "canny",
+   "strength": 0.8,
+   "init": false,
+   "denoise": 0.7,
+   "w": 320,
+   "n": 4,
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "edges": false,
+   "edit": {
+    "action": "change",
+    "strength": 1,
+    "what": "",
+    "keepColors": true,
+    "keepLight": true,
+    "keepShape": false
+   },
+   "active": false
+  },
+  "adv": {
+   "base": "juggernautXL_v9.safetensors"
+  }
+ },
+ "image": "FPS-Shotgun.png"
+}
