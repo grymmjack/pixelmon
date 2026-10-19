@@ -2,6 +2,7 @@
 
   --mesh IMG          the picture -> a 3D model (.glb) with Hunyuan3D 2 on the render server, plus a
                       4-view preview rendered by Blender. --lowpoly N also writes a faceted low-poly copy.
+  --texture           also a clean, textured model: quads, a UV map, the picture baked into a texture.
   --turnaround SRC    SRC (a picture, or a model: .glb/.gltf/.obj/.stl/.ply/.fbx) -> a model (if needed)
                       -> Blender renders it from --angles directions (exact depth maps) -> pixelmon paints
                       each one: depth lock on that angle's depth, steering from the picture (its colours and
@@ -12,6 +13,7 @@ org.blender.Blender flatpak. pixelmon.py calls run(P, a, parser) with itself as 
 import math
 import os
 import random
+import re
 import shlex
 import shutil
 import subprocess
@@ -24,23 +26,66 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BLENDER_SCRIPT = os.path.join(HERE, "blender", "turnaround.py")
+TEXTURE_SCRIPT = os.path.join(HERE, "blender", "texture.py")
+OPEN_SCRIPT = os.path.join(HERE, "blender", "open_model.py")
 MODEL_EXT = (".glb", ".gltf", ".obj", ".stl", ".ply", ".fbx")
 # flags of the parent run that the per-angle renders must not inherit (they get their own)
 OWN = {"--mesh", "--turnaround", "--angles", "--elev", "--lowpoly", "--blender", "--mesh-model", "--mesh-steps",
-       "--mesh-cfg", "--mesh-octree", "--name", "--seed", "-n", "--number"}
+       "--mesh-cfg", "--mesh-octree", "--name", "--seed", "-n", "--number", "--texture", "--texture-size", "--texture-elev"}
 
 
 def find_blender(spec=None):
-    """The command that runs Blender here, as a list, or None."""
+    """The command that runs Blender here, as a list, or None: spec / $PIXELMON_BLENDER, `blender` on the PATH,
+    the org.blender.Blender flatpak, then the usual install folders (newest version first)."""
     spec = spec or os.environ.get("PIXELMON_BLENDER")
     if spec:
-        return shlex.split(spec)
+        spec = os.path.expanduser(spec)
+        return [spec] if os.path.isfile(spec) else shlex.split(spec, posix=os.name != "nt")
     if shutil.which("blender"):
         return [shutil.which("blender")]
     if shutil.which("flatpak") and subprocess.run(["flatpak", "info", "org.blender.Blender"],
                                                   capture_output=True).returncode == 0:
         return ["flatpak", "run", "org.blender.Blender"]
-    return None
+    return next(([f] for f in blender_installs() if os.path.isfile(f)), None)
+
+
+def blender_installs():
+    """Where Blender is usually unpacked or installed: Linux tarballs in ~/ and /opt, the Snap, Steam,
+    macOS /Applications, Windows Program Files. Newest version first where a folder holds several."""
+    natural = lambda f: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", f.lower())]
+
+    def versions(d, exe):
+        try:
+            names = [n for n in os.listdir(d) if n.lower().startswith("blender")]
+        except OSError:
+            return []
+        return [os.path.join(d, n, exe) for n in sorted(names, key=natural, reverse=True)]
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return ["/Applications/Blender.app/Contents/MacOS/Blender",
+                os.path.join(home, "Applications/Blender.app/Contents/MacOS/Blender")]
+    if os.name == "nt":
+        out = []
+        for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+            pf = os.environ.get(var)
+            if pf:
+                out += versions(os.path.join(pf, "Blender Foundation"), "blender.exe")
+                out.append(os.path.join(pf, "Steam", "steamapps", "common", "Blender", "blender.exe"))
+        return out
+    return (["/snap/bin/blender", "/usr/bin/blender", "/usr/local/bin/blender"] + versions("/opt", "blender")
+            + versions(home, "blender") + versions(os.path.join(home, "Applications"), "blender")
+            + versions(os.path.join(home, "apps"), "blender")
+            + [os.path.join(home, ".steam/steam/steamapps/common/Blender/blender"),
+               os.path.join(home, ".local/share/Steam/steamapps/common/Blender/blender")])
+
+
+def open_in_blender(cmd, model):
+    """The argv that opens `model` in Blender (cmd = find_blender()): a .blend as is, anything else imported
+    (Blender only opens .blend files), framed, in Material Preview."""
+    if model.lower().endswith((".blend", ".blend1")):
+        return cmd + [model]
+    with open(OPEN_SCRIPT, encoding="utf-8") as fh:
+        return cmd + ["--python-expr", fh.read(), "--", model]
 
 
 def view_words(az, elev):
@@ -95,14 +140,26 @@ def blender(a, model, outdir, angles, size, elev=0.0, lowpoly=0, export=None, sh
         shutil.rmtree(work, ignore_errors=True)
 
 
-def make_model(P, a, img, dest, name, seed):
-    """The picture -> a 3D model (dest/<name>.glb) with Hunyuan3D 2 on the render server. An opaque picture
-    is cut out first (BiRefNet); the subject is centred on white with a margin, as Hunyuan3D wants."""
+def cut_picture(P, a, img, dest):
+    """The picture with its subject cut out (BiRefNet, if it isn't already), kept as dest/input-cut.png so
+    --mesh and --texture cut it once."""
     from PIL import Image
+    kept = os.path.join(dest, "input-cut.png")
+    if os.path.isfile(kept) and os.path.getmtime(kept) >= os.path.getmtime(img):
+        return Image.open(kept).convert("RGBA")
     rgba = Image.open(img).convert("RGBA")
     if rgba.getchannel("A").getextrema()[0] == 255:
         print("   ✂ cutting the subject out first (BiRefNet)")
         rgba.putalpha(P._cutout_mask(a, rgba.convert("RGB"), img, P.SERVER).resize(rgba.size))
+    rgba.save(kept)
+    return rgba
+
+
+def make_model(P, a, img, dest, name, seed):
+    """The picture -> a 3D model (dest/<name>.glb) with Hunyuan3D 2 on the render server. An opaque picture
+    is cut out first (BiRefNet); the subject is centred on white with a margin, as Hunyuan3D wants."""
+    from PIL import Image
+    rgba = cut_picture(P, a, img, dest)
     box = rgba.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
     if not box:
         sys.exit(f"--mesh: found no subject in {img}")
@@ -144,6 +201,117 @@ def make_model(P, a, img, dest, name, seed):
         shutil.copyfileobj(r, o)
     print(f"   🧊 3D model -> {out}  ({os.path.getsize(out) // 1024} KB, {time.time() - t0:.0f}s)", flush=True)
     return out
+
+
+def despill(rgba, img, ring=3):
+    """Take the backdrop's tint out of a cut-out's outline (rgba: an HxWx4 array, alpha 0/255, changed in place).
+    The cut keeps a few pixels of anti-aliased edge mixed with the backdrop (magenta, say); the texture's bleed
+    would spread that tint over the model's outline. The backdrop is the picture's border colour, so a picture
+    that came already cut out (no backdrop) is left alone."""
+    import numpy as np
+    from PIL import Image
+    from scipy import ndimage
+    pic = Image.open(img)
+    if pic.mode in ("RGBA", "LA", "PA") and pic.getchannel("A").getextrema()[0] < 255:
+        return
+    pic = np.asarray(pic.convert("RGB"), np.float32)
+    key = np.median(np.concatenate([pic[0], pic[-1], pic[:, 0], pic[:, -1]]), 0)
+    tint = key - key.mean()
+    if np.linalg.norm(tint) < 24:                        # a grey/white/black backdrop has no tint to take out
+        return
+    tint /= np.linalg.norm(tint)
+    solid = rgba[..., 3] > 0
+    edge = solid & (ndimage.distance_transform_edt(solid) <= ring)
+    rgb = rgba[..., :3].astype(np.float32)
+    amount = (rgb - rgb.mean(-1, keepdims=True)) @ tint  # how far each pixel leans towards the backdrop's hue
+    fix = (edge & (amount > 0)) | (solid & (amount > 30))   # + backdrop showing through gaps (under an arm)
+    rgb[fix] -= amount[fix][:, None] * tint              # remove that lean, keep the brightness
+    rgba[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    rgba[..., 3][edge & (np.sqrt(((rgba[..., :3] - key) ** 2).sum(-1)) < 60)] = 0   # pure backdrop: drop it
+
+
+def texture_model(P, a, model, img, dest, name, seed):
+    """model + the picture it was made from -> dest/<name>_textured.glb (+ .gltf, .bin, _texture.png) and a
+    4-view preview. Blender (blender/texture.py) does the work; shapes QuadriFlow refuses get finer voxels,
+    then plain triangles."""
+    import json
+    import numpy as np
+    from PIL import Image
+    cmd = find_blender(a.blender)
+    if not cmd:
+        sys.exit("--texture needs Blender on this machine (see --blender).")
+    faces = a.lowpoly or 6000
+    tex = a.texture_size or (1024 if faces <= 1500 else 2048)
+    if not 256 <= tex <= 8192:
+        sys.exit("--texture-size must be 256..8192")
+    rgba = cut_picture(P, a, img, dest)
+    al = np.array(rgba.getchannel("A"))
+    ys, xs = np.nonzero(al > 24)
+    if not len(xs):
+        sys.exit(f"--texture: found no subject in {img}")
+    box = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+    solid = np.array(rgba)
+    solid[..., 3] = np.where(al >= 128, 255, 0)          # half-see-through edge pixels carry background colour
+    despill(solid, img)
+    base = os.path.join(os.path.expanduser("~"), ".cache", "pixelmon")
+    os.makedirs(base, exist_ok=True)
+    work = tempfile.mkdtemp(prefix="tex-", dir=base)    # a flatpak Blender can't see /tmp
+    try:
+        color, mask, out = (os.path.join(work, f) for f in ("color.png", "mask.png", "out"))
+        P._bleed(Image.fromarray(solid, "RGBA"), rounds=96).convert("RGB").save(color)
+        rgba.getchannel("A").save(mask)
+        src = os.path.join(work, "model" + os.path.splitext(model)[1].lower())
+        shutil.copy2(model, src)
+        t0 = time.time()
+        print(f"   🎨 textured model: {faces} {'flat ' if a.lowpoly else ''}faces, {tex}px texture (Blender)…", flush=True)
+        ok, log = False, ""
+        for voxdiv, quads in ((160, 1), (320, 1), (480, 1), (160, 0)):   # thin parts need finer voxels; then triangles
+            args = cmd + ["-b", "--factory-startup", "--python", TEXTURE_SCRIPT, "--", src, color, mask, out,
+                          "--box", ",".join(str(int(v)) for v in box), "--faces", str(faces), "--tex", str(tex),
+                          "--flat", "1" if a.lowpoly else "0", "--voxdiv", str(voxdiv), "--quads", str(quads),
+                          "--elev", "auto" if a.texture_elev is None else f"{a.texture_elev:g}"]
+            try:
+                r = subprocess.run(args, capture_output=True, text=True, timeout=900)
+                log = r.stdout + r.stderr
+            except subprocess.TimeoutExpired:                # QuadriFlow can spin forever on a bad shape
+                subprocess.run(["pkill", "-KILL", "-f", work])   # a flatpak's Blender outlives the flatpak command
+                log = "timed out"
+            if "TEX done" in log:
+                ok = True
+                break
+            why = next((l for l in reversed(log.splitlines()) if "TEX error" in l), None) or \
+                (log.strip().splitlines() or [""])[-1]
+            print(f"   🎨 {'quads' if quads else 'triangles'} at 1/{voxdiv} didn't work ({why.strip()[:80]})"
+                  f"{', trying again…' if quads else ''}", flush=True)
+        if not ok:
+            print("   🎨 couldn't texture this model:\n" + "\n".join(log.strip().splitlines()[-10:]))
+            return None
+        for line in log.splitlines():
+            if line.startswith(("TEX elevation", "TEX quads", "TEX triangles")) or " lose part" in line:
+                print("   🎨 " + line[4:])
+        stem = f"{name}_textured"
+        shutil.move(os.path.join(out, "model.glb"), os.path.join(dest, stem + ".glb"))
+        shutil.move(os.path.join(out, "model_texture.png"), os.path.join(dest, stem + "_texture.png"))
+        gl = os.path.join(out, "model.gltf")
+        if os.path.isfile(gl):                           # point the .gltf at the files' new names
+            with open(gl) as f:
+                j = json.load(f)
+            for im in j.get("images", []):
+                im["uri"] = stem + "_texture.png"
+                im.pop("bufferView", None)
+            for b in j.get("buffers", []):
+                if b.get("uri"):
+                    shutil.move(os.path.join(out, b["uri"]), os.path.join(dest, stem + ".bin"))
+                    b["uri"] = stem + ".bin"
+            with open(os.path.join(dest, stem + ".gltf"), "w") as f:
+                json.dump(j, f)
+        views = [os.path.join(out, f"view_a{az:03d}.png") for az in (0, 90, 180, 270)]
+        sheet = views_sheet(views, os.path.join(dest, f"{stem}_s{seed}_views.png"))
+        print(f"   🎨 textured model -> {os.path.join(dest, stem + '.glb')}  ({time.time() - t0:.0f}s)")
+        print(f"   ✅ seed={seed}  ->  {sheet}")
+        return os.path.join(dest, stem + ".glb")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def views_sheet(shades, out, cell=384, bg=(48, 48, 60)):
@@ -240,6 +408,11 @@ def run(P, a, parser):
     t0 = time.time()
 
     model = src if is_model else make_model(P, a, src, dest, name, seed)
+    if a.texture:                                    # from the full model (the bake's source), before any low-poly
+        pic = src if not is_model else a.steer
+        if not pic or not os.path.isfile(os.path.expanduser(pic)):
+            parser.error("--texture of a model needs the picture it was made from: --steer PICTURE")
+        texture_model(P, a, model, os.path.expanduser(pic), dest, name, seed)
     turn = os.path.join(dest, "turn")
     if a.lowpoly:                                    # the faceted copy is what gets rendered and painted
         low = os.path.join(dest, f"{name}_lowpoly.glb")

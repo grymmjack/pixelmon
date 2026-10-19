@@ -139,6 +139,9 @@ def print_help():
         opt("--angles N", "--turnaround: views around the model", "8"),
         opt("--elev DEG", "--turnaround: camera height above eye level", "0"),
         opt("--lowpoly FACES", "--mesh/--turnaround: faceted low-poly model (e.g. 400 faces)"),
+        opt("--texture", "--mesh/--turnaround: + a clean, textured model (quads, UVs, baked picture)"),
+        opt("--texture-size PX", "--texture: texture size  [1024 up to 1500 faces, else 2048]"),
+        opt("--texture-elev DEG", "--texture: how high the picture was seen from  [guessed: 0/30/55]"),
         opt("--blender CMD", "Blender for 3D", "blender / org.blender.Blender flatpak"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
@@ -187,6 +190,7 @@ def print_help():
         opt("--depth-start/--depth-end F", "when (fraction of steps) the depth map applies", "0 / 0.65"),
         opt("--depth-raw", "the --depth image is already a depth map (skip Depth Anything V2)"),
         opt("--depth-mask-bg", "cut out the foreground: all background depth goes black (no scenery)"),
+        opt("--depth-keep-bg", "keep a plain backdrop's depth (it's blacked out automatically)"),
         opt("--init IMG", "img2img: start from an image (keeps its composition)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
         opt("--canny-low/--canny-high F", "canny edge thresholds (lower = more edges)", "0.3 / 0.7"),
@@ -711,6 +715,26 @@ _INIT_UPLOADS = {}      # server -> uploaded --init image name
 _CONTROL_UPLOADS = {}   # server -> uploaded --control image name
 _MASK_UPLOADS = {}      # server -> uploaded --mask image name
 _DEPTH_UPLOADS = {}     # server -> uploaded processed depth map name
+
+
+def plain_backdrop(path):
+    """True if the picture stands on an empty backdrop: at least 3 of its 4 sides are see-through, or one
+    colour (a sprite padded with black, a cut-out on white; the 4th side may be what it stands on, or a
+    first-person weapon rising from the bottom). Depth Anything turns such a backdrop into a wall or a
+    ceiling, and the image model then paints something there."""
+    from PIL import Image
+    import numpy as np
+    try:
+        im = Image.open(path)
+        im.thumbnail((256, 256))
+        a = np.asarray(im.convert("RGBA")).astype(np.int16)
+    except OSError:
+        return False
+    sides = [a[:2].reshape(-1, 4), a[-2:].reshape(-1, 4), a[:, :2].reshape(-1, 4), a[:, -2:].reshape(-1, 4)]
+    if sum((e[:, 3] < 16).mean() > 0.95 for e in sides) >= 3:
+        return True
+    med = np.median(np.concatenate(sides)[:, :3], axis=0)
+    return sum((np.abs(e[:, :3] - med).max(axis=1) <= 12).mean() > 0.95 for e in sides) >= 3
 
 
 def prepare_depth(a, dest_dir, name):
@@ -1412,6 +1436,16 @@ def main():
     p.add_argument("--lowpoly", type=int, default=0, metavar="FACES",
                    help="--mesh/--turnaround: also make a faceted low-poly copy with about FACES faces (e.g. 400); "
                         "the turnaround renders and paints that one")
+    p.add_argument("--texture", action="store_true",
+                   help="--mesh/--turnaround: also make a clean, textured model: quads, a UV map and the picture "
+                        "baked into a texture (NAME_textured.glb, + .gltf/.bin/_texture.png to paint). about 6000 "
+                        "quads, or --lowpoly FACES (flat shaded). the front is the picture, the back its colours "
+                        "seen through, the sides stretched")
+    p.add_argument("--texture-size", dest="texture_size", type=int, default=0, metavar="PX",
+                   help="--texture: the texture's size, 256..8192 (default 1024 up to 1500 faces, else 2048)")
+    p.add_argument("--texture-elev", dest="texture_elev", type=float, default=None, metavar="DEG",
+                   help="--texture: how far above the subject the picture was seen from, 0..80 degrees, for projecting "
+                        "it. default: guessed from the outline (0, 30 or 55)")
     p.add_argument("--blender", default=None, metavar="CMD",
                    help="how to run Blender for --mesh/--turnaround. default $PIXELMON_BLENDER, blender on the "
                         "PATH, or the org.blender.Blender flatpak")
@@ -1505,6 +1539,10 @@ def main():
     p.add_argument("--depth-mask-bg", dest="depth_mask_bg", action="store_true",
                    help="find the foreground subject (BiRefNet) and set all background depth to black, so the "
                         "reference's scenery doesn't come through — only the subject's shape is kept")
+    p.add_argument("--depth-keep-bg", dest="depth_keep_bg", action="store_true",
+                   help="keep a plain backdrop's depth: by default a --depth picture on a flat-colour or transparent "
+                        "backdrop (a sprite, a cut-out) gets --depth-mask-bg, because Depth Anything reads the empty "
+                        "space as a wall or ceiling and the image model fills it (a second copy of the subject)")
     p.add_argument("--depth-model", dest="depth_model", default="controlnet-depth-sdxl-1.0.safetensors",
                    help="depth ControlNet file in the server's models/controlnet/")
     p.add_argument("--depth-bg-model", dest="depth_bg_model", default="birefnet.safetensors",
@@ -1721,8 +1759,14 @@ def main():
                     "(black out its background yourself)")
         if a.mask or a.animate:
             p.error("--depth can't be combined with --mask or --animate")
-    elif a.depth_raw or a.depth_mask_bg or a.depth_only:
-        p.error("--depth-raw / --depth-mask-bg / --depth-only need --depth IMG")
+        if a.depth_mask_bg and a.depth_keep_bg:
+            p.error("--depth-mask-bg and --depth-keep-bg: pick one")
+        if not (a.depth_raw or a.depth_mask_bg or a.depth_keep_bg) and plain_backdrop(os.path.expanduser(a.depth)):
+            a.depth_mask_bg = True                  # an object on an empty backdrop, not a scene
+            print("   \U0001f5fa depth: the picture is on a plain backdrop, so its background goes black "
+                  "(--depth-keep-bg keeps it)")
+    elif a.depth_raw or a.depth_mask_bg or a.depth_only or a.depth_keep_bg:
+        p.error("--depth-raw / --depth-mask-bg / --depth-keep-bg / --depth-only need --depth IMG")
     if not (0 < a.canny_low < a.canny_high < 1):
         p.error("--canny-low / --canny-high must be 0..1 with low < high")
     if a.fit_to:

@@ -71,6 +71,13 @@ td.ctl code { display: inline-block; margin: 0 0 3px; }
 mark { background: var(--hl); color: inherit; padding: 0 1px; }
 .empty { padding: 40px 0; color: var(--muted); text-align: center; }
 footer { margin-top: 40px; color: var(--muted); font-size: 13px; max-width: 90ch; }
+/* links to the projects and tools named on the page (added by the linker below, and in the credits) */
+a.xl { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--accent); }
+a.xl:hover, a.xl:focus-visible { color: var(--accent); border-bottom-style: solid; outline: none; }
+h1 a.xl { border-bottom: 0; }
+.credits { margin-top: 18px; display: grid; gap: 6px; }
+.credits p { margin: 0; }
+.credits a { color: var(--accent); }
 
 /* ---- pipeline walkthrough ---- */
 .pipe { margin-top: 26px; }
@@ -102,7 +109,7 @@ html { scroll-behavior: smooth; }
 
 <div class="wrap">
 <header class="top">
-  <h1>pixelmon <span>settings atlas</span></h1>
+  <h1><a class="xl" href="https://github.com/grymmjack/pixelmon" rel="noopener">pixelmon</a> <span>settings atlas</span></h1>
   <p class="lede">Every knob in the pixelmon GUI, the <code>pixelmon</code> command line, and the ComfyUI nodes they drive on the rtx render box, with ranges, defaults and a working example for each. Ranges are the limits the controls accept; where a narrower range is what actually looks good, it's called out. Settings marked <b>⚙ Advanced</b> live in the GUI's rightmost tab.</p>
   <div class="legend">
     <span><span class="badge b-gui">GUI</span> <b>pixelmon-gui</b> control</span>
@@ -134,6 +141,34 @@ html { scroll-behavior: smooth; }
   Pipeline order on the server: prompt → CLIP text encode → (IPAdapter steering) → (ControlNet) → (depth ControlNet) → KSampler → VAE decode → PixelArtPalette node:
   smooth/downscale → palette lock + dither → despeckle → 1-px outlines → pixel-art angles → transparent → final nearest resize to the output size.
   Everything after the KSampler is post-processing, so palette, dither and cleanup never change what the model draws.
+  <div class="credits">
+    <p><b>By grymmjack:</b> <a href="https://github.com/grymmjack/pixelmon" rel="noopener">pixelmon</a> ·
+      <a href="https://github.com/grymmjack/soundmon" rel="noopener">soundmon</a> (its sibling, for sound) ·
+      <a href="https://github.com/grymmjack/DRAW" rel="noopener">DRAW</a> (pixel art editor) ·
+      <a href="https://github.com/grymmjack/kaleidotron" rel="noopener">Kaleidotron</a> (art viewer) ·
+      <a href="https://github.com/grymmjack/neon-caster" rel="noopener">neon-caster</a> (the game these sprites are for)</p>
+    <p><b>Built on:</b> <a href="https://github.com/Comfy-Org/ComfyUI" rel="noopener">ComfyUI</a> ·
+      <a href="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0" rel="noopener">SDXL</a> ·
+      <a href="https://huggingface.co/RunDiffusion/Juggernaut-XL-v9" rel="noopener">Juggernaut XL</a> ·
+      <a href="https://huggingface.co/nerijs/pixel-art-xl" rel="noopener">Pixel Art XL</a> ·
+      <a href="https://huggingface.co/artificialguybr/PixelArtRedmond" rel="noopener">PixelArtRedmond</a> ·
+      <a href="https://civitai.com/models/290771" rel="noopener">EGA retro style</a> ·
+      <a href="https://civitai.com/models/553027" rel="noopener">Retro Game Art</a> ·
+      <a href="https://huggingface.co/latent-consistency/lcm-lora-sdxl" rel="noopener">LCM-LoRA</a> ·
+      <a href="https://github.com/cubiq/ComfyUI_IPAdapter_plus" rel="noopener">IPAdapter</a> ·
+      <a href="https://github.com/lllyasviel/ControlNet" rel="noopener">ControlNet</a>
+      (<a href="https://huggingface.co/xinsir/controlnet-union-sdxl-1.0" rel="noopener">union</a>,
+      <a href="https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0" rel="noopener">depth</a>) ·
+      <a href="https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1" rel="noopener">SDXL inpainting</a> ·
+      <a href="https://github.com/DepthAnything/Depth-Anything-V2" rel="noopener">Depth Anything V2</a> ·
+      <a href="https://github.com/Fannovel16/comfyui_controlnet_aux" rel="noopener">comfyui_controlnet_aux</a> ·
+      <a href="https://github.com/ZhengPeng7/BiRefNet" rel="noopener">BiRefNet</a> ·
+      <a href="https://github.com/Tencent-Hunyuan/Hunyuan3D-2" rel="noopener">Hunyuan3D 2</a> ·
+      <a href="https://www.blender.org" rel="noopener">Blender</a> ·
+      <a href="https://github.com/painebenjamin/unfake.py" rel="noopener">unfake.py</a> ·
+      <a href="https://github.com/Hugo-Dz/spritefusion-pixel-snapper" rel="noopener">spritefusion pixel-snapper</a> ·
+      <a href="https://github.com/timojl/clipseg" rel="noopener">CLIPSeg</a></p>
+  </div>
 </footer>
 </div>
 
@@ -419,8 +454,10 @@ const S = [
    "0 – 1 fraction of steps, start &lt; end", "0 / 0.65", "<code>--depth-end 0.8</code>",
    "When the depth map acts. It sets the shape early; ending before 1 leaves the last steps free for detail."],
   ["Black out the background", [G, C, N], { gui: "black out the background", cli: "--depth-mask-bg", node: "LoadBackgroundRemovalModel → RemoveBackground → ThresholdMask → ImageCompositeMasked" },
-   "on / off (not with already-a-depth-map)", "off", "<code>--depth ref.png --depth-mask-bg</code>",
-   "Finds the subject (BiRefNet) and sets all background depth to black (= nothing there), so the reference's scenery doesn't come back. Use it when the prompt asks for a plain backdrop."],
+   "on / off (not with already-a-depth-map)", "off; automatic on a plain backdrop", "<code>--depth ref.png --depth-mask-bg</code>",
+   "Finds the subject (BiRefNet) and sets all background depth to black (= nothing there), so the reference's scenery doesn't come back. Use it when the prompt asks for a plain backdrop. Automatic when the picture is on a plain backdrop (3 of its 4 sides one colour or see-through: a padded sprite, a cut-out), where the empty space would otherwise read as a wall and get painted, often as a second copy of the subject. --depth-keep-bg turns that off."],
+  ["Keep a plain backdrop", [C], { cli: "--depth-keep-bg" }, "on / off", "off", "<code>--depth sprite.png --depth-keep-bg</code>",
+   "Don't black out a plain backdrop automatically: keep Depth Anything's own reading of it."],
   ["Already a depth map", [G, C], { gui: "already a depth map", cli: "--depth-raw" }, "on / off", "off", "<code>--depth my-depth.png --depth-raw</code>",
    "The reference is already a depth map (white = near): it's only cropped and resized, not run through Depth Anything V2."],
   ["Depth map preview", [G, C], { gui: "depth map square · 👁 preview depth map", cli: "--depth-only" }, "—", "—", "<code>--depth ref.png --depth-only</code>",
@@ -429,7 +466,7 @@ const S = [
    "<code>controlnet-depth-sdxl-1.0</code> · <code>birefnet</code> · <code>depth_anything_v2_vitl</code>",
    "—", "The depth ControlNet and BiRefNet come from <code>./download-models.sh --depth</code>; Depth Anything V2 is fetched by comfyui_controlnet_aux the first time it runs."],
  ]},
- { id: "threed", title: "🧊 3D models & turnarounds", note: "One picture → a 3D model (Hunyuan3D 2 on the render server) → rotation sprites that all match. Blender, on the machine running pixelmon, renders the model from every angle with one camera size and exact depth maps; each view is painted with depth lock on that view, steering from the picture, cut out and one seed. Every other setting applies to those sprites. Needs download-models.sh --3d and Blender.", rows: [
+ { id: "threed", title: "🧊 3D models & turnarounds", guide: ["New to 3D? The 3D field guide for 2D artists", "https://claude.ai/artifact/XpPiZXs79wUHHXJ2zTq8ou"], note: "One picture → a 3D model (Hunyuan3D 2 on the render server) → rotation sprites that all match. Blender, on the machine running pixelmon, renders the model from every angle with one camera size and exact depth maps; each view is painted with depth lock on that view, steering from the picture, cut out and one seed. Every other setting applies to those sprites. Texture also makes a clean model wearing the picture, ready to paint. Needs download-models.sh --3d and Blender.", rows: [
   ["Make 3D model", [G, C, N], { gui: "🧊 on a picture › make 3D model", cli: "--mesh IMG", node: "ImageOnlyCheckpointLoader → CLIPVisionEncode → Hunyuan3Dv2Conditioning → KSampler → VAEDecodeHunyuan3D → VoxelToMesh → SaveGLB" },
    "a picture", "—", "<code>pixelmon --mesh monster.png</code>",
    "Makes a .glb of the picture's subject (cut out first if it isn't) and a 4-view Blender preview. The model's card links it to download, view in Kaleidotron or open. Best from a full-body, front-on picture on a plain background."],
@@ -440,7 +477,12 @@ const S = [
   ["Camera height", [G, C], { gui: "🧊 › camera: eye level · a little above · above", cli: "--elev DEG" }, "-10 – 80°", "0", "<code>--elev 15</code>", "Raises the camera above the model's middle, for games seen from slightly above."],
   ["Low-poly", [G, C], { gui: "🧊 › low-poly: off · 400 · 1500 · 5000 faces", cli: "--lowpoly FACES" }, "50 – 100000", "off", "<code>--lowpoly 400</code>",
    "Remeshes and decimates the model to about that many faces with flat shading: the faceted low-poly look. The low-poly .glb is kept, and a turnaround renders and paints it."],
-  ["Blender", [C], { cli: "--blender CMD · $PIXELMON_BLENDER" }, "a command", "blender on the PATH, else the org.blender.Blender flatpak", "<code>--blender ~/blender/blender</code>",
+  ["Texture", [G, C], { gui: "🧊 › texture: off · on · on, picture at eye level / a little above / above", cli: "--texture" }, "on / off", "off", "<code>--mesh pic.png --texture</code>",
+   "Also a clean, textured model: Blender projects the picture onto the model, rebuilds it as quads (QuadriFlow; plain triangles if it refuses), unwraps it and bakes the colours into a texture. About 6000 quads, or the low-poly count with flat shading. Writes NAME_textured.glb, NAME_textured.gltf + .bin + _texture.png (paint the PNG, reopen the .gltf) and a 4-view preview. The front is the picture, the back its colours seen through, the sides stretched. In the GUI its card adds 🖌 texture (opens the PNG in DRAW)."],
+  ["Texture size", [C], { cli: "--texture-size PX" }, "256 – 8192", "1024 up to 1500 faces, else 2048", "<code>--texture-size 4096</code>", "The texture's width and height in pixels. More pixels, finer paint detail on a big model."],
+  ["Picture height", [G, C], { gui: "🧊 › texture: on (guess) · picture at eye level · a little above · above", cli: "--texture-elev DEG" }, "0 – 80°", "guessed: 0, 30 or 55", "<code>--texture-elev 0</code>",
+   "How far above the subject the picture was seen from, so it's projected from there. The guess matches the model's outline from 0°, 30° and 55° up and stays at eye level unless a higher view is clearly better. Set it when colours slide (a plant's leaves on its pot)."],
+  ["Blender", [C, G], { cli: "--blender CMD · $PIXELMON_BLENDER", gui: "🛠 Setup › 3D editor (when it's Blender)" }, "a command", "blender on the PATH, else the org.blender.Blender flatpak, else ~/blender-*, /opt/blender-*, Snap, Steam, /Applications, Program Files", "<code>--blender ~/blender/blender</code>",
    "Runs headless on the CPU, from a folder in ~/.cache (a flatpak can't see /tmp)."],
   ["3D model file", [C, N], { cli: "--mesh-model FILE", node: "ImageOnlyCheckpointLoader.ckpt_name" }, "models/checkpoints/*", "hunyuan3d-dit-v2_fp16.safetensors", "—", "The Hunyuan3D 2 checkpoint (download-models.sh --3d, 4.9 GB)."],
 ]},
@@ -482,6 +524,8 @@ const S = [
    "Opening an image in DRAW also loads its own colors as DRAW's palette. Full-color images (&gt;255 colors) open without one."],
   ["Kaleidotron", [G], { gui: "🛠 Setup › Kaleidotron path" }, "path to the kaleidotron binary", "found automatically", "<code>kaleidotron --folder DIR</code>",
    "grymmjack's art browser. Right-click any 📂 button → Open folder in Kaleidotron; images open with <code>--view</code>."],
+  ["3D editor", [G], { gui: "🛠 Setup › 3D editor · 🧊 Blender on every model" }, "a program path or command", "Blender, found automatically (PATH, Flatpak, Snap, ~/blender-*, /opt, Steam, /Applications, Program Files)", "<code>flatpak run org.blender.Blender</code> · <code>/usr/bin/f3d</code>",
+   "What a model's <b>🧊 Blender</b> button opens. Blender starts with the model imported, framed and in Material Preview (it only opens .blend files itself); a textured model opens as its .gltf, so it shows your latest paint. Any other program just gets the file. A Blender set here also renders the 🧊 3D views (--blender)."],
   ["Image / folder programs", [G], { gui: "🛠 Setup › ➕ add program" }, "anything installed; {} = the path", "none",
    "<code>gimp {}</code>, <code>dolphin {}</code>",
    "Extra <b>Open in…</b> entries. The dropdown lists what's installed on this OS (Linux .desktop apps; Windows / macOS known programs)."],
@@ -519,13 +563,86 @@ function ctlHtml(c) {
 }
 const main = document.getElementById("main");
 main.innerHTML = S.map(s => `<section id="${s.id}" data-sec>
-  <h2>${esc(s.title)} <small>${s.rows.length} settings</small></h2><p>${esc(s.note)}</p>
+  <h2>${esc(s.title)} <small>${s.rows.length} settings</small></h2><p>${esc(s.note)}${s.guide ? ` <a class="xl" href="${s.guide[1]}" target="_blank" rel="noopener">${esc(s.guide[0])} ↗</a>` : ""}</p>
   <div class="tbl"><table><thead><tr><th>Setting</th><th>Where / controls</th><th>Range</th><th>Default</th><th>Example</th><th>What it does</th></tr></thead>
   <tbody>${s.rows.map(r => `<tr>
     <td class="name">${esc(r[0])}<div class="where">${r[1].map(badge).join("")}</div></td>
     <td class="ctl">${ctlHtml(r[2])}</td><td class="rng">${r[3]}</td><td class="def">${r[4]}</td><td class="ex">${r[5]}</td><td>${r[6]}</td>
   </tr>`).join("")}</tbody></table></div></section>`).join("");
 document.getElementById("chips").innerHTML = `<a href="#pipeline">How a render is built</a>` + S.map(s => `<a href="#${s.id}">${esc(s.title)}</a>`).join("");
+
+// Link the projects and tools the page names: the first mention of each in every section, so whichever
+// section a link lands on has its own. Runs before the filter below saves each cell's HTML.
+const LINKS = [
+  // model files, by the names the settings show
+  ["sd_xl_base_1.0", "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0"],
+  ["sdxl-inpainting-0.1", "https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1"],
+  ["lcm-lora-sdxl", "https://huggingface.co/latent-consistency/lcm-lora-sdxl"],
+  ["hunyuan3d-dit-v2_fp16", "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged"],
+  ["birefnet", "https://huggingface.co/ZhengPeng7/BiRefNet"],
+  ["controlnet-depth-sdxl-1.0", "https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0"],
+  ["depth_anything_v2_vitl", "https://huggingface.co/depth-anything/Depth-Anything-V2-Large"],
+  ["CLIP-ViT-H-14", "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K"],
+  ["ip-adapter", "https://huggingface.co/h94/IP-Adapter"],
+  // projects and tools
+  ["Depth Anything V2", "https://github.com/DepthAnything/Depth-Anything-V2"],
+  ["Depth Anything", "https://github.com/DepthAnything/Depth-Anything-V2"],
+  ["comfyui_controlnet_aux", "https://github.com/Fannovel16/comfyui_controlnet_aux"],
+  ["controlnet-union", "https://huggingface.co/xinsir/controlnet-union-sdxl-1.0"],
+  ["ComfyUI", "https://github.com/Comfy-Org/ComfyUI"],
+  ["SDXL", "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0"],
+  ["IPAdapter", "https://github.com/cubiq/ComfyUI_IPAdapter_plus"],
+  ["ControlNet", "https://github.com/lllyasviel/ControlNet"],
+  ["BiRefNet", "https://github.com/ZhengPeng7/BiRefNet"],
+  ["Hunyuan3D", "https://github.com/Tencent-Hunyuan/Hunyuan3D-2"],
+  ["Blender", "https://www.blender.org"],
+  ["QuadriFlow", "https://github.com/hjwdzh/QuadriFlow"],
+  ["unfake", "https://github.com/painebenjamin/unfake.py"],
+  ["spritefusion", "https://github.com/Hugo-Dz/spritefusion-pixel-snapper"],
+  ["snapper", "https://github.com/Hugo-Dz/spritefusion-pixel-snapper"],
+  ["LCM", "https://huggingface.co/latent-consistency/lcm-lora-sdxl"],
+  ["CLIPSeg", "https://github.com/timojl/clipseg"],
+  ["Juggernaut", "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9"],
+  ["juggernautXL", "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9"],
+  ["pixel-art-xl", "https://huggingface.co/nerijs/pixel-art-xl"],
+  ["PixelArtRedmond", "https://huggingface.co/artificialguybr/PixelArtRedmond"],
+  ["pixelartredmond", "https://huggingface.co/artificialguybr/PixelArtRedmond"],
+  ["dosega", "https://civitai.com/models/290771"],
+  ["r3tr0", "https://civitai.com/models/553027"],
+  ["retro-game-art", "https://civitai.com/models/553027"],
+  ["DRAW", "https://github.com/grymmjack/DRAW"],
+  ["Kaleidotron", "https://github.com/grymmjack/kaleidotron"],
+];
+(function linkNames() {
+  const pat = new RegExp("(?<![\\w-])(" + LINKS.map(([t]) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![\\w])");
+  const url = Object.fromEntries(LINKS);
+  const skip = el => el.closest("a, script, style, input, textarea, select, button, mark, nav");
+  const scopes = [document.querySelector("header.top"), ...document.querySelectorAll("section"), document.querySelector("footer")];
+  scopes.forEach(scope => {
+    if (!scope) return;
+    const done = new Set();
+    const walk = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    const nodes = []; while (walk.nextNode()) nodes.push(walk.currentNode);
+    nodes.forEach(n => {
+      if (!n.parentElement || skip(n.parentElement)) return;
+      let node = n;
+      for (;;) {
+        const m = pat.exec(node.nodeValue);
+        if (!m) break;
+        const term = m[1], href = url[term];
+        if (done.has(href)) {                       // already linked here: look further along this text
+          const rest = node.nodeValue.slice(m.index + term.length);
+          const after = node.splitText(m.index + term.length);
+          node = after; if (!rest) break; continue;
+        }
+        done.add(href);
+        const hit = node.splitText(m.index); const tail = hit.splitText(term.length);
+        const a = document.createElement("a"); a.className = "xl"; a.href = href; a.rel = "noopener"; a.textContent = term;
+        hit.replaceWith(a); node = tail;
+      }
+    });
+  });
+})();
 
 // filter
 const rows = [...main.querySelectorAll("tbody tr")];

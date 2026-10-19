@@ -29,6 +29,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -875,6 +876,17 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             if not 50 <= lp <= 100000:
                 raise ValueError("low-poly: 50..100000 faces")
             argv += ["--lowpoly", str(lp)]
+        blender = load_setup().get("editor3d") or ""
+        ed = editor3d({"editor3d": blender}) if blender else None
+        if ed and ed[2]:                         # the Blender set in 🛠 Setup › 3D editor renders the views too
+            argv += ["--blender", blender]
+        tx = str(t.get("texture") or "")
+        if tx:                                   # 🎨 a clean, textured copy of the model
+            argv.append("--texture")
+            if tx != "auto":
+                if not 0 <= float(tx) <= 80:
+                    raise ValueError("texture: the picture's height is 0..80°")
+                argv += ["--texture-elev", f"{float(tx):g}"]
     fit = fit_target(p)
     if p.get("cutout") or fit:                   # ✂ BiRefNet cut-out (+ fit into an old sprite's footprint)
         if p.get("transparent"):
@@ -1285,7 +1297,8 @@ class JobQueue:
                 found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
                                if not os.path.basename(f).startswith(("parent.", "input", "mask."))
                                and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f)
-                               and "_cutmask_" not in os.path.basename(f))   # kept parent / LAB input / seam checks aren't output
+                               and "_cutmask_" not in os.path.basename(f)
+                               and not f.endswith("_texture.png"))   # kept parent / LAB input / seam checks / a model's texture aren't output
                 known = {o["file"] for o in job["outputs"]}
                 for f in found:
                     if f not in known:
@@ -1688,6 +1701,7 @@ def load_setup():
     s = _read_json(SETUP_FILE, {}) if os.path.exists(SETUP_FILE) else {}
     s.setdefault("draw", "")
     s.setdefault("kaleidotron", "")
+    s.setdefault("editor3d", "")          # 3D models open in this; "" = Blender, found automatically
     s.setdefault("image_apps", [])        # [{name, exec, args}] — args: "{}" = the file, else appended
     s.setdefault("folder_apps", [])
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
@@ -1702,7 +1716,7 @@ def _clean_app(a):
 
 def save_setup(body):
     s = load_setup()
-    for k in ("draw", "kaleidotron"):
+    for k in ("draw", "kaleidotron", "editor3d"):
         if k in body:
             s[k] = str(body[k] or "").strip()[:500]
     for k in ("image_apps", "folder_apps"):
@@ -1854,6 +1868,66 @@ def detect_draw():
 def detect_kaleidotron():
     return shutil.which("kaleidotron") or next((f for f in (os.path.expanduser(p) for p in (
         "~/git/kaleidotron/target/release/kaleidotron" + (".exe" if IS_WIN else ""), "~/.cargo/bin/kaleidotron")) if os.path.isfile(f)), "")
+
+
+_TURN = {}
+
+
+def turnaround_mod():
+    """pixelmon's turnaround.py (Blender detection, the open-a-model script), loaded once."""
+    if "m" not in _TURN:
+        spec = importlib.util.spec_from_file_location("pixelmon_turnaround", os.path.join(REPO, "turnaround.py"))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _TURN["m"] = m
+    return _TURN["m"]
+
+
+def detect_blender():
+    """How Blender runs here (a command line), found once: the PATH, the flatpak, the usual install folders."""
+    if "blender" not in _TURN:
+        cmd = turnaround_mod().find_blender("")
+        _TURN["blender"] = shlex.join(cmd) if cmd and not IS_WIN else subprocess.list2cmdline(cmd) if cmd else ""
+    return _TURN["blender"]
+
+
+def editor3d(setup):
+    """The 3D editor: (argv, name, is_blender) for the Setup tab's program, else Blender found here, else None."""
+    spec = (setup.get("editor3d") or "").strip() or detect_blender()
+    if not spec:
+        return None
+    full = os.path.expanduser(spec)
+    argv = [full] if os.path.isfile(full) else shlex.split(spec, posix=not IS_WIN)
+    words = [os.path.basename(w).lower() for w in argv[:3]]
+    blender = any(w.startswith("blender") or w == "org.blender.blender" for w in words)
+    name = "Blender" if blender else os.path.splitext(os.path.basename(argv[0]))[0]
+    return argv, name, blender
+
+
+def open_in_3d_editor(setup, path):
+    """Start the 3D editor on a model, detached. Blender imports it (it only opens .blend files itself)."""
+    ed = editor3d(setup)
+    if not ed:
+        raise ValueError("no 3D editor: Blender isn't installed here (blender.org) — or pick a program in 🛠 Setup › 3D editor")
+    argv, name, blender = ed
+    if argv[0] != "flatpak" and os.sep in argv[0] and not os.path.isfile(argv[0]):
+        raise ValueError(f"{name}: program not found at {argv[0]} — fix it in 🛠 Setup › 3D editor")
+    if argv[0] == "flatpak" and os.path.realpath(path).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep):
+        # a flatpak Blender can't see the host's /tmp: copy the model (and its .bin / textures) to the cache
+        dest = os.path.join(os.path.expanduser("~/.cache/pixelmon/3d-editor"), os.path.splitext(os.path.basename(path))[0])
+        os.makedirs(dest, exist_ok=True)
+        for f in os.listdir(os.path.dirname(path)):
+            src = os.path.join(os.path.dirname(path), f)
+            if os.path.isfile(src) and os.path.getsize(src) < 512 << 20:
+                shutil.copy2(src, dest)
+        path = os.path.join(dest, os.path.basename(path))
+    cmd = turnaround_mod().open_in_blender(argv, path) if blender else argv + [path]
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        raise ValueError(f"couldn't start {name}: {e}")
+    return name
 
 
 PALETTE_CACHE = os.path.expanduser("~/.cache/pixelmon/palettes")
@@ -2480,8 +2554,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json({"presets": list_presets(), "folders": list_folders()})
         if u.path == "/api/setup":
             img, fold = detect_programs()
-            return self._json({"setup": load_setup(), "detected": {"draw": detect_draw(), "kaleidotron": detect_kaleidotron(),
-                                                                    "image_apps": img, "folder_apps": fold},
+            setup = load_setup()
+            ed = editor3d(setup)
+            return self._json({"setup": setup, "detected": {"draw": detect_draw(), "kaleidotron": detect_kaleidotron(),
+                                                             "editor3d": detect_blender(), "image_apps": img, "folder_apps": fold},
+                               "editor3d": {"name": ed[1], "blender": ed[2]} if ed else None,
                                "os": "windows" if IS_WIN else "macos" if IS_MAC else "linux",
                                "servers": known_servers(), "server": render_server(), "server_locked": SERVER_ARG,
                                "server_default": default_server()})
@@ -2598,13 +2675,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if u.path.startswith("/docs/pipeline/") and u.path.lower().endswith((".png", ".jpg")):
+        if u.path.startswith(("/docs/pipeline/", "/docs/3d-guide/")) and u.path.lower().endswith((".png", ".jpg")):
+            # the atlas's pipeline pictures and the 3D guide's
+            sub = u.path.split("/")[2]
             full = os.path.realpath(os.path.join(REPO, "docs", urllib.parse.unquote(u.path[len("/docs/"):])))
-            if not full.startswith(os.path.realpath(os.path.join(REPO, "docs", "pipeline")) + os.sep) or not os.path.isfile(full):
+            if not full.startswith(os.path.realpath(os.path.join(REPO, "docs", sub)) + os.sep) or not os.path.isfile(full):
                 return self._json({"error": "not found"}, 404)
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path.startswith("/docs/") and u.path.endswith(".html"):
-            # the settings atlas (also published as an artifact); the file has no page skeleton of its own
+            # the settings atlas and the 3D guide (both also published as artifacts); the atlas has no page skeleton of its own
             full = os.path.realpath(os.path.join(REPO, "docs", urllib.parse.unquote(u.path[len("/docs/"):])))
             if not full.startswith(os.path.realpath(os.path.join(REPO, "docs")) + os.sep) or not os.path.isfile(full):
                 return self._json({"error": "not found"}, 404)
@@ -2706,7 +2785,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"exists": found})
             if u.path == "/api/setup":
                 s = save_setup(body)
-                return self._json({"setup": s})
+                ed = editor3d(s)
+                return self._json({"setup": s, "editor3d": {"name": ed[1], "blender": ed[2]} if ed else None})
             if u.path == "/api/open":
                 # open an image or a folder in DRAW / Kaleidotron / a program saved in the Setup tab / the OS default.
                 # Only programs saved in Setup can be launched (the request names one, it can't supply a command).
@@ -2737,6 +2817,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if not 0 <= i < len(lst):
                         raise ValueError("that program isn't in the Setup tab any more")
                     app = lst[i]
+                elif key == "editor3d":
+                    if is_dir or not path.lower().endswith(turnaround_mod().MODEL_EXT + (".blend", ".blend1")):
+                        raise ValueError("the 3D editor opens models (.glb .gltf .obj .stl .ply .fbx .blend)")
+                    return self._json({"opened": path, "with": open_in_3d_editor(setup, path)})
                 elif key == "os":
                     app = os_opener(is_dir)
                 else:

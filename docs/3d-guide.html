@@ -1,0 +1,632 @@
+<title>Pixelmon 3D Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a 3D-app viewport. Sticky outline on the left, reading column on the right; pictures sit in dark
+   "viewport" panels in both themes, the way a 3D app always shows its scene on graphite. */
+:root {
+  --bg: #f3f4f1;          /* page */
+  --panel: #ffffff;       /* cards */
+  --fg: #1d2126;          /* text */
+  --muted: #5c6670;       /* captions */
+  --line: #d6dad6;        /* rules */
+  --wire: #0e8a74;        /* wireframe teal (darkened for light paper) */
+  --select: #c95a0c;      /* Blender's selection orange */
+  --vp: #22242a;          /* viewport behind every picture (same in both themes) */
+  --vp-fg: #dfe6ea;
+  --code-bg: #e8ebe7;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17191d; --panel: #1f2226; --fg: #e6eaec; --muted: #9aa5ad; --line: #2f343a;
+  --wire: #40f2cc; --select: #ff9a3d; --code-bg: #262a30; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #17191d; --panel: #1f2226; --fg: #e6eaec; --muted: #9aa5ad; --line: #2f343a;
+  --wire: #40f2cc; --select: #ff9a3d; --code-bg: #262a30; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.62 var(--body); margin: 0; }
+.wrap { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.toc b { display: block; font: 700 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+nav.toc a { display: flex; gap: 10px; padding: 5px 8px; border-radius: 4px; color: var(--fg); text-decoration: none; }
+nav.toc a::before { counter-increment: s; content: counter(s, decimal-leading-zero); font: 600 12px/1.9 var(--mono); color: var(--muted); }
+nav.toc a:hover, nav.toc a:focus-visible { background: var(--code-bg); outline: none; }
+nav.toc a:hover::before { color: var(--wire); }
+main { min-width: 0; }
+main > section { padding-block: 28px 36px; border-top: 1px solid var(--line); scroll-margin-top: 16px; }
+main > section:first-child { border-top: 0; padding-top: 0; }
+h1, h2 { font-family: var(--display); text-wrap: balance; letter-spacing: -.01em; }
+h1 { font-size: clamp(30px, 5vw, 50px); line-height: 1.08; margin: 0 0 18px; font-weight: 700; }
+h1 em { font-style: normal; color: var(--wire); }
+h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.15; margin: 0 0 14px; font-weight: 500; }
+h3 { font-size: 18px; margin: 26px 0 8px; }
+p, li { max-width: 68ch; }
+p { margin: 0 0 14px; }
+.lede { font-size: 19px; color: var(--muted); max-width: 62ch; }
+.kicker { font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--select); margin-bottom: 14px; }
+code, kbd { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; }
+strong { font-weight: 700; }
+.term { font-weight: 700; color: var(--wire); }
+a { color: var(--wire); }
+
+/* pictures: always on the viewport colour */
+figure { margin: 18px 0 22px; }
+.shot { background: var(--vp); border-radius: 6px; overflow: hidden; display: block; }
+.shot img { display: block; width: 100%; height: auto; }
+.shot.px img { image-rendering: pixelated; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+figcaption b { color: var(--fg); }
+.row { display: grid; gap: 12px; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); }
+.row figure { margin: 0; }
+.row figcaption { font-size: 13px; }
+.stage { counter-reset: st; }
+.stage figcaption::before { counter-increment: st; content: counter(st) " · "; font-family: var(--mono); color: var(--select); }
+
+/* journey strip in the hero */
+.journey { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 26px; }
+.journey figure { margin: 0; }
+.journey figcaption { font: 12px/1.35 var(--mono); }
+.journey .arrow { display: none; }
+
+/* term cards */
+.terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 16px 0; }
+.terms div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.terms dt { font: 700 15px/1.2 var(--body); margin-bottom: 4px; }
+.terms dt span { font: 12px var(--mono); color: var(--muted); font-weight: 400; margin-left: 6px; }
+.terms dd { margin: 0; font-size: 15px; color: var(--muted); }
+.ax-x { color: #e8505b; } .ax-y { color: #4fa82a; } .ax-z { color: #3f7fff; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f2c230; vertical-align: middle; margin-right: 6px; }
+.wireline { display: inline-block; width: 18px; height: 3px; background: var(--wire); vertical-align: middle; margin-right: 6px; }
+.facebox { display: inline-block; width: 12px; height: 12px; background: #8a919c; vertical-align: middle; margin-right: 6px; }
+
+.note { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--select); border-radius: 4px; padding: 12px 16px; margin: 18px 0; max-width: 72ch; }
+.note p:last-child { margin-bottom: 0; }
+
+/* numbers table */
+.tbl { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; min-width: 520px; font-size: 15px; }
+th, td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* file diagram */
+.files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0 6px; max-width: 640px; }
+.file { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font-size: 14px; }
+.file b { font: 600 14px var(--mono); display: block; margin-bottom: 4px; color: var(--wire); }
+.file span { color: var(--muted); }
+.arrows { font: 13px var(--mono); color: var(--muted); max-width: 640px; text-align: center; margin-bottom: 14px; }
+
+/* workflow steps */
+ol.steps { padding-left: 0; list-style: none; counter-reset: k; display: grid; gap: 10px; margin: 14px 0; }
+ol.steps > li { counter-increment: k; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; max-width: 72ch; }
+ol.steps > li::before { content: counter(k); font: 700 13px/26px var(--mono); text-align: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--wire); color: var(--wire); }
+.cmd { display: flex; align-items: stretch; gap: 0; margin: 8px 0 4px; background: var(--vp); border-radius: 6px; overflow: hidden; max-width: 100%; }
+.cmd pre { margin: 0; padding: 10px 12px; color: var(--vp-fg); font: 13px/1.5 var(--mono); overflow-x: auto; flex: 1; min-width: 0; white-space: pre; }
+.cmd button { border: 0; border-left: 1px solid #3a3f47; background: transparent; color: #40f2cc; font: 600 12px var(--mono); padding: 0 14px; cursor: pointer; }
+.cmd button:hover, .cmd button:focus-visible { background: #2c3038; outline: none; }
+
+/* glossary */
+.gsearch { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; flex-wrap: wrap; }
+.gsearch input { font: 16px var(--body); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); width: min(340px, 100%); }
+.gsearch input:focus-visible { outline: 2px solid var(--wire); outline-offset: 1px; }
+.gsearch span { font: 13px var(--mono); color: var(--muted); }
+dl.gloss { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 28px; margin: 0; }
+dl.gloss > div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+dl.gloss dt { font-weight: 700; }
+dl.gloss dd { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+
+.projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; }
+.proj { display: grid; gap: 6px; align-content: start; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; color: var(--fg); text-decoration: none; }
+.proj b { font: 500 17px/1.2 var(--display); color: var(--wire); }
+.proj span { font-size: 15px; color: var(--muted); }
+.proj i { font: 12px var(--mono); font-style: normal; color: var(--muted); }
+.proj:hover, .proj:focus-visible { border-color: var(--wire); outline: none; }
+.kicker a { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 20px 16px 60px; }
+  nav.toc { position: static; }
+  nav.toc ol { display: flex; flex-wrap: wrap; gap: 6px; }
+  nav.toc a { border: 1px solid var(--line); padding: 4px 10px; font-size: 13px; }
+  nav.toc a::before { display: none; }
+  .journey { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .row { grid-template-columns: repeat(min(var(--n, 2), 2), minmax(0, 1fr)); }
+  .files { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) { .row { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#start">One picture, start to finish</a></li>
+    <li><a href="#mesh">What a model is made of</a></li>
+    <li><a href="#space">3D space: X, Y, Z</a></li>
+    <li><a href="#transforms">Move, rotate, scale</a></li>
+    <li><a href="#operations">Modeling operations</a></li>
+    <li><a href="#modifiers">Modifiers and booleans</a></li>
+    <li><a href="#topology">Triangles, quads, topology</a></li>
+    <li><a href="#shading">Shading and low-poly</a></li>
+    <li><a href="#uv">UVs and textures</a></li>
+    <li><a href="#bake">Projection and baking</a></li>
+    <li><a href="#files">Model files</a></li>
+    <li><a href="#camera">Cameras, views, light</a></li>
+    <li><a href="#gui">3D in pixelmon</a></li>
+    <li><a href="#workflows">Our workflows</a></li>
+    <li><a href="#blender">Your first hour in Blender</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+    <li><a href="#projects">The projects</a></li>
+  </ol>
+</nav>
+
+<main>
+<section id="start">
+  <div class="kicker"><a href="https://github.com/grymmjack/pixelmon" rel="noopener">pixelmon</a> · <a href="https://github.com/grymmjack/neon-caster" rel="noopener">neon-caster</a> · 3D</div>
+  <h1>3D for people who already know <em>pixels</em></h1>
+  <p class="lede">Everything we did to turn <a href="https://github.com/grymmjack/neon-caster" rel="noopener">neon-caster</a>'s sprites into 3D models with <a href="https://github.com/grymmjack/pixelmon" rel="noopener">pixelmon</a>, and the handful of ideas you need to understand it. Every picture on this page comes from your own crate, railgun and monsters.</p>
+  <div class="journey stage">
+    <figure><span class="shot"><img src="3d-guide/crate_picture.jpg" alt="The HD crate picture"></span><figcaption>the picture</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_raw.jpg" alt="Dense triangle mesh, close up"></span><figcaption>AI model: 133,002 triangles</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_quads.jpg" alt="Clean quad mesh"></span><figcaption>cleaned: 484 quads</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_texture.jpg" alt="Texture sheet"></span><figcaption>its texture sheet</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_textured.jpg" alt="Textured crate model"></span><figcaption>textured model</figcaption></figure>
+    <figure><span class="shot px"><img src="3d-guide/crate_sprite_regular.png" alt="64 pixel game sprite"></span><figcaption>game sprite</figcaption></figure>
+  </div>
+  <p style="margin-top:18px">Read it top to bottom once. After that, the <a href="#glossary">glossary</a> at the end is the quick reference.</p>
+</section>
+
+<section id="mesh">
+  <h2>What a 3D model is made of</h2>
+  <p>A 3D model is a <span class="term">mesh</span>: a hollow skin made of flat pieces, like a papercraft model. There is nothing inside it. It's built from three things, each made of the one before.</p>
+  <figure style="max-width:520px"><span class="shot"><img src="3d-guide/anatomy.jpg" alt="A low-poly ball with its corner points in yellow and its edges in teal"></span>
+    <figcaption>A 20-sided ball. <b>Yellow dots</b> are vertices, <b>teal lines</b> are edges, the <b>grey panels</b> are faces.</figcaption></figure>
+  <dl class="terms">
+    <div><dt><i class="dot"></i>Vertex <span>plural: vertices</span></dt><dd>A point in space: three numbers, x, y and z. The only thing a mesh really stores positions for.</dd></div>
+    <div><dt><i class="wireline"></i>Edge</dt><dd>A straight line joining two vertices.</dd></div>
+    <div><dt><i class="facebox"></i>Face <span>polygon</span></dt><dd>A flat panel closed in by edges. Faces are what you see and what gets coloured.</dd></div>
+  </dl>
+  <p>Pixel art thinks in a grid of squares. 3D thinks in this net of points. A <span class="term">poly count</span> is just how many faces a model has, and it's the 3D cousin of sprite size: more faces, more detail, more work for the computer.</p>
+  <p>To see a model's counts, open it in <a href="https://github.com/grymmjack/kaleidotron" rel="noopener">Kaleidotron</a>: its 3D view has a <b>Stats</b> box with objects, vertices, edges, faces and triangles, like Blender's Statistics overlay (Overlays › Statistics), and <b>🧊 Open in 3D editor</b> hands the model on to Blender, imported and framed. For a sense of scale, neon-caster's ammo pack:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Model</th><th>Vertices</th><th>Triangles</th></tr></thead>
+    <tbody>
+      <tr><td>straight from the AI</td><td>73,730</td><td>149,312</td></tr>
+      <tr><td>HD (smooth)</td><td>5,838</td><td>11,672</td></tr>
+      <tr><td>low-poly (faceted)</td><td>486</td><td>968</td></tr>
+    </tbody></table></div>
+  <p>Kaleidotron also shows <b>GPU vertices</b>, which is higher: a game engine copies a vertex wherever its UV or shading changes, at seams and hard edges. The low-poly ammo has 486 vertices but uploads 1,933.</p>
+</section>
+
+<section id="space">
+  <h2>3D space: X, Y and Z</h2>
+  <p>Every vertex is placed with three numbers: how far along the <span class="term">X axis</span>, the <span class="term">Y axis</span> and the <span class="term">Z axis</span> it is, measured from the <span class="term">origin</span> (0, 0, 0). In Blender and most 3D apps the axes are always drawn in the same colours: <b class="ax-x">X red</b>, <b class="ax-y">Y green</b>, <b class="ax-z">Z blue</b>. RGB is XYZ, which makes them easy to remember.</p>
+  <figure style="max-width:640px"><span class="shot"><img src="3d-guide/axes.jpg" alt="A cube at the origin with red X, green Y and blue Z arrows over a grid floor"></span>
+    <figcaption>Blender's axes. The grid is the ground; one square is one unit, which Blender calls a metre.</figcaption></figure>
+  <p>The catch is which way is <b>up</b>. Blender says Z is up: X and Y lie flat on the floor. glTF, game engines like Unity and Godot, and most file formats say <b>Y is up</b> and Z points at you. Neither is wrong; they just disagree. Blender converts when it imports and exports, which is why our <code>.glb</code> files stand upright everywhere. If a model you load ever lies on its back, a mixed-up "up" axis is the reason, and most importers have an <em>Up axis</em> option to fix it.</p>
+  <p>Every object also has its own <span class="term">local axes</span> that turn with it, as opposed to the world's <span class="term">global axes</span>. "Move forward along its own Y" and "move north" are different things once an object is rotated.</p>
+</section>
+
+<section id="transforms">
+  <h2>Move, rotate, scale</h2>
+  <p>The three basic <span class="term">transforms</span>. They change where an object is, which way it faces and how big it is, without touching its shape. Each object stores them as numbers: a location, a rotation and a scale, all in X, Y and Z. Every object also has an <span class="term">origin</span>: the point it moves from, turns around and scales from.</p>
+  <div class="row" style="--n:3">
+    <figure><span class="shot"><img src="3d-guide/t_move.jpg" alt="A cube moved to the right of its outline"></span><figcaption><b>Move</b> (<kbd>G</kbd>, for grab): 1.6 along X</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/t_rotate.jpg" alt="A cube turned within its outline"></span><figcaption><b>Rotate</b> (<kbd>R</kbd>): 35° around Z</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/t_scale.jpg" alt="A smaller cube inside its outline"></span><figcaption><b>Scale</b> (<kbd>S</kbd>): 0.55 on every axis</figcaption></figure>
+  </div>
+  <p>The teal outline is where the cube started; the orange one is where it ended up. In Blender, press the key, then optionally an axis letter to lock it to that axis, then a number. <kbd>G</kbd> <kbd>X</kbd> <kbd>2</kbd> <kbd>Enter</kbd> moves 2 units along X; <kbd>R</kbd> <kbd>Z</kbd> <kbd>9</kbd><kbd>0</kbd> turns 90° around Z. <span class="term">Apply transforms</span> (<kbd>Ctrl</kbd>+<kbd>A</kbd>) bakes them into the shape and resets the numbers. Our scripts do this before measuring a model.</p>
+</section>
+
+<section id="operations">
+  <h2>Modeling operations</h2>
+  <p>Shapes are built by editing a mesh directly, in <span class="term">Edit Mode</span> (<kbd>Tab</kbd>): pick vertices, edges or faces and apply an operation. These five do most of the work. Orange marks what the operation made.</p>
+  <div class="row" style="--n:3">
+    <figure><span class="shot"><img src="3d-guide/op_extrude.jpg" alt="A cube with its top pulled up into a taller block"></span><figcaption><b>Extrude</b> (<kbd>E</kbd>): pull a face out, building new sides behind it. The main way to grow a shape.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/op_inset.jpg" alt="A cube with a smaller face inside its top face"></span><figcaption><b>Inset</b> (<kbd>I</kbd>): a smaller face inside a face, with a border round it. Often followed by an extrude: a panel, a button, a screen.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/op_bevel.jpg" alt="A cube with rounded edges"></span><figcaption><b>Bevel</b> (<kbd>Ctrl</kbd>+<kbd>B</kbd>): cut corners into rounded or chamfered strips. Real objects rarely have razor edges.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/op_loopcut.jpg" alt="A cube with an orange band of new faces around its middle"></span><figcaption><b>Loop cut</b> (<kbd>Ctrl</kbd>+<kbd>R</kbd>): a new edge loop all the way round, for more detail where it's needed.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/op_subdivide.jpg" alt="A cube with each face cut into a 3 by 3 grid"></span><figcaption><b>Subdivide</b>: split every selected face into smaller ones. The shape stays the same; there's just more to work with.</figcaption></figure>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Operation</th><th>Key</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Merge</td><td><kbd>M</kbd></td><td>Weld selected vertices into one.</td></tr>
+      <tr><td>Fill</td><td><kbd>F</kbd></td><td>Make a face from selected vertices or edges; closes a hole.</td></tr>
+      <tr><td>Knife</td><td><kbd>K</kbd></td><td>Draw cuts across faces by hand.</td></tr>
+      <tr><td>Delete</td><td><kbd>X</kbd></td><td>Remove vertices, edges or faces.</td></tr>
+      <tr><td>Duplicate</td><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>Copy what's selected, then move the copy.</td></tr>
+      <tr><td>Recalculate normals</td><td><kbd>Shift</kbd>+<kbd>N</kbd></td><td>Point every face outwards again. Fixes faces that render inside out.</td></tr>
+    </tbody></table></div>
+  <p>Each has its page in the <a href="https://docs.blender.org/manual/en/latest/modeling/meshes/editing/index.html" rel="noopener">Blender manual's mesh editing chapter</a>.</p>
+</section>
+
+<section id="modifiers">
+  <h2>Modifiers and booleans</h2>
+  <p>A <span class="term">modifier</span> changes a shape without destroying the original. It sits on top of the mesh like a filter on a layer, so you can tweak it or switch it off any time, and <span class="term">apply</span> it when you want the result made permanent. Our pipeline used several: Remesh, Decimate, Wireframe and Boolean.</p>
+  <figure><span class="shot"><img src="3d-guide/mod_subsurf.jpg" alt="A cube, the same cube subdivided once, and twice"></span>
+    <figcaption><b>Subdivision Surface</b>: a cube, then the same cube smoothed once and twice. Model a simple cage, get a smooth shape. The usual way to make high-poly models.</figcaption></figure>
+  <div class="row" style="--n:3">
+    <figure><span class="shot"><img src="3d-guide/mod_mirror.jpg" alt="A shape and its mirror image across an orange plane"></span><figcaption><b>Mirror</b>: model one half, get the other for free across the orange plane. Symmetric robots, faces, ships.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/mod_array.jpg" alt="Six cubes in a row"></span><figcaption><b>Array</b>: repeat one piece in a row. Fences, stairs, chains, pipes.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/mod_solidify.jpg" alt="A thin bent sheet and the same sheet with thickness"></span><figcaption><b>Solidify</b>: give a paper-thin surface real thickness.</figcaption></figure>
+  </div>
+  <h3>Booleans</h3>
+  <p>A <span class="term">boolean</span> combines two shapes the way you'd combine selections in a paint program. One shape is the target; the other is the <span class="term">cutter</span>.</p>
+  <div class="row" style="--n:4">
+    <figure><span class="shot"><img src="3d-guide/bool_before.jpg" alt="A cube with an orange sphere overlapping its corner"></span><figcaption><b>Before:</b> a cube, and a sphere overlapping it</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/bool_union.jpg" alt="Cube and sphere merged into one shape"></span><figcaption><b>Union:</b> both, as one skin</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/bool_difference.jpg" alt="The cube with a round bite taken out"></span><figcaption><b>Difference:</b> the cube minus the sphere</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/bool_intersect.jpg" alt="Only the part where they overlapped"></span><figcaption><b>Intersect:</b> only where they overlap</figcaption></figure>
+  </div>
+  <p>Booleans are quick for hard-surface things (holes, vents, sockets), but they leave messy topology: long thin faces and n-gons where the shapes meet, much like decimation. Both shapes also need to be closed (<span class="term">manifold</span>), or the result comes out broken. Clean up afterwards, or retopologise.</p>
+  <p>More in the manual: <a href="https://docs.blender.org/manual/en/latest/modeling/modifiers/index.html" rel="noopener">modifiers</a>, <a href="https://docs.blender.org/manual/en/latest/modeling/modifiers/generate/booleans.html" rel="noopener">the Boolean modifier</a>.</p>
+</section>
+
+<section id="topology">
+  <h2>Triangles, quads and topology</h2>
+  <p>A face can have any number of corners, but two shapes matter. A <span class="term">triangle</span> has three corners and is always perfectly flat, which is why graphics cards draw everything as triangles in the end. A <span class="term">quad</span> has four corners and is what artists model with, because quads line up into tidy rows and columns.</p>
+  <figure><span class="shot"><img src="3d-guide/quads_tris.jpg" alt="The same ball as a grid of quads and as triangles"></span>
+    <figcaption>The same ball. <b>Left:</b> quads, in neat rings around it. <b>Right:</b> every quad split into two triangles. The shape is identical; the left is far easier to edit and to unwrap.</figcaption></figure>
+  <p><span class="term">Topology</span> is how those faces are arranged: where the edges run, how big the faces are, and whether they follow the shape. Good topology has even, mostly four-sided faces in rows (<span class="term">edge loops</span>) that run along the shape, like the barrel of a gun. It doesn't change the silhouette much, but it makes everything after it easier: texturing, editing, animating, and even how light falls on the surface.</p>
+
+  <h3>Why your railgun looked strange</h3>
+  <p>The AI model (<a href="https://github.com/Tencent-Hunyuan/Hunyuan3D-2" rel="noopener">Hunyuan3D</a>) builds a shape out of hundreds of thousands of tiny triangles with no plan at all. That's called a <span class="term">triangle soup</span>. To make the low-poly version I first used <span class="term">decimation</span>, which deletes edges until the count is low enough. Decimation only cares about keeping the outline, so it leaves long thin <span class="term">sliver</span> triangles and random groupings.</p>
+  <div class="row" style="--n:2">
+    <figure><span class="shot"><img src="3d-guide/rail_before.jpg" alt="Railgun with long thin triangles"></span><figcaption><b>Before:</b> decimated. Slivers and odd flat areas, your screenshot.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/rail_after.jpg" alt="Railgun covered in an even grid of quads"></span><figcaption><b>After:</b> <span class="term">retopology</span> with QuadriFlow. 14,097 faces became 610 even quads that follow the gun.</figcaption></figure>
+  </div>
+  <p><span class="term">Retopology</span> means rebuilding a mesh's faces on top of its existing shape. Artists do it by hand. <a href="https://github.com/hjwdzh/QuadriFlow" rel="noopener">QuadriFlow</a>, built into <a href="https://www.blender.org" rel="noopener">Blender</a>, does it automatically: it covers the shape in evenly sized quads that line up with its curves. It gets you most of the way. It won't give you dead-straight hard edges or perfect detail around small holes; that's still careful hand work.</p>
+  <div class="row stage" style="--n:3">
+    <figure><span class="shot"><img src="3d-guide/crate_raw.jpg" alt=""></span><figcaption>triangle soup, close up</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_slivers.jpg" alt=""></span><figcaption>decimated: slivers</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crate_quads.jpg" alt=""></span><figcaption>retopologised: quads</figcaption></figure>
+  </div>
+  <div class="note"><p><b>The triangle catch.</b> The <code>.glb</code> and <code>.gltf</code> formats can only store triangles, so every quad gets saved as two triangles with a diagonal across it. Open the clean crate in <a href="https://github.com/grymmjack/kaleidotron" rel="noopener">Kaleidotron</a> and you'll see neat pairs of triangles like this, not slivers. In Blender, select everything in Edit Mode and press <kbd>Alt</kbd>+<kbd>J</kbd> (Tris to Quads) to get the quads back.</p>
+  <figure style="margin:10px 0 0;max-width:260px"><span class="shot"><img src="3d-guide/crate_quads_as_tris.jpg" alt="The clean crate as saved: each quad split into two triangles"></span></figure></div>
+</section>
+
+<section id="shading">
+  <h2>Shading, normals and the low-poly look</h2>
+  <p>Every face has a <span class="term">normal</span>: an invisible arrow pointing straight out of its front. The renderer uses normals to decide how bright a face is, by comparing where it points with where the light comes from. Normals also decide which side is the outside.</p>
+  <figure><span class="shot"><img src="3d-guide/flat_smooth.jpg" alt="Two identical balls, one faceted and one smooth"></span>
+    <figcaption>The same 80-face ball. <b>Flat shading</b> (left) lights each face in one tone, so the facets show. <b>Smooth shading</b> (right) blends the normals across faces, so the same few faces look round.</figcaption></figure>
+  <p>That's the whole low-poly style: <strong>few faces + flat shading</strong>. High-poly is the other way round, thousands of faces, smooth shading and fine detail. In our neon-caster set, the 64 px sprites come from low-poly models and the HD sprites from high-poly ones.</p>
+  <figure><span class="shot"><img src="3d-guide/lowpoly_400_1500.jpg" alt="Grey mech model at two face counts"></span>
+    <figcaption>The heavy mech, flat shaded. <b>Top:</b> 400 faces, chunky. <b>Bottom:</b> 1,500 faces, detailed but still faceted.</figcaption></figure>
+  <div class="tbl"><table>
+    <thead><tr><th>What</th><th>Faces</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>Hunyuan3D's raw model</td><td class="num">130,000 – 490,000</td><td>Starting shape only. Far too dense to edit or texture.</td></tr>
+      <tr><td>Low-poly model</td><td class="num">≈ 500 quads</td><td>The 64 px sprites. Texture sheet 1024 px.</td></tr>
+      <tr><td>High-poly model</td><td class="num">≈ 6,000 quads</td><td>The HD sprites. Texture sheet 2048 px.</td></tr>
+      <tr><td>A PlayStation 1 character, for scale</td><td class="num">300 – 1,000</td><td>The classic low-poly era.</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="uv">
+  <h2>UVs: wrapping a flat picture around a shape</h2>
+  <p>A <span class="term">texture</span> is an ordinary image, a PNG you can paint in <a href="https://github.com/grymmjack/DRAW" rel="noopener">DRAW</a>, that gets wrapped around a model as its skin. To know which part of the image goes where, every corner of every face gets a <span class="term">UV coordinate</span>: a spot on the image. They're called U and V simply because X, Y and Z were already taken by 3D space. U is across the image, V is up it.</p>
+  <div class="row" style="--n:2">
+    <figure><span class="shot"><img src="3d-guide/uv_cube.jpg" alt="A cube wearing a lettered grid texture"></span><figcaption>A cube wearing a test grid. Each face shows part of the image.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/uv_layout.jpg" alt="The grid image with the cube's six faces outlined in a cross shape"></span><figcaption>The same image flat, with the cube's <b>UV layout</b> outlined: its six faces unfolded into a cross.</figcaption></figure>
+  </div>
+  <p><span class="term">UV unwrapping</span> is unfolding the model onto the image, like flattening a cardboard box or peeling an orange. The cuts are called <span class="term">seams</span>, and each piece that lies flat is an <span class="term">island</span>. A good unwrap has few seams in visible places and islands that keep their shape without stretching. We used <a href="https://docs.blender.org/manual/en/latest/modeling/meshes/editing/uv.html" rel="noopener"><span class="term">Smart UV Project</span></a>, which cuts wherever the surface bends sharply.</p>
+  <div class="row" style="--n:2">
+    <figure><span class="shot"><img src="3d-guide/crate_texture.jpg" alt="The crate's texture sheet"></span><figcaption>The clean crate's texture sheet: the front and back, the top, and the sides, each an island.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/rail_texture.jpg" alt="The railgun's texture sheet"></span><figcaption>The railgun's: two big islands for its sides, strips for the top, bottom and small parts.</figcaption></figure>
+  </div>
+  <div class="note"><p><b>Painting it.</b> Open <code>NAME_texture.png</code> in DRAW and paint straight onto the islands. Don't move, resize or rotate anything: each pixel is pinned to a spot on the model. Black around the islands is unused space.</p></div>
+</section>
+
+<section id="bake">
+  <h2>Projection and baking: where the colours came from</h2>
+  <p>The AI model comes out as a grey shape with no colour, so the colour had to come from the original picture. Two steps did it.</p>
+  <ol class="steps">
+    <li><div><strong>Projection.</strong> Imagine a slide projector shining the HD picture onto the grey model from the front. Every point takes the colour that lands on it. This is <span class="term">projection mapping</span>. From the front it's perfect.</div></li>
+    <li><div><strong>Baking.</strong> <span class="term">Baking</span> means recording what the model looks like onto its own UV layout, as an image. Blender looked at each spot of the clean model's islands, found which colour was projected there, and wrote it into the texture sheet. Baking also carries detail from a dense model onto a simple one: here the colours of the 133,000-face model went onto the 484-quad one.</div></li>
+  </ol>
+  <figure><span class="shot"><img src="3d-guide/streaks.jpg" alt="The crate from an angle: the front is crisp, the side is long streaks"></span>
+    <figcaption>The limit. From an angle the front is crisp, but the side is <b>streaks</b>: the projector's light grazes it, so one row of the picture gets smeared across the whole side. The back gets the front in mirror image, because the projector shines straight through.</figcaption></figure>
+  <p>So the front of every model is accurate, and the sides and back are a best guess. Those are the islands worth repainting. Tools that paint all sides at once exist (<a href="https://github.com/Tencent-Hunyuan/Hunyuan3D-2" rel="noopener">Hunyuan3D-Paint</a>, for example), but they need a much bigger graphics card than the RTX 3070's 8 GB.</p>
+  <p>pixelmon does all of this for you with its <b>texture</b> option: see <a href="#gui">3D in pixelmon</a>.</p>
+</section>
+
+<section id="files">
+  <h2>Model files</h2>
+  <p>Your models come in two forms. Each holds the same model; they're just packed differently.</p>
+  <div class="files">
+    <div class="file"><b>NAME.gltf</b><span>The model's description: its parts, its material, and which files hold the rest. A small text file.</span></div>
+    <div class="file"><b>NAME.bin</b><span>The heavy data: every vertex, face and UV coordinate, as raw numbers.</span></div>
+    <div class="file"><b>NAME_texture.png</b><span>The skin. An ordinary image: paint it in DRAW.</span></div>
+  </div>
+  <p class="arrows">.gltf → finds NAME.bin and NAME_texture.png <b>by name, in its own folder</b></p>
+  <p>That's the <span class="term">sidecar</span> arrangement. Change the PNG, reopen the <code>.gltf</code>, and the model wears your changes. Keep the three together, and if you rename one, rename all three.</p>
+  <p>A <span class="term">.glb</span> is the same three things packed into one file: easy to share or drop into a game, but you can't edit its texture in place. <code>pack-glb.sh</code> turns an edited <code>.gltf</code> back into a <code>.glb</code>.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Format</th><th>Keeps</th><th>Good for</th></tr></thead>
+    <tbody>
+      <tr><td><code>.gltf</code> + <code>.bin</code> + images</td><td>shape, UVs, materials, textures (triangles only)</td><td>Editing textures. The modern standard, often called "the JPEG of 3D" (<a href="https://www.khronos.org/gltf/" rel="noopener">glTF at Khronos</a>).</td></tr>
+      <tr><td><code>.glb</code></td><td>the same, in one file</td><td>Sharing, game engines, web viewers.</td></tr>
+      <tr><td><code>.obj</code> + <code>.mtl</code></td><td>shape, UVs, simple materials; keeps quads</td><td>An old, simple format almost every program opens.</td></tr>
+      <tr><td><code>.fbx</code></td><td>shape, materials, skeletons, animation</td><td>Game engines and animation (Autodesk's format).</td></tr>
+      <tr><td><code>.stl</code></td><td>shape only: no colour, no UVs</td><td>3D printing.</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="camera">
+  <h2>Cameras, views and light</h2>
+  <p>A 3D scene is turned into a picture by a <span class="term">camera</span>, and making that picture is <span class="term">rendering</span>. A normal, <span class="term">perspective</span> camera makes far things smaller, like your eye. An <span class="term">orthographic</span> camera doesn't: sizes stay true at any distance, like a technical drawing. All our sprite renders are orthographic, so a monster is the same size from every angle and lines up with the old sprites.</p>
+  <div class="row" style="--n:2">
+    <figure><span class="shot"><img src="3d-guide/cam_persp.jpg" alt="A row of pillars shrinking into the distance"></span><figcaption><b>Perspective:</b> the same pillars shrink and lines converge. A wide lens (small number, here 24 mm) exaggerates it; a long lens (85 mm and up) flattens it.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/cam_ortho.jpg" alt="A row of pillars all the same size"></span><figcaption><b>Orthographic:</b> every pillar the same size, however far away. The look of isometric pixel art and technical drawings.</figcaption></figure>
+  </div>
+  <h3>The standard views</h3>
+  <p>3D apps have one-key views straight down each axis, all orthographic, plus the free <span class="term">user</span> view you orbit around in. In Blender they're on the number pad.</p>
+  <div class="row" style="--n:4">
+    <figure><span class="shot"><img src="3d-guide/view_front.jpg" alt="The mech from the front"></span><figcaption><b>Front</b> <kbd>Numpad 1</kbd></figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/view_right.jpg" alt="The mech from the right"></span><figcaption><b>Right</b> <kbd>Numpad 3</kbd></figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/view_top.jpg" alt="The mech from above"></span><figcaption><b>Top</b> <kbd>Numpad 7</kbd></figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/view_user.jpg" alt="The mech from an angle"></span><figcaption><b>User</b>: orbit freely</figcaption></figure>
+  </div>
+  <p><kbd>Ctrl</kbd> with the same key flips to the opposite side (back, left, bottom). <kbd>Numpad 5</kbd> toggles perspective and orthographic, and <kbd>Numpad 0</kbd> looks through the scene's camera, which is what a render shows.</p>
+  <h3>Viewport shading modes</h3>
+  <p>The same model can be shown four ways while you work. In Blender, <kbd>Z</kbd> opens the menu, or use the four little spheres at the top right of the view.</p>
+  <div class="row" style="--n:4">
+    <figure><span class="shot"><img src="3d-guide/shade_wireframe.jpg" alt="The crate as lines only"></span><figcaption><b>Wireframe:</b> edges only. See through to everything.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/shade_solid.jpg" alt="The crate in plain grey"></span><figcaption><b>Solid:</b> plain grey. Judge the shape alone.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/shade_material.jpg" alt="The crate with its texture, evenly lit"></span><figcaption><b>Material preview:</b> textures, even light. Check paint work here.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/shade_rendered.jpg" alt="The crate lit by a lamp, casting a shadow"></span><figcaption><b>Rendered:</b> real lights and shadows. Slowest, the final look.</figcaption></figure>
+  </div>
+  <h3>Lights</h3>
+  <p>Four kinds, each with a strength and colour. A scene usually has a key light plus a soft fill or sky.</p>
+  <div class="row" style="--n:4">
+    <figure><span class="shot"><img src="3d-guide/light_sun.jpg" alt="A ball lit evenly with a long hard shadow"></span><figcaption><b>Sun:</b> from infinitely far away. Same strength everywhere, parallel shadows. What our renders use.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/light_point.jpg" alt="A ball lit by a bulb, falling off with distance"></span><figcaption><b>Point:</b> a bare bulb shining every way, fading with distance.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/light_spot.jpg" alt="A ball in a circle of light"></span><figcaption><b>Spot:</b> a cone of light, like a torch or stage light.</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/light_area.jpg" alt="A ball softly lit with a soft shadow"></span><figcaption><b>Area:</b> a glowing panel. Big and soft, like a window or softbox.</figcaption></figure>
+  </div>
+  <h3>Camera height</h3>
+  <p>Some neon-caster pictures look down on their subject. Hunyuan3D builds the model as it really is, so the crawler came out as a flat spider on the ground, and an eye-level camera saw it edge-on. The fix tries a few camera heights and keeps the one whose outline best matches the picture.</p>
+  <div class="row" style="--n:3">
+    <figure><span class="shot"><img src="3d-guide/crawler_picture.jpg" alt="The crawler picture, seen from above"></span><figcaption>the picture, seen from above</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crawler_eye.jpg" alt="The model's outline from eye level: flat"></span><figcaption>eye level: matches 16%</figcaption></figure>
+    <figure><span class="shot"><img src="3d-guide/crawler_above.jpg" alt="The model's outline from 55 degrees up"></span><figcaption>55° above: matches 58%, kept</figcaption></figure>
+  </div>
+  <h3>Depth maps</h3>
+  <p>A <span class="term">depth map</span> is a greyscale picture of distance: white is near the camera, black is far. pixelmon's depth lock hands one to the image model, which then paints a new picture with exactly that shape. A <span class="term">turnaround</span> renders a model's depth from every side and paints each one, so you get matching sprites of the same thing from 8 directions.</p>
+  <figure><span class="shot"><img src="3d-guide/turnaround_heavy.jpg" alt="Eight depth maps of the mech above eight painted views"></span>
+    <figcaption><b>Top:</b> the heavy's depth maps from 8 angles, from Blender. <b>Bottom:</b> each painted by pixelmon with depth lock and steering from the original picture.</figcaption></figure>
+  <figure><span class="shot"><img src="3d-guide/turnaround_lowpoly.jpg" alt="Faceted grey mech from four angles above four painted views"></span>
+    <figcaption>The same with a 1,500-face low-poly model: the faceting carries into the painted sprites.</figcaption></figure>
+</section>
+
+<section id="gui">
+  <h2>3D in pixelmon: GUI and command line</h2>
+  <p>Everything above, from a picture to a model to matching sprites, is two clicks in <a href="https://github.com/grymmjack/pixelmon" rel="noopener">pixelmon-gui</a>, or one command. These screenshots are a real run.</p>
+  <ol class="steps">
+    <li><div><strong>Start from a good picture.</strong> Render (or pick) one of the subject alone: full body, facing the camera, on a plain background. Art mode with <b>✂ cut out</b> is best. The form's other settings (palette, output size, kind) are what the sprites will use later, so set them now too.
+      <figure><span class="shot"><img src="3d-guide/gui_form.jpg" alt="pixelmon-gui's form: prompt, kind, canvas size, palette"></span><figcaption>The form. Here: EGA palette at 320 × 200, kind <i>game sprite</i>.</figcaption></figure></div></li>
+    <li><div><strong>Click 🧊 on the picture,</strong> in the Gallery or the Queue. It sits in the corner of every thumbnail.
+      <figure style="max-width:460px"><span class="shot"><img src="3d-guide/gui_gallery.jpg" alt="Gallery thumbnails, each with a 🧊 button"></span></figure></div></li>
+    <li><div><strong>The lightbox opens at its 🧊 3D row.</strong> Pick the options, then a button.
+      <figure><span class="shot"><img src="3d-guide/gui_lightbox.jpg" alt="The lightbox with the picture and its 3D row"></span></figure>
+      <div class="row" style="--n:2;align-items:start">
+        <figure><span class="shot"><img src="3d-guide/gui_row3d.png" alt="The 3D row: make 3D model, turnaround, angles, camera, low-poly, texture"></span></figure>
+        <dl class="terms" style="margin:0;grid-template-columns:1fr">
+          <div><dt>make 3D model</dt><dd>The picture becomes a <code>.glb</code>, about a minute on the render server.</dd></div>
+          <div><dt>turnaround</dt><dd>Model, then N matching sprites, about 50 s per angle.</dd></div>
+          <div><dt>angles · camera · low-poly</dt><dd>4, 8 or 16 views; eye level, a little above, or above; off or 400 / 1,500 / 5,000 faces.</dd></div>
+          <div><dt>texture</dt><dd>Also a clean, textured model: the picture <a href="#bake">projected and baked</a> into a texture you can paint. <b>on</b> guesses how high the picture was seen from; or pick eye level, a little above, or above.</dd></div>
+        </dl>
+      </div></div></li>
+    <li><div><strong>The model's card.</strong> It shows a 4-view preview of each model, and for each a download link (<b>🧊 model</b>, <b>🔺 low-poly</b>, <b>🎨 textured</b>), <b>👁 Kaleidotron</b>, <b>🧊 Blender</b> (Blender starts with the model imported and framed; 🛠 Setup › 3D editor picks another program) and <b>🧊 turnaround</b>. The textured one also gets <b>🖌 texture</b>.
+      <div class="row" style="--n:2;align-items:start">
+        <figure><span class="shot"><img src="3d-guide/gui_mesh_card.jpg" alt="Queue card of a finished 3D model job: model links, the textured preview and the grey preview"></span><figcaption>A 3D model with low-poly 400 and texture on: three models, two previews.</figcaption></figure>
+        <figure><span class="shot"><img src="3d-guide/gui_models.png" alt="The lightbox's model buttons: model, low-poly and textured, each with Kaleidotron, open and turnaround"></span><figcaption>The same buttons in the lightbox.</figcaption></figure>
+      </div></div></li>
+    <li><div><strong>The textured model.</strong> About 6,000 quads, or the low-poly count with flat shading, wearing the picture as its texture: the front is the picture, the back its colours seen through, the sides stretched.
+      <figure><span class="shot"><img src="3d-guide/tex_views.jpg" alt="A low-poly gunner from four sides, wearing the picture's colours"></span><figcaption>The gunner at 400 faces, from the front, side, back and other side.</figcaption></figure>
+      <div class="row" style="--n:2;align-items:start">
+        <figure style="max-width:340px"><span class="shot"><img src="3d-guide/tex_sheet.jpg" alt="The gunner's texture: many small islands of colour on black"></span><figcaption>Its texture, <code>NAME_textured_texture.png</code>: one island per part. The black is the dark armour and the gaps between islands.</figcaption></figure>
+        <div><p style="margin-top:0"><b>Paint it:</b> click <b>🖌 texture</b> to open it in DRAW, paint, save under the same name, then <b>👁 Kaleidotron</b> (tick <i>Textured</i>) or <b>🧊 Blender</b> shows your paint on the model. Those buttons open the <code>.gltf</code>, which reads the PNG, so they always show the latest paint; the <code>.glb</code> keeps the texture as it was made.</p>
+          <p>If a picture is projected from the wrong height, the colours slide: a plant gets leaves on its pot. Pick the height by hand in the <b>texture</b> menu.</p></div>
+      </div></div></li>
+    <li><div><strong>🧊 turnaround on that card</strong> makes the sprites from the model, steered by the picture it came from. Each sprite is labelled with its angle.
+      <figure style="max-width:460px"><span class="shot"><img src="3d-guide/gui_turn_card.jpg" alt="Queue card of a turnaround: sprites labelled 0° and 90°"></span><figcaption>A 4-angle low-poly turnaround in EGA, with the form's settings applied.</figcaption></figure></div></li>
+  </ol>
+  <h3>The same from the command line</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>In the GUI</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>🧊 › make 3D model</td><td><code>pixelmon --mesh robot.png</code></td></tr>
+      <tr><td>… with low-poly 400</td><td><code>pixelmon --mesh robot.png --lowpoly 400</code></td></tr>
+      <tr><td>… with texture: on</td><td><code>pixelmon --mesh robot.png --texture</code></td></tr>
+      <tr><td>texture: on · picture at eye level</td><td><code>--texture --texture-elev 0</code> (30 a little above, 55 above)</td></tr>
+      <tr><td>a bigger or smaller texture</td><td><code>--texture-size 4096</code> (default 1,024 up to 1,500 faces, else 2,048)</td></tr>
+      <tr><td>🧊 › turnaround, 8 angles</td><td><code>pixelmon "an orange robot" --turnaround robot.png --angles 8</code></td></tr>
+      <tr><td>camera: a little above</td><td><code>--elev 15</code></td></tr>
+      <tr><td>a model card's 🧊 turnaround</td><td><code>pixelmon "an orange robot" --turnaround robot.glb --steer robot.png</code></td></tr>
+      <tr><td>the form's palette and size</td><td><code>--palette EGA --out 64</code>, <code>--art</code>, and any other flag</td></tr>
+    </tbody></table></div>
+  <div class="cmd"><pre>pixelmon "a green battle mech" --turnaround mech.png --angles 8 --elev 15 --lowpoly 1500 --palette EGA --out 64</pre><button type="button" data-copy>copy</button></div>
+  <div class="cmd"><pre>pixelmon --mesh robot.png --lowpoly 400 --texture</pre><button type="button" data-copy>copy</button></div>
+  <p>Files come out as <code>NAME.glb</code>, <code>NAME_lowpoly.glb</code>, <code>NAME_textured.glb</code> (with <code>NAME_textured.gltf</code>, <code>.bin</code> and <code>_texture.png</code> beside it) and <code>NAME_a000…</code> to <code>NAME_a315…</code> sprites; the Blender renders and depth maps stay in <code>turn/</code>. The full flag list is in the <a href="https://claude.ai/artifact/Howqpc3cfKV7Xjt4aAbrSS" rel="noopener">pixelmon Settings Atlas</a> under 🧊 3D.</p>
+</section>
+
+<section id="workflows">
+  <h2>Our workflows</h2>
+
+  <h3>A. neon-caster's sprites, remade from 3D</h3>
+  <ol class="steps">
+    <li><div>Each HD picture went to <strong><a href="https://github.com/Tencent-Hunyuan/Hunyuan3D-2" rel="noopener">Hunyuan3D 2</a></strong> on the rtx box, which builds a 3D model from one image in about a minute.</div></li>
+    <li><div>A <strong>camera height</strong> was picked to match the picture, as with the crawler.</div></li>
+    <li><div>The picture was <strong>projected</strong> onto the model, and <strong>Blender</strong> rendered it twice: low-poly and flat shaded for the 64 px sprites, high-poly and smooth for the HD ones.</div></li>
+    <li><div>Each render was <strong>fitted into the old sprite's footprint</strong>: the same width or height, standing on the same line, so it drops into the game at the same size.</div></li>
+    <li><div>The models were <strong>retopologised</strong> (QuadriFlow), <strong>unwrapped</strong> (Smart UV Project) and <strong>baked</strong>, then saved as <code>.gltf</code> + texture and <code>.glb</code>.</div></li>
+  </ol>
+  <figure><span class="shot"><img src="3d-guide/monsters_compare.jpg" alt="Monster sprites: old regular, new regular, old HD, new HD"></span>
+    <figcaption>Each row: old 64 px · new low-poly 64 px · old HD · new high-poly HD.</figcaption></figure>
+  <p>Everything is in one folder:</p>
+  <div class="cmd"><pre>~/pixelmon-gallery/neon-caster-3d/</pre><button type="button" data-copy>copy</button></div>
+  <p><code>regular/</code> and <code>hd/</code> hold the sprites, <code>compare/</code> the side-by-side sheets, and <code>models/</code> the <code>lowpoly/</code>, <code>hd/</code> and <code>untextured/</code> models plus <code>wireframes/</code> pictures. <code>README.txt</code> repeats the painting steps below.</p>
+
+  <h3>B. Painting a model's texture</h3>
+  <ol class="steps">
+    <li><div>Open the texture in DRAW, for example <code>models/lowpoly/crate_texture.png</code>.</div></li>
+    <li><div>Paint on the islands, then save under the same name.</div></li>
+    <li><div>Open <code>models/lowpoly/crate.gltf</code> in Kaleidotron or Blender, or reopen it if it was already open. Your paint is on the model.</div></li>
+    <li><div>When you want one file to share, pack it:
+      <div class="cmd"><pre>~/pixelmon-gallery/neon-caster-3d/pack-glb.sh ~/pixelmon-gallery/neon-caster-3d/models/lowpoly/crate.gltf</pre><button type="button" data-copy>copy</button></div></div></li>
+  </ol>
+
+  <h3>C. New 3D in pixelmon</h3>
+  <p>The same pipeline, built in: 🧊 › <b>make 3D model</b> with <b>texture</b> on gives a clean, textured model, and <b>🖌 texture</b> paints it as in B, right from the model's card. See <a href="#gui">3D in pixelmon</a> above for the walkthrough and the commands.</p>
+</section>
+
+<section id="blender">
+  <h2>Your first hour in Blender</h2>
+  <p><a href="https://www.blender.org" rel="noopener">Blender</a> is free and already installed. These few controls cover looking at and touching up these models. On a laptop without a middle mouse button, turn on <em>Emulate 3 Button Mouse</em> in Edit › Preferences › Input.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Do this</th><th>Press</th></tr></thead>
+    <tbody>
+      <tr><td>Open a model</td><td>File › Import › glTF 2.0 (.glb/.gltf)</td></tr>
+      <tr><td>Orbit · pan · zoom the view</td><td>middle-drag · <kbd>Shift</kbd>+middle-drag · scroll wheel</td></tr>
+      <tr><td>Frame the selected model</td><td><kbd>Numpad .</kbd></td></tr>
+      <tr><td>Switch between object and Edit Mode</td><td><kbd>Tab</kbd></td></tr>
+      <tr><td>Select vertices · edges · faces (Edit Mode)</td><td><kbd>1</kbd> · <kbd>2</kbd> · <kbd>3</kbd></td></tr>
+      <tr><td>Select everything</td><td><kbd>A</kbd></td></tr>
+      <tr><td>Move · rotate · scale (then <kbd>X</kbd>/<kbd>Y</kbd>/<kbd>Z</kbd> to lock an axis)</td><td><kbd>G</kbd> · <kbd>R</kbd> · <kbd>S</kbd></td></tr>
+      <tr><td>Extrude · inset · bevel · loop cut</td><td><kbd>E</kbd> · <kbd>I</kbd> · <kbd>Ctrl</kbd>+<kbd>B</kbd> · <kbd>Ctrl</kbd>+<kbd>R</kbd></td></tr>
+      <tr><td>Front · right · top view</td><td><kbd>Numpad 1</kbd> · <kbd>3</kbd> · <kbd>7</kbd> (<kbd>Ctrl</kbd> for the opposite side)</td></tr>
+      <tr><td>Perspective ↔ orthographic</td><td><kbd>Numpad 5</kbd></td></tr>
+      <tr><td>Add a modifier</td><td>the blue wrench tab in the Properties panel</td></tr>
+      <tr><td>Undo · redo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
+      <tr><td>Rebuild quads from triangle pairs</td><td><kbd>Alt</kbd>+<kbd>J</kbd> in Edit Mode</td></tr>
+      <tr><td>See the texture on the model</td><td><kbd>Z</kbd> › Material Preview</td></tr>
+      <tr><td>See the UV layout next to the model</td><td>the <strong>UV Editing</strong> tab at the top</td></tr>
+      <tr><td>Paint on the model directly</td><td>the <strong>Texture Paint</strong> tab at the top</td></tr>
+    </tbody></table></div>
+  <p>The <a href="https://docs.blender.org/manual/en/latest/" rel="noopener">Blender manual</a> covers each of these. Its <a href="https://docs.blender.org/manual/en/latest/modeling/meshes/uv/index.html" rel="noopener">UV chapter</a> and <a href="https://docs.blender.org/manual/en/latest/sculpt_paint/texture_paint/index.html" rel="noopener">Texture Paint chapter</a> go furthest with what we've done.</p>
+</section>
+
+<section id="glossary">
+  <h2>Glossary</h2>
+  <div class="gsearch"><input id="gfilter" type="search" placeholder="Filter terms…" aria-label="Filter the glossary"><span id="gcount"></span></div>
+  <dl class="gloss" id="gloss">
+    <div><dt><a href="https://docs.blender.org/manual/en/latest/modeling/meshes/editing/uv.html" rel="noopener">Smart UV Project</a></dt><dd>Blender's automatic unwrap: cuts the model wherever it bends sharply and packs the pieces onto the image.</dd></div>
+    <div><dt><a href="https://github.com/hjwdzh/QuadriFlow" rel="noopener">QuadriFlow</a></dt><dd>Blender's automatic retopology: covers a shape in even quads that follow its curves.</dd></div>
+    <div><dt><a href="https://github.com/Tencent-Hunyuan/Hunyuan3D-2" rel="noopener">Hunyuan3D 2</a></dt><dd>The AI model on the rtx box that builds a 3D shape from one picture.</dd></div>
+    <div><dt><a href="https://www.blender.org" rel="noopener">Blender</a></dt><dd>The free 3D program that did our rendering, retopology, unwrapping and baking. It ran headless: no window, just a script.</dd></div>
+    <div><dt><a href="https://www.khronos.org/gltf/" rel="noopener">glTF · GLB</a></dt><dd>The modern model format. .gltf points at sidecar files; .glb packs them into one. Stores triangles only.</dd></div>
+    <div><dt>Apply</dt><dd>Make a modifier or transform permanent: bake it into the mesh and reset it.</dd></div>
+    <div><dt>Area light</dt><dd>A glowing panel: big, soft light and soft shadows.</dd></div>
+    <div><dt>Array</dt><dd>A modifier that repeats an object in a row.</dd></div>
+    <div><dt>Axis</dt><dd>One of the three directions of 3D space: X (red), Y (green), Z (blue).</dd></div>
+    <div><dt>Baking</dt><dd>Recording how a model looks (colour, light, fine detail) into an image on its UV layout. We baked the projected picture onto the clean models.</dd></div>
+    <div><dt>Bevel</dt><dd>Cut a corner or edge into a rounded or chamfered strip.</dd></div>
+    <div><dt>Boolean</dt><dd>Combine two shapes: union (both), difference (one minus the other), intersect (only the overlap).</dd></div>
+    <div><dt>Camera</dt><dd>The viewpoint a render is made from: perspective or orthographic.</dd></div>
+    <div><dt>Decimation</dt><dd>Reducing faces by collapsing edges. Fast, keeps the outline, makes sliver triangles.</dd></div>
+    <div><dt>Depth map</dt><dd>A greyscale picture of distance: white near, black far. pixelmon's depth lock paints to its shape.</dd></div>
+    <div><dt>Edge</dt><dd>A straight line between two vertices.</dd></div>
+    <div><dt>Edge loop</dt><dd>A row of edges that runs around a shape, like the rings on the quad ball. Good topology is made of them.</dd></div>
+    <div><dt>Edit Mode</dt><dd>Where you change a mesh itself: vertices, edges, faces (Tab in Blender). Object Mode moves whole objects.</dd></div>
+    <div><dt>Extrude</dt><dd>Pull faces, edges or vertices out, building new geometry behind them.</dd></div>
+    <div><dt>Face · polygon</dt><dd>A flat panel enclosed by edges. What you see and what gets coloured.</dd></div>
+    <div><dt>Field of view · focal length</dt><dd>How much a perspective camera sees. Short lens (24 mm): wide, strong perspective. Long (85 mm+): narrow, flat.</dd></div>
+    <div><dt>Flat shading</dt><dd>Each face lit in one tone, so the facets show. Half of the low-poly look.</dd></div>
+    <div><dt>Global axes</dt><dd>The world's X, Y and Z, fixed in place. Compare local axes.</dd></div>
+    <div><dt>GPU vertices</dt><dd>The vertices a game engine actually uploads: one is copied wherever its UV or shading changes (UV seams, hard edges), so there are more of them than the model's own vertices. Kaleidotron's Stats box shows both.</dd></div>
+    <div><dt>High-poly</dt><dd>A model with many faces (thousands or more) for fine detail, usually smooth shaded.</dd></div>
+    <div><dt>Inset</dt><dd>Make a smaller face inside a face, with a border round it.</dd></div>
+    <div><dt>Island</dt><dd>One flat piece of a UV layout: a part of the model laid out on the texture.</dd></div>
+    <div><dt>Local axes</dt><dd>An object's own X, Y and Z, which turn with it.</dd></div>
+    <div><dt>Loop cut</dt><dd>Add a new edge loop all the way round a shape.</dd></div>
+    <div><dt>Low-poly</dt><dd>A model with few faces (hundreds), flat shaded so the facets show. The PS1-era look.</dd></div>
+    <div><dt>Manifold · watertight</dt><dd>A closed skin with no holes or loose bits: every edge joins exactly two faces. Many tools, QuadriFlow included, need it.</dd></div>
+    <div><dt>Material</dt><dd>How a surface reacts to light: its colour (often from a texture), shininess (roughness), glow (emission).</dd></div>
+    <div><dt>Mesh</dt><dd>A 3D model's skin: vertices, edges and faces. Hollow, like papercraft.</dd></div>
+    <div><dt>Mirror</dt><dd>A modifier that copies one half of a model across an axis.</dd></div>
+    <div><dt>Modifier</dt><dd>A non-destructive operation stacked on a mesh: subdivision, mirror, array, boolean, remesh… Tweak it any time; apply it to make it permanent.</dd></div>
+    <div><dt>N-gon</dt><dd>A face with more than four corners. Fine on flat areas; awkward to edit or animate.</dd></div>
+    <div><dt>Normal</dt><dd>An invisible arrow pointing out of a face's front. Decides brightness and which side is outside.</dd></div>
+    <div><dt>Origin</dt><dd>The point (0, 0, 0) of the world; also each object's own pivot, which it moves from, rotates around and scales from.</dd></div>
+    <div><dt>Orthographic camera</dt><dd>A camera with no perspective: things keep their true size at any distance. All our sprite renders use one.</dd></div>
+    <div><dt>Perspective camera</dt><dd>A camera like your eye: far things look smaller.</dd></div>
+    <div><dt>Point light</dt><dd>A bare bulb: light in every direction, fading with distance.</dd></div>
+    <div><dt>Poly count</dt><dd>How many faces a model has. The 3D version of sprite size.</dd></div>
+    <div><dt>Projection mapping</dt><dd>Colouring a model by shining a picture onto it from one direction, like a slide projector. Perfect from that side, streaky elsewhere.</dd></div>
+    <div><dt>Quad</dt><dd>A four-cornered face. What artists model with: quads line up into rows and loops.</dd></div>
+    <div><dt>Remesh</dt><dd>Rebuilding a mesh from scratch over its shape. Voxel remesh makes a watertight blob; QuadriFlow makes clean quads.</dd></div>
+    <div><dt>Render</dt><dd>Turning a 3D scene into a picture through a camera, with lights and materials.</dd></div>
+    <div><dt>Retopology</dt><dd>Rebuilding a model's faces with better topology on top of the same shape.</dd></div>
+    <div><dt>Seam</dt><dd>Where a model is cut open for UV unwrapping. Texture can show a join along it.</dd></div>
+    <div><dt>Sidecar file</dt><dd>A separate file a model refers to by name, like NAME_texture.png next to NAME.gltf. Keep it in the same folder.</dd></div>
+    <div><dt>Sliver</dt><dd>A long, thin triangle. Bad for shading and texturing; what decimation leaves behind.</dd></div>
+    <div><dt>Smooth shading</dt><dd>Normals blended across faces so few faces look round.</dd></div>
+    <div><dt>Solidify</dt><dd>A modifier that gives a thin surface thickness.</dd></div>
+    <div><dt>Spot light</dt><dd>A cone of light, like a torch.</dd></div>
+    <div><dt>Subdivide</dt><dd>Split faces into smaller ones without changing the shape.</dd></div>
+    <div><dt>Subdivision Surface</dt><dd>A modifier that subdivides and smooths: a rough cage becomes a smooth high-poly shape.</dd></div>
+    <div><dt>Sun light</dt><dd>Light from infinitely far away: even strength, parallel shadows.</dd></div>
+    <div><dt>Texture</dt><dd>An image wrapped around a model as its skin, placed by UV coordinates.</dd></div>
+    <div><dt>Topology</dt><dd>How a mesh's faces are arranged: their size, shape and flow along the surface.</dd></div>
+    <div><dt>Transform</dt><dd>Move, rotate or scale an object without changing its shape.</dd></div>
+    <div><dt>Triangle</dt><dd>A three-cornered face, always flat. Everything becomes triangles on the graphics card.</dd></div>
+    <div><dt>Triangle soup</dt><dd>A mass of tiny triangles with no structure, the way AI and 3D-scan models come out.</dd></div>
+    <div><dt>Turnaround</dt><dd>One subject drawn or rendered from several angles around it, all matching. pixelmon makes them from a 3D model.</dd></div>
+    <div><dt>Up axis</dt><dd>Which axis points up: Z in Blender, Y in glTF and most game engines. Converted on import and export.</dd></div>
+    <div><dt>UV layout · UV map</dt><dd>The whole model unfolded flat onto the texture: all its islands.</dd></div>
+    <div><dt>UV unwrapping</dt><dd>Unfolding a model onto a flat image, like flattening a cardboard box.</dd></div>
+    <div><dt>UV · UV coordinate</dt><dd>A spot on the texture image for each corner of each face. U across, V up.</dd></div>
+    <div><dt>Vertex</dt><dd>A point in 3D space: x, y and z. Plural: vertices.</dd></div>
+    <div><dt>Viewport shading</dt><dd>How the 3D view draws models while you work: wireframe, solid, material preview, rendered.</dd></div>
+  </dl>
+</section>
+
+<section id="projects">
+  <h2>The projects</h2>
+  <p>Everything on this page was made with these, all open source on GitHub.</p>
+  <div class="projects">
+    <a class="proj" href="https://github.com/grymmjack/pixelmon" rel="noopener"><b>pixelmon</b><span>Pixel-art sprite generator: ComfyUI + SDXL, driven by one command or its web GUI. Made every model, turnaround and sprite here.</span><i>github.com/grymmjack/pixelmon</i></a>
+    <a class="proj" href="https://github.com/grymmjack/neon-caster" rel="noopener"><b>neon-caster</b><span>A first-person shooter in one file of QB64 Phoenix Edition BASIC, and a 24-chapter course in how it's made. The crate, railgun and monsters are its.</span><i>github.com/grymmjack/neon-caster</i></a>
+    <a class="proj" href="https://github.com/grymmjack/DRAW" rel="noopener"><b>DRAW</b><span>A pixel art editor written in QB64PE that can export images as source code. Paint the texture sheets in it.</span><i>github.com/grymmjack/DRAW</i></a>
+    <a class="proj" href="https://github.com/grymmjack/kaleidotron" rel="noopener"><b>Kaleidotron</b><span>A viewer, organizer and browser for pixel art and the art scene. Opens the .gltf and .glb models too.</span><i>github.com/grymmjack/kaleidotron</i></a>
+    <a class="proj" href="https://github.com/grymmjack/soundmon" rel="noopener"><b>soundmon</b><span>pixelmon's sibling for sound: effects, music loops and narration from one command.</span><i>github.com/grymmjack/soundmon</i></a>
+  </div>
+</section>
+</main>
+</div>
+
+<script>
+// copy buttons: the command next to each one
+document.querySelectorAll("[data-copy]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const pre = btn.parentElement.querySelector("pre");
+    const done = () => { btn.textContent = "copied"; setTimeout(() => { btn.textContent = "copy"; }, 1400); };
+    try {
+      navigator.clipboard.writeText(pre.textContent).then(done, () => selectText(pre));
+    } catch (e) { selectText(pre); }
+  });
+});
+function selectText(el) {
+  const r = document.createRange(); r.selectNodeContents(el);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+// glossary filter
+const gf = document.getElementById("gfilter"), items = [...document.querySelectorAll("#gloss > div")], gc = document.getElementById("gcount");
+function filterGloss() {
+  const q = gf.value.trim().toLowerCase(); let n = 0;
+  items.forEach(d => { const hit = !q || d.textContent.toLowerCase().includes(q); d.hidden = !hit; n += hit; });
+  gc.textContent = `${n} of ${items.length} terms`;
+}
+gf.addEventListener("input", filterGloss); filterGloss();
+</script>

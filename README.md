@@ -315,7 +315,9 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--turnaround SRC` | rotation sprites from a picture (or a `.glb/.gltf/.obj/.stl/.ply/.fbx` model): N views, each painted to match | — |
 | `--angles N` / `--elev DEG` | `--turnaround`: how many views around the model / camera height above eye level | 8 / 0 |
 | `--lowpoly FACES` | also make a faceted low-poly model of about FACES faces; a turnaround renders and paints that one | off |
-| `--blender CMD` | how to run Blender (3D) | `$PIXELMON_BLENDER`, `blender`, or the `org.blender.Blender` flatpak |
+| `--texture` | also make a clean, **textured** model: quads, a UV map and the picture baked into a texture (`NAME_textured.glb`, plus `.gltf`/`.bin`/`_texture.png` to paint) — about 6000 quads, or `--lowpoly FACES` flat shaded | off |
+| `--texture-size PX` / `--texture-elev DEG` | `--texture`: the texture's size (256–8192) / how far above the subject the picture was seen from (0–80) | 1024 up to 1500 faces, else 2048 / guessed (0, 30 or 55) |
+| `--blender CMD` | how to run Blender (3D) | `$PIXELMON_BLENDER`, `blender`, the `org.blender.Blender` flatpak, or a usual install folder |
 | `--tile [x\|y]` | **seamless tileable texture**: the model and VAE wrap at the edges (circular padding) and the pixel pass filters across them, so the result repeats with no seam (both axes, or just `x` / `y`). Drops the sprite wording and adds an edge/object negative. Also saves a 3×3 `_tiled_` preview for checking seams. Needs the updated `pixelart_palette` nodes on the render server | off |
 | `--preview` | also save an enlarged, zoomed-in PNG (else only the true-size sprite) | off |
 | `--output-to DIR` / `--move-to-dirs` / `--create-dirs` | where finished files go — see [Batches](#batches--organizing-output) | — |
@@ -421,12 +423,14 @@ different folder, or a second run would fit into the new pictures.
 
 One picture → a **3D model** → **rotation sprites** that all match: the same monster, the same
 size, from every side (Doom-style 8 directions, or 4, or 16).
+New to 3D? Start with the [3D field guide for 2D artists](docs/3d-guide.html).
 
 ```bash
 pixelmon --mesh monster.png                         # -> monster.glb + a 4-view preview
 pixelmon "a green battle mech" --turnaround monster.png --art              # 8 painted angles
 pixelmon "a green battle mech" --turnaround monster.glb --steer monster.png \
     --lowpoly 1500 --angles 4 --palette EGA --out 64                        # low-poly, pixel-art angles
+pixelmon --mesh monster.png --lowpoly 400 --texture  # + monster_textured.glb, wearing the picture
 ```
 
 1. **The model**: Hunyuan3D 2 on the render server turns the picture's subject into a mesh
@@ -445,14 +449,31 @@ pixelmon "a green battle mech" --turnaround monster.glb --steer monster.png \
 That's the faceted low-poly look: 400 is chunky, 1500 detailed. The low-poly `.glb` is kept, and
 a turnaround renders and paints it, so the sprites come out faceted too.
 
+`--texture` also makes a **textured model** you can paint, the way the neon-caster 3D set was made:
+Blender guesses how high the picture was seen from (by matching the model's outline from 0°, 30° and
+55° up; `--texture-elev` sets it), projects the picture onto the model from there, rebuilds the model
+as clean quads (QuadriFlow; about 6000, or the `--lowpoly` count with flat shading; plain triangles
+for shapes QuadriFlow refuses), unwraps it (Smart UV Project) and bakes the projected colours into a
+texture, the picture's pixels kept crisp (and a `--lowpoly` model's texture filtered *nearest*, old-school
+Quake style); the backdrop's tint is taken out of the cut-out's edge first, so a magenta backdrop
+doesn't fringe the model. The front is the picture, the back its colours seen through, the sides stretched. Files:
+`NAME_textured.glb` (texture inside), `NAME_textured.gltf` + `.bin` + `NAME_textured_texture.png`
+(paint the PNG, reopen the `.gltf`, and your paint is on the model) and a 4-view
+`NAME_textured_s<seed>_views.png`. A turnaround of a model needs `--steer PICTURE` for `--texture`.
+
 In **pixelmon-gui**, the **🧊** button on any picture opens its 🧊 3D row. **make 3D model** makes
-the model; **turnaround** makes the sprites, with angles, camera height and low-poly options. A
-model's card (and the lightbox of its preview) links the `.glb` to download, to view in
-**Kaleidotron**, or to open with your default 3D program, plus **🧊 turnaround** from that model.
+the model; **turnaround** makes the sprites, with angles, camera height, low-poly and **texture**
+(off · on · on with the picture at eye level / a little above / above) options. A model's card (and
+the lightbox of its preview) has a row per model (**🧊 model**, **🔺 low-poly**, **🎨 textured**):
+the `.glb` to download, **👁 Kaleidotron**, **🧊 Blender** (Blender starts with the model imported,
+framed and in Material Preview; 🛠 Setup › **3D editor** picks another program), and **🧊 turnaround**
+from that model. The textured one adds **🖌 texture**, which opens its texture in DRAW; save, and
+Kaleidotron / Blender show the paint (they open the `.gltf`, which reads the PNG).
 
 **Setup:** `./download-models.sh --3d` (Hunyuan3D 2, 4.9 GB) plus `--steer` and `--depth`, and
-**Blender** on the machine running pixelmon (`blender` on the PATH or the `org.blender.Blender`
-flatpak; it runs headless on the CPU). An 8 GB card is enough.
+**Blender** on the machine running pixelmon (found on the PATH, as the `org.blender.Blender` flatpak,
+or in the usual install folders: an unpacked `~/blender-*` or `/opt/blender-*`, the Snap, Steam,
+`/Applications`, Program Files; it runs headless on the CPU). An 8 GB card is enough.
 
 ### Depth lock — camera angle + geometry from a reference (`--depth`)
 
@@ -471,6 +492,10 @@ pixelmon "a laser pistol held in a right hand, plain solid magenta backdrop" --a
   farm GPU) gets that exact map.
 - `--depth-mask-bg` — finds the subject (BiRefNet) and sets all background depth to black, so a
   reference's scenery (a Mars landscape behind the gun) doesn't come back — only the subject's shape.
+  **Automatic** for a picture on a plain backdrop (3 of its 4 sides one colour or see-through: a sprite
+  padded with black, a cut-out): left as is, Depth Anything reads the empty space as a wall or ceiling
+  and the image model paints it, often as a second copy of the subject stacked on the first.
+  `--depth-keep-bg` turns that off.
 - `--depth-strength` (0.7), `--depth-start` / `--depth-end` (0 / 0.65) — how hard, and for which
   part of the sampling steps; ending early leaves the last steps free for detail.
 - `--depth-raw` — the image already *is* a depth map (white = near): no preprocessing.
@@ -591,6 +616,12 @@ every GUI control, CLI flag and ComfyUI node input with its range, default and a
 example, plus a picture-by-picture walkthrough of how a render is built. The GUI also
 serves it locally at `/docs/settings-atlas.html`.
 
+**🧊 3D GUIDE** (next to it) opens the [3D field guide for 2D artists](docs/3d-guide.html):
+meshes, the X/Y/Z axes, moving and modeling, modifiers and booleans, UVs and textures,
+low-poly, cameras and light, and pixelmon's 3D tools in the GUI and on the command line,
+with pictures throughout ([online](https://claude.ai/artifact/XpPiZXs79wUHHXJ2zTq8ou);
+local copy at `/docs/3d-guide.html`).
+
 **The form (left):**
 - **Prompt:** LoRA picker (live list from the render server) with strength.
   dos-art LoRA presets add their trigger + Kind/Genre/Era caption tags for you, the
@@ -665,7 +696,9 @@ serves it locally at `/docs/settings-atlas.html`.
   *Open in DRAW / Kaleidotron / …*, and **right-click any 📂 button** for *Open folder in …*; the
   lightbox and hover preview have ✎ DRAW and *Open in…* buttons too. Open in DRAW also loads the
   image's own colors as DRAW's palette (`DRAW.run art.png --palette art.gpl`). Pick what 📂 buttons open
-  by default (e.g. Kaleidotron). Saved in `~/pixelmon-gallery/gui-setup.json`.
+  by default (e.g. Kaleidotron). **3D editor** is what a model's **🧊 Blender** button opens: Blender,
+  found automatically (or set its path, or another 3D program); a Blender set here also renders the
+  🧊 3D views. Saved in `~/pixelmon-gallery/gui-setup.json`.
 - **Housekeeping:** each tab has its own clear/reset (✕ clear queue, ↺ reset lab, ✕ clear
   steering, ✕ clear batch, ↺ reset defaults in Advanced). **🗄 backup…** in the Gallery zips
   your whole `~/pixelmon-gallery` (renders, presets, corkboards, LAB inputs) into
@@ -725,6 +758,9 @@ OPTIONS
   --angles N          --turnaround: views around the model  [8]
   --elev DEG          --turnaround: camera height above eye level  [0]
   --lowpoly FACES     --mesh/--turnaround: faceted low-poly model (e.g. 400 faces)
+  --texture           --mesh/--turnaround: + a clean, textured model (quads, UVs, baked picture)
+  --texture-size PX   --texture: texture size  [1024 up to 1500 faces, else 2048]
+  --texture-elev DEG  --texture: how high the picture was seen from  [guessed: 0/30/55]
   --blender CMD       Blender for 3D  [blender / org.blender.Blender flatpak]
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
@@ -773,6 +809,7 @@ ADVANCED
   --depth-start/--depth-end F when (fraction of steps) the depth map applies  [0 / 0.65]
   --depth-raw         the --depth image is already a depth map (skip Depth Anything V2)
   --depth-mask-bg     cut out the foreground: all background depth goes black (no scenery)
+  --depth-keep-bg     keep a plain backdrop's depth (it's blacked out automatically)
   --init IMG          img2img: start from an image (keeps its composition)
   --control IMG       ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)
   --canny-low/--canny-high F canny edge thresholds (lower = more edges)  [0.3 / 0.7]
@@ -905,6 +942,8 @@ pixelmon/
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
 ├── turnaround.py              --mesh / --turnaround: picture → 3D model (Hunyuan3D 2) → N angles → painted sprites
 ├── blender/turnaround.py      the Blender side: renders a model from every angle (+ depth maps), low-poly, .glb export
+├── blender/texture.py         --texture: retopology, UV map, the picture baked into a texture
+├── blender/open_model.py      the GUI's 🧊 Blender button: imports a model into Blender, framed
 ├── styles.json                --style guide snippets (edit / add your own)
 ├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
@@ -913,7 +952,8 @@ pixelmon/
 │                              make_starter_presets.py (builds the factory presets), presets_sync.py (tuned
 │                              presets ↔ repo), layered.py (reads/writes layered PSD · XCF · ORA · DRAW files)
 ├── native/                    build_dataset.py: native-pixel EGA training sets from the LoRA dataset (experimental, not used by pixelmon yet)
-├── docs/                      settings-atlas.html (every setting + how a render is built) and its pipeline/ images
+├── docs/                      settings-atlas.html (every setting + how a render is built) and its pipeline/ images;
+│                              3d-guide.html (3D for 2D artists) and its 3d-guide/ images
 ├── launch-comfyui.sh          ComfyUI launcher — auto-detects vendor (AMD: gfx override + render group + lowvram)
 ├── custom_nodes/
 │   └── pixelart_palette/       the finishing node (smooth→downscale→palette/dither→cleanup→outlines→angles→transparent)
