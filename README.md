@@ -314,6 +314,8 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--mesh IMG` | make a 3D model (`.glb`) of the picture's subject with Hunyuan3D 2, plus a Blender preview — see [3D](#3d-models-turnarounds-and-low-poly---mesh---turnaround---lowpoly) | — |
 | `--turnaround SRC` | rotation sprites from a picture (or a `.glb/.gltf/.obj/.stl/.ply/.fbx` model): N views, each painted to match | — |
 | `--angles N` / `--elev DEG` | `--turnaround`: how many views around the model / camera height above eye level | 8 / 0 |
+| `--shape SPEC` | build the model straight from the picture's outline instead of Hunyuan3D: `extrude[:DEPTH[,SHARE:DEPTH…]]` (its outline pushed out DEPTH × its width; boxes 0.5–0.8, guns 0.08, cards 0.04) or `lathe[:SEGMENTS]` (spun round its middle: barrels, tanks, jars). A clean, solid low-poly model wearing the picture, crisp, as `NAME_textured.glb` (+ `.gltf`/`.bin`/`_texture.png`); no render server | off |
+| `--shape-grid N` | `--shape`: cells across the outline (8–256); fewer = blockier, fewer triangles | 64 |
 | `--lowpoly FACES` | also make a faceted low-poly model of about FACES faces; a turnaround renders and paints that one | off |
 | `--texture` | also make a clean, **textured** model: quads, a UV map and the picture baked into a texture (`NAME_textured.glb`, plus `.gltf`/`.bin`/`_texture.png` to paint) — about 6000 quads, or `--lowpoly FACES` flat shaded | off |
 | `--texture-size PX` / `--texture-elev DEG` | `--texture`: the texture's size (256–8192) / how far above the subject the picture was seen from (0–80) | 1024 up to 1500 faces, else 2048 / guessed (0, 30 or 55) |
@@ -431,6 +433,8 @@ pixelmon "a green battle mech" --turnaround monster.png --art              # 8 p
 pixelmon "a green battle mech" --turnaround monster.glb --steer monster.png \
     --lowpoly 1500 --angles 4 --palette EGA --out 64                        # low-poly, pixel-art angles
 pixelmon --mesh monster.png --lowpoly 400 --texture  # + monster_textured.glb, wearing the picture
+pixelmon --mesh crate.png --shape extrude:0.8         # a prop built from its outline: crate_textured.glb
+pixelmon --mesh barrel.png --shape lathe             # ... spun round: barrel_textured.glb
 ```
 
 1. **The model**: Hunyuan3D 2 on the render server turns the picture's subject into a mesh
@@ -461,9 +465,30 @@ doesn't fringe the model. The front is the picture, the back its colours seen th
 (paint the PNG, reopen the `.gltf`, and your paint is on the model) and a 4-view
 `NAME_textured_s<seed>_views.png`. A turnaround of a model needs `--steer PICTURE` for `--texture`.
 
+`--shape` skips the AI guess for **props seen face-on**, where the outline already holds the shape: a
+model from one picture has to invent the depth and the back, so props come out lumpy and leaning and
+thin parts split off (a gun painted at a diagonal is the worst case). Built on this machine in about a
+second, as one solid, connected, straight-edged model that matches the picture exactly from the front:
+
+- `extrude:DEPTH` pushes the outline out DEPTH × its width. Front and back are the picture; each side
+  shows the picture's colours just inside that edge, so it reads as panelling. `,SHARE:DEPTH` makes the
+  top SHARE of it that deep instead, with a step down: `extrude:0.55,0.42:0.18` is a desk with a monitor
+  on it. Depths that work: crate 0.8, vending machine 0.7, locker 0.55, screens 0.12, guns 0.08–0.1,
+  keycard 0.06, map 0.04.
+- `lathe` spins each row's half-width round the outline's middle (16 segments; `lathe:24` for more):
+  steps where the width jumps (a lid, a rim), tapers elsewhere, capped top and bottom. The picture
+  wraps round from the front, mirrored behind.
+
+The picture is the texture (nothing baked): cells of the outline grid sit on whole art pixels and the
+`.glb` asks for nearest filtering, so it stays crisp and blocky. Typically 50–700 flat-shaded
+triangles. It writes the same files as `--texture` (`NAME_textured.glb`, `.gltf` + `.bin` +
+`_texture.png` to paint, a 4-view preview), and `--turnaround PICTURE --shape …` paints its angles
+from that model. Organic, irregular things (a plant, a creature) still suit `--mesh` alone.
+
 In **pixelmon-gui**, the **🧊** button on any picture opens its 🧊 3D row. **make 3D model** makes
 the model; **turnaround** makes the sprites, with angles, camera height, low-poly and **texture**
-(off · on · on with the picture at eye level / a little above / above) options. A model's card (and
+(off · on · on with the picture at eye level / a little above / above) options. **shape** builds it from
+the outline instead: 📐 box (deep / normal), slab, thin, flat, sheet, round, or custom (`extrude:…` / `lathe`). A model's card (and
 the lightbox of its preview) has a row per model (**🧊 model**, **🔺 low-poly**, **🎨 textured**):
 the `.glb` to download, **👁 Kaleidotron**, **🧊 Blender** (Blender starts with the model imported,
 framed and in Material Preview; 🛠 Setup › **3D editor** picks another program), and **🧊 turnaround**
@@ -757,6 +782,8 @@ OPTIONS
   --turnaround SRC    rotation sprites from a picture or a model: 3D -> N views -> painted to match
   --angles N          --turnaround: views around the model  [8]
   --elev DEG          --turnaround: camera height above eye level  [0]
+  --shape SPEC        --mesh/--turnaround: build it from the outline: extrude[:DEPTH[,SHARE:DEPTH]] | lathe
+  --shape-grid N      --shape: cells across the outline  [64]
   --lowpoly FACES     --mesh/--turnaround: faceted low-poly model (e.g. 400 faces)
   --texture           --mesh/--turnaround: + a clean, textured model (quads, UVs, baked picture)
   --texture-size PX   --texture: texture size  [1024 up to 1500 faces, else 2048]
@@ -942,6 +969,7 @@ pixelmon/
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
 ├── turnaround.py              --mesh / --turnaround: picture → 3D model (Hunyuan3D 2) → N angles → painted sprites
 ├── blender/turnaround.py      the Blender side: renders a model from every angle (+ depth maps), low-poly, .glb export
+├── shapes.py                  --shape: a model built from the picture's outline (extrude / lathe), glTF writer, preview
 ├── blender/texture.py         --texture: retopology, UV map, the picture baked into a texture
 ├── blender/open_model.py      the GUI's 🧊 Blender button: imports a model into Blender, framed
 ├── styles.json                --style guide snippets (edit / add your own)

@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "1.11.0"
+__version__ = "1.12.0"
 
 # pixelmon can render on a REMOTE ComfyUI (e.g. a faster box on the LAN). Choose a
 # target with `--server NAME` (an alias from servers.json) or `--server host[:port]`/URL,
@@ -138,6 +138,8 @@ def print_help():
         opt("--turnaround SRC", "rotation sprites from a picture or a model: 3D -> N views -> painted to match"),
         opt("--angles N", "--turnaround: views around the model", "8"),
         opt("--elev DEG", "--turnaround: camera height above eye level", "0"),
+        opt("--shape SPEC", "--mesh/--turnaround: build it from the outline: extrude[:DEPTH[,SHARE:DEPTH]] | lathe"),
+        opt("--shape-grid N", "--shape: cells across the outline", "64"),
         opt("--lowpoly FACES", "--mesh/--turnaround: faceted low-poly model (e.g. 400 faces)"),
         opt("--texture", "--mesh/--turnaround: + a clean, textured model (quads, UVs, baked picture)"),
         opt("--texture-size PX", "--texture: texture size  [1024 up to 1500 faces, else 2048]"),
@@ -1433,6 +1435,15 @@ def main():
     p.add_argument("--angles", type=int, default=8, help="--turnaround: how many views around the model (default 8)")
     p.add_argument("--elev", type=float, default=0.0, metavar="DEG",
                    help="--turnaround: camera height in degrees above the model's middle (default 0, eye level)")
+    p.add_argument("--shape", default=None, metavar="SPEC",
+                   help="--mesh/--turnaround: build the model straight from the picture's outline instead of "
+                        "Hunyuan3D (a clean low-poly solid wearing the picture, crisp; no render server): "
+                        "extrude[:DEPTH[,SHARE:DEPTH...]] pushes it out DEPTH x its width (boxes 0.5-0.8, guns "
+                        "0.08, cards 0.04; SHARE:DEPTH makes the top SHARE of it that deep: a monitor on a desk), "
+                        "lathe[:SEGMENTS] spins it round its middle (barrels, tanks, jars). writes NAME_textured.glb")
+    p.add_argument("--shape-grid", dest="shape_grid", type=int, default=64, metavar="N",
+                   help="--shape: how many cells across the outline is read at, 8..256 (default 64; fewer = "
+                        "blockier and fewer triangles). cells always sit on whole pixels")
     p.add_argument("--lowpoly", type=int, default=0, metavar="FACES",
                    help="--mesh/--turnaround: also make a faceted low-poly copy with about FACES faces (e.g. 400); "
                         "the turnaround renders and paints that one")

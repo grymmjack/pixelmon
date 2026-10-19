@@ -1161,12 +1161,19 @@ fieldset.closed { padding-bottom: 2px; }
     <div id="lbInfo"></div>
     <div class="cmd" id="lbCmd"></div>
     <div class="lb-3d" id="lb3d"><b>🧊 3D</b>
-      <button class="btn" id="lbMesh" title="make a 3D model (.glb) of this picture's subject: Hunyuan3D 2 on the render server, a Blender preview here">make 3D model</button>
+      <button class="btn" id="lbMesh" title="make a 3D model (.glb) of this picture's subject: Hunyuan3D 2 on the render server and a Blender preview here, or built from its outline (shape)">make 3D model</button>
       <button class="btn" id="lbTurn" title="rotation sprites: a 3D model of this picture, rendered from every angle, each painted to match it (your form settings apply)">turnaround</button>
       <label>angles <select id="t3Angles"><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
       <label>camera <select id="t3Elev"><option value="0">eye level</option><option value="15">a little above</option><option value="30">above</option></select></label>
       <label>low-poly <select id="t3Low"><option value="0">off</option><option value="400">400 faces</option><option value="1500">1500 faces</option><option value="5000">5000 faces</option></select></label>
       <label title="also a clean model with the picture baked into a texture you can paint (front: the picture; back: its colours seen through; sides: stretched)">texture <select id="t3Tex"><option value="">off</option><option value="auto">on</option><option value="0">on · picture at eye level</option><option value="30">on · picture from a little above</option><option value="55">on · picture from above</option></select></label>
+      <label title="build the model straight from the picture's outline instead of guessing it with Hunyuan3D: one clean, solid, sharp low-poly shape wearing the picture (crisp pixels). For props seen face-on; organic things (a plant, a creature) suit AI">shape <select id="t3Shape"><option value="">AI (guess the depth)</option>
+        <option value="extrude:0.8">📐 box, deep (crate)</option><option value="extrude:0.55">📐 box (locker, cabinet)</option>
+        <option value="extrude:0.3">📐 slab</option><option value="extrude:0.12">📐 thin (screen, sign)</option>
+        <option value="extrude:0.08">📐 flat (gun)</option><option value="extrude:0.04">📐 sheet (card, map)</option>
+        <option value="lathe">📐 round (barrel, tank, jar)</option><option value="custom">📐 custom…</option></select></label>
+      <input id="t3ShapeCustom" class="hidden" size="16" placeholder="extrude:0.55,0.42:0.18"
+        title="extrude:DEPTH (times its width), plus ,SHARE:DEPTH to make the top SHARE of it thinner (a monitor on a desk: extrude:0.55,0.42:0.18); or lathe, lathe:24 (segments round)">
       <i class="help" data-help="threed">i</i><a class="t3-guide" href="https://claude.ai/artifact/XpPiZXs79wUHHXJ2zTq8ou" target="_blank" rel="noopener"
         title="3D field guide for 2D artists">new to 3D? ↗</a><span id="lb3dModels"></span></div>
     <div class="lb-actions">
@@ -1789,7 +1796,12 @@ const HELP = {
     with flat shading, so the sprites get the faceted look; the low-poly .glb is kept too. <b>texture</b> also makes a clean
     model (quads, a UV map) with the picture baked into a texture: the front is the picture, the back its colours seen
     through, the sides stretched. About 6000 faces, or the low-poly count; "on" guesses how high the picture was seen
-    from, or pick it. Its card gets <b>🖌 texture</b>: paint it in DRAW, save, and look again. Best from a full-body,
+    from, or pick it. Its card gets <b>🖌 texture</b>: paint it in DRAW, save, and look again. <b>shape</b> skips the
+    AI guess for props seen face-on: <b>📐 box / slab / thin / flat / sheet</b> push the outline out to that depth (times
+    its width), <b>📐 round</b> spins it round its middle, for one clean, solid, sharp low-poly model wearing the picture,
+    its pixels crisp (built here in a second; no render server unless the picture needs cutting out). <b>custom</b>
+    takes <code>extrude:0.55,0.42:0.18</code> (the top 42 % only 0.18 deep: a monitor on a desk) or <code>lathe:24</code>.
+    Organic things (a plant, a creature) still suit AI. Best from a full-body,
     front-on picture on a plain background, in art mode. New to 3D? The
     <a href="https://claude.ai/artifact/XpPiZXs79wUHHXJ2zTq8ou" target="_blank" rel="noopener">3D field guide for 2D artists ↗</a>
     (<a href="/docs/3d-guide.html" target="_blank">local copy</a>) covers meshes, axes, modeling, UVs, low-poly, cameras
@@ -2091,7 +2103,7 @@ function modelLinks(j) {
     <button class="btn small" data-t3-model="${esc(m)}" data-t3-mjob="${j.id}" title="rotation sprites from this model, steered by the picture it was made from (angles / camera / low-poly as set in the 🧊 3D row)">🧊 turnaround</button></span>`;
   }).join("");
 }
-const T3 = Object.assign({ angles: 8, elev: 0, lowpoly: 0, texture: "" }, store.get("t3", {}));
+const T3 = Object.assign({ angles: 8, elev: 0, lowpoly: 0, texture: "", shape: "", shapeCustom: "" }, store.get("t3", {}));
 async function turnFrom(job, o, mode) {
   const f = readForm(), subj = ((job.params && job.params.form && job.params.form.subject) || f.subject || "").trim();
   if (mode === "turn" && !subj) return showErr("Turnaround needs to know what the subject is: put it in the prompt.");
@@ -2107,11 +2119,15 @@ async function turnFrom(job, o, mode) {
   const made = isModel && job.params.turnaround && job.params.turnaround.src;     // the picture the model was made from,
   const ref = made && !/\.(glb|gltf|obj|stl|ply|fbx)$/i.test(made.file)          // as that job kept it
     ? { dir: job.dir, file: "input-turn" + made.file.slice(made.file.lastIndexOf(".")).toLowerCase() } : null;
+  // 📐 a shape is built from a picture's outline (a model is already built): it's low-poly and textured itself
+  const shape = isModel ? "" : (T3.shape === "custom" ? (T3.shapeCustom || "").trim() : T3.shape);
+  if (T3.shape === "custom" && !isModel && !shape) return showErr("Type the custom shape, like extrude:0.55,0.42:0.18 or lathe.");
   if (T3.texture && isModel && !ref) return showErr("A textured model needs the picture it was made from: use 🧊 on that picture.");
-  p.turnaround = { src: { dir: job.dir, file: o.file }, mode, angles: T3.angles, elev: T3.elev, lowpoly: T3.lowpoly,
-    texture: T3.texture, ...(ref ? { ref } : {}) };
-  p.label = (mode === "mesh" ? `🧊 3D model${T3.lowpoly ? " + low-poly" : ""}` : `🧊 turnaround ×${T3.angles}${T3.lowpoly ? " · low-poly" : ""}`)
-    + (T3.texture ? " + textured" : "");
+  const low = shape ? 0 : T3.lowpoly, tex = shape ? "" : T3.texture;
+  p.turnaround = { src: { dir: job.dir, file: o.file }, mode, angles: T3.angles, elev: T3.elev, lowpoly: low,
+    texture: tex, ...(shape ? { shape } : {}), ...(ref ? { ref } : {}) };
+  p.label = (mode === "mesh" ? `🧊 3D model${low ? " + low-poly" : ""}` : `🧊 turnaround ×${T3.angles}${low ? " · low-poly" : ""}`)
+    + (tex ? " + textured" : "") + (shape ? ` · 📐 ${shape}` : "");
   showErr();
   try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
 }
@@ -6136,10 +6152,17 @@ async function init() {
   $("lbEvolve").onclick = () => { const { job, o } = lbItem; closeLb(); evolveFrom(job, o); };
   $("lbMesh").onclick = () => { const { job, o } = lbItem; closeLb(); turnFrom(job, o, "mesh"); };
   $("lbTurn").onclick = () => { const { job, o } = lbItem; closeLb(); turnFrom(job, o, "turn"); };
-  for (const [id, k] of [["t3Angles", "angles"], ["t3Elev", "elev"], ["t3Low", "lowpoly"], ["t3Tex", "texture"]]) {
+  const t3ShapeUi = () => {          // a 📐 shape is its own low-poly, textured model: those two don't apply
+    $("t3ShapeCustom").classList.toggle("hidden", T3.shape !== "custom");
+    $("t3Low").disabled = $("t3Tex").disabled = !!T3.shape;
+  };
+  for (const [id, k] of [["t3Angles", "angles"], ["t3Elev", "elev"], ["t3Low", "lowpoly"], ["t3Tex", "texture"], ["t3Shape", "shape"]]) {
     $(id).value = String(T3[k]);
-    $(id).onchange = () => { T3[k] = k === "texture" ? $(id).value : +$(id).value; store.set("t3", T3); };
+    $(id).onchange = () => { T3[k] = k === "texture" || k === "shape" ? $(id).value : +$(id).value; store.set("t3", T3); t3ShapeUi(); };
   }
+  $("t3ShapeCustom").value = T3.shapeCustom || "";
+  $("t3ShapeCustom").oninput = () => { T3.shapeCustom = $("t3ShapeCustom").value; store.set("t3", T3); };
+  t3ShapeUi();
   $("lbParent").onclick = () => { const { job, o } = lbItem; closeLb(); setParent(job, o); };
   $("lbPreset").onclick = () => { const { job, o } = lbItem;
     savePreset(snapshotOfJob(job, o), `${(job.params.form && job.params.form.subject || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); };

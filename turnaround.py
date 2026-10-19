@@ -3,6 +3,8 @@
   --mesh IMG          the picture -> a 3D model (.glb) with Hunyuan3D 2 on the render server, plus a
                       4-view preview rendered by Blender. --lowpoly N also writes a faceted low-poly copy.
   --texture           also a clean, textured model: quads, a UV map, the picture baked into a texture.
+  --shape SPEC        build the model from the picture's outline instead (shapes.py: extrude / lathe):
+                      already low-poly and textured, no render server.
   --turnaround SRC    SRC (a picture, or a model: .glb/.gltf/.obj/.stl/.ply/.fbx) -> a model (if needed)
                       -> Blender renders it from --angles directions (exact depth maps) -> pixelmon paints
                       each one: depth lock on that angle's depth, steering from the picture (its colours and
@@ -31,7 +33,8 @@ OPEN_SCRIPT = os.path.join(HERE, "blender", "open_model.py")
 MODEL_EXT = (".glb", ".gltf", ".obj", ".stl", ".ply", ".fbx")
 # flags of the parent run that the per-angle renders must not inherit (they get their own)
 OWN = {"--mesh", "--turnaround", "--angles", "--elev", "--lowpoly", "--blender", "--mesh-model", "--mesh-steps",
-       "--mesh-cfg", "--mesh-octree", "--name", "--seed", "-n", "--number", "--texture", "--texture-size", "--texture-elev"}
+       "--mesh-cfg", "--mesh-octree", "--name", "--seed", "-n", "--number", "--texture", "--texture-size", "--texture-elev",
+       "--shape", "--shape-grid"}
 
 
 def find_blender(spec=None):
@@ -143,15 +146,21 @@ def blender(a, model, outdir, angles, size, elev=0.0, lowpoly=0, export=None, sh
 def cut_picture(P, a, img, dest):
     """The picture with its subject cut out (BiRefNet, if it isn't already), kept as dest/input-cut.png so
     --mesh and --texture cut it once."""
-    from PIL import Image
+    from PIL import Image, PngImagePlugin
     kept = os.path.join(dest, "input-cut.png")
-    if os.path.isfile(kept) and os.path.getmtime(kept) >= os.path.getmtime(img):
-        return Image.open(kept).convert("RGBA")
+    st = os.stat(img)
+    src = f"{os.path.realpath(img)}|{st.st_size}|{int(st.st_mtime)}"   # only this picture's cut is reused: several
+    if os.path.isfile(kept):                                           # models made into one folder share the name
+        old = Image.open(kept)
+        if old.info.get("pixelmon-src") == src:
+            return old.convert("RGBA")
     rgba = Image.open(img).convert("RGBA")
     if rgba.getchannel("A").getextrema()[0] == 255:
         print("   ✂ cutting the subject out first (BiRefNet)")
         rgba.putalpha(P._cutout_mask(a, rgba.convert("RGB"), img, P.SERVER).resize(rgba.size))
-    rgba.save(kept)
+    meta = PngImagePlugin.PngInfo()
+    meta.add_text("pixelmon-src", src)
+    rgba.save(kept, pnginfo=meta)
     return rgba
 
 
@@ -224,10 +233,43 @@ def despill(rgba, img, ring=3):
     edge = solid & (ndimage.distance_transform_edt(solid) <= ring)
     rgb = rgba[..., :3].astype(np.float32)
     amount = (rgb - rgb.mean(-1, keepdims=True)) @ tint  # how far each pixel leans towards the backdrop's hue
+    full = float((key - key.mean()) @ tint)              # ... and the backdrop itself
+    mostly = edge & ((amount > 0.35 * full) | (np.sqrt(((rgb - key) ** 2).sum(-1)) < 60))
     fix = (edge & (amount > 0)) | (solid & (amount > 30))   # + backdrop showing through gaps (under an arm)
     rgb[fix] -= amount[fix][:, None] * tint              # remove that lean, keep the brightness
     rgba[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
-    rgba[..., 3][edge & (np.sqrt(((rgba[..., :3] - key) ** 2).sum(-1)) < 60)] = 0   # pure backdrop: drop it
+    rgba[..., 3][mostly] = 0                             # mostly backdrop (untinted it'd be a grey speck): drop it
+
+
+def shape_model(P, a, img, dest, name, seed):
+    """--shape: the picture's outline built into a clean low-poly model, the picture its texture
+    (shapes.py; no render server unless the picture needs cutting out) -> dest/<name>_textured.glb (+ .gltf,
+    .bin, _texture.png to paint) and a 4-view preview."""
+    import numpy as np
+    from PIL import Image
+    import shapes
+    t0 = time.time()
+    rgba = np.array(cut_picture(P, a, img, dest))
+    clean = rgba.copy()
+    clean[..., 3] = np.where(rgba[..., 3] >= 128, 255, 0)
+    despill(clean, img)                                  # the backdrop's tint out of the edge colours
+    rgba[..., :3] = clean[..., :3]
+    rgba[..., 3][(clean[..., 3] == 0) & (rgba[..., 3] >= 128)] = 0
+    try:
+        tris, tex = shapes.build(a.shape, Image.fromarray(rgba, "RGBA"), a.shape_grid)
+    except ValueError as e:
+        sys.exit(f"--shape: {e}")
+    stem = os.path.join(dest, f"{name}_textured")
+    shapes.write_gltf(tris, tex, stem + ".glb", stem + ".gltf", stem + ".bin", stem + "_texture.png", name)
+    sheet = Image.new("RGBA", (384 * 4, 384), (48, 48, 60, 255))
+    for i, az in enumerate((0, 45, 90, 180)):
+        sheet.alpha_composite(shapes.render(tris, tex, az, 384), (384 * i, 0))
+    views = f"{stem}_s{seed}_views.png"
+    sheet.convert("RGB").save(views)
+    print(f"   📐 {a.shape}: {len(tris)} triangles, the picture as a {tex.width}px texture "
+          f"-> {stem}.glb  ({time.time() - t0:.1f}s)", flush=True)
+    print(f"   ✅ seed={seed}  ->  {views}")
+    return stem + ".glb"
 
 
 def texture_model(P, a, model, img, dest, name, seed):
@@ -407,8 +449,25 @@ def run(P, a, parser):
     seed = a.seed if a.seed >= 0 else random.randint(0, 2**31 - 1)
     t0 = time.time()
 
-    model = src if is_model else make_model(P, a, src, dest, name, seed)
-    if a.texture:                                    # from the full model (the bake's source), before any low-poly
+    if a.shape:
+        if is_model:
+            parser.error("--shape builds the model from a picture; that's already a model")
+        if a.lowpoly or a.texture:
+            parser.error("--shape makes its own low-poly, textured model: drop --lowpoly / --texture")
+        if not 8 <= a.shape_grid <= 256:
+            parser.error("--shape-grid must be 8..256")
+        import shapes
+        try:
+            shapes.parse(a.shape)
+        except ValueError as e:
+            parser.error(str(e))
+        model = shape_model(P, a, src, dest, name, seed)
+        if a.mesh:
+            print(f"   all done in {time.time() - t0:.1f}s  |  files in {dest}")
+            return
+    else:
+        model = src if is_model else make_model(P, a, src, dest, name, seed)
+    if a.texture:                                   # from the full model (the bake's source), before any low-poly
         pic = src if not is_model else a.steer
         if not pic or not os.path.isfile(os.path.expanduser(pic)):
             parser.error("--texture of a model needs the picture it was made from: --steer PICTURE")

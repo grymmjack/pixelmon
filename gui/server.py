@@ -871,6 +871,12 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             argv += ["--turnaround", turn, "--angles", str(n), "--elev", f"{e:g}"]
         if t.get("ref_path") and t.get("mode") != "mesh":
             argv += ["--steer", t["ref_path"]]
+        shape = str(t.get("shape") or "").strip().lower()
+        if shape and not turn.lower().endswith((".glb", ".gltf", ".obj", ".stl", ".ply", ".fbx")):   # 📐 built from the outline: already low-poly + textured
+            if not re.fullmatch(r"(extrude(:[0-9.]+(,[0-9.]+:[0-9.]+)*)?|lathe(:\d+)?)", shape):
+                raise ValueError("shape: extrude[:DEPTH[,SHARE:DEPTH…]] or lathe[:SEGMENTS], like extrude:0.8")
+            argv += ["--shape", shape]
+            t = {**t, "lowpoly": 0, "texture": ""}
         lp = int(t.get("lowpoly") or 0)
         if lp:
             if not 50 <= lp <= 100000:
