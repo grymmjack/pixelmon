@@ -40,6 +40,8 @@ from struct import error as struct_error
 from zlib import error as zlib_error
 
 HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import sets as setsmod                          # noqa: E402  (gui/sets.py: list → takes → pick → export)
 REPO = os.path.dirname(HERE)
 PIXELMON = os.path.join(REPO, "bin", "pixelmon")
 SERVER_ARG = ""          # --server / $PIXELMON_SERVER: overrides the Setup tab's choice
@@ -1017,6 +1019,12 @@ class JobQueue:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def add(self, params, group=None, label=None):
+        ref = params.get("set")
+        if ref is not None:                          # a Sets render: which set and sprite the takes belong to
+            if not (isinstance(ref, dict) and re.fullmatch(r"[\w-]{1,64}", str(ref.get("id") or ""))
+                    and setsmod.KEY_RE.fullmatch(str(ref.get("key") or ""))):
+                raise ValueError("bad set reference")
+            params = dict(params, set={"id": ref["id"], "key": ref["key"]})
         jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
         sent, params = params, dict(params)          # job records what was sent; overrides stay internal
         steer = [str(r) for r in (params.get("steer") or [])]
@@ -2417,6 +2425,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 class Handler(http.server.BaseHTTPRequestHandler):
     jobs = None
     gallery = None
+    sets = None
 
     def log_message(self, fmt, *args):   # keep the terminal quiet
         pass
@@ -2713,6 +2722,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path == "/api/gallery":
             return self._json({"items": gallery_items(self.gallery)})
+        if u.path == "/api/sets":
+            return self._json({"sets": self.sets.list()})
+        if u.path in ("/api/set", "/api/set/now"):
+            q = urllib.parse.parse_qs(u.query)
+            try:
+                s = self.sets.load(q.get("id", [""])[0])
+                if u.path == "/api/set/now":             # the sprite the game has today, for NOW
+                    full = self.sets.now_path(s, q.get("key", [""])[0])
+                    return self._file(full, "image/gif" if full.endswith(".gif") else "image/png")
+                return self._json({"set": s, "takes": self.sets.takes(s["id"]), "now": self.sets.now_files(s),
+                                   "pending": self.sets.pending(s["id"], self.jobs.snapshot())})
+            except ValueError as e:
+                return self._json({"error": str(e)}, 404 if u.path == "/api/set/now" else 400)
         if u.path.startswith("/files/"):
             rel = urllib.parse.unquote(u.path[len("/files/"):])
             full = os.path.realpath(os.path.join(self.gallery, rel))
@@ -2754,6 +2776,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/render":
                 group, label = body.pop("group", None), body.pop("label", None)
                 return self._json({"jobs": [self.jobs.add(body, group=group, label=label)["id"]]})
+            if u.path.startswith("/api/sets/"):
+                act = u.path.rsplit("/", 1)[-1]
+                if act == "create":
+                    return self._json({"set": self.sets.create(body)})
+                if act == "update":
+                    return self._json({"set": self.sets.update(body)})
+                if act == "mark":
+                    return self._json({"set": self.sets.mark(body)})
+                if act == "export":
+                    s = self.sets.load(body.get("id"))
+                    if body.get("preview"):
+                        return self._json({"plan": self.sets.export_plan(s), "folder": self.sets.game_dir(s)})
+                    return self._json(self.sets.export(s, only_changed=not body.get("all")))
+                raise ValueError(f"unknown sets action {act!r}")
             if u.path == "/api/sweep":
                 # same settings + one fixed seed, varying a single field across values
                 base, field, values = body.get("params") or {}, body.get("field"), body.get("values") or []
@@ -3254,6 +3290,7 @@ def main():
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)
     Handler.jobs = JobQueue(Handler.gallery)
+    Handler.sets = setsmod.Sets(os.path.join(GALLERY_HOME, "sets"), Handler.gallery, home_path)
     host = "0.0.0.0" if args.lan else "127.0.0.1"
     try:
         srv = QuietServer((host, args.port), Handler)
