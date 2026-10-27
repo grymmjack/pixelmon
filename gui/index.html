@@ -249,6 +249,49 @@ select.advset { border-color: var(--accent); }
 .srvdown .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
 .srvdown .since { font: 11px var(--mono); color: var(--dim); margin-top: 10px; }
 .hidden { display: none !important; }
+/* ---- sets ---- */
+.set-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.set-pill { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; color: var(--dim); }
+.set-pill b { color: var(--text); font-weight: 500; } .set-pill.pk b { color: var(--accent2); } .set-pill.wn b { color: var(--warn); } .set-pill.bd b { color: var(--bad); }
+.set-theme { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 14px; font-size: 12.5px; margin-bottom: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 12px; }
+.set-theme span { display: block; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.set-theme code { font: 12px var(--mono); overflow-wrap: anywhere; }
+.set-group { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+.set-group::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.set-row { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; padding: 8px 10px; margin-bottom: 5px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.set-row.sel { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.set-row.picked:not(.sel) { box-shadow: inset 3px 0 0 var(--accent2); }
+.set-row .k { font: 600 13px var(--mono); overflow-wrap: anywhere; cursor: pointer; }
+.set-row .k small { display: block; font-weight: 400; color: var(--dim); font-size: 11px; }
+.set-row .p { font-size: 12px; color: var(--dim); margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.set-takes { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.set-tk { position: relative; width: 64px; height: 64px; border: 2px solid var(--line); border-radius: 4px; background: #000 center / contain no-repeat;
+  image-rendering: pixelated; cursor: pointer; padding: 0; }
+.set-tk:hover { border-color: var(--accent); }
+.set-tk.heard { border-color: var(--accent); } .set-tk.chosen { border-color: var(--accent2); box-shadow: 0 0 0 2px var(--accent2); }
+.set-tk i { position: absolute; left: 2px; bottom: 1px; font: 10px var(--mono); font-style: normal; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.set-tk.flag::after { content: ""; position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+.set-tk.now { border-style: dashed; } .set-tk.now.chosen { border-style: solid; }
+.set-tk.none { display: grid; place-items: center; font: 10px var(--mono); color: var(--dim); cursor: default; }
+.set-act { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.set-act .pick.done { background: var(--accent2); border-color: var(--accent2); color: #000; font-weight: 600; }
+.set-detail { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px dashed var(--line); padding-top: 9px; align-items: flex-start; min-width: 0; }
+.set-big { display: grid; gap: 3px; justify-items: center; font: 10.5px var(--mono); color: var(--dim); text-transform: uppercase; }
+.set-big img { width: 192px; height: 192px; object-fit: contain; image-rendering: pixelated; background: #000; border: 1px solid var(--line); border-radius: 4px; cursor: zoom-in; }
+.set-recipe { flex: 1 1 240px; font: 11.5px/1.55 var(--mono); color: var(--dim); display: grid; gap: 6px; align-content: start; min-width: 0; overflow-wrap: anywhere; }
+.set-recipe b { color: var(--text); font-weight: 400; }
+.set-export { position: sticky; bottom: 0; background: var(--bg); border: 1px solid var(--accent2); border-radius: var(--radius); padding: 9px 12px; margin-top: 8px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; font-size: 12.5px; }
+.set-export b { color: var(--accent2); } .set-export .w { color: var(--warn); font-size: 12px; }
+.set-export .go { background: var(--accent2); border-color: var(--accent2); color: #000; font-weight: 600; }
+.set-keys { font: 11px var(--mono); color: var(--dim); margin-top: 6px; }
+.set-keys kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: var(--text); }
+.set-editor { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; display: grid; gap: 10px; }
+.set-editor label { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+.set-editor textarea { font: 12.5px/1.5 var(--mono); }
+@media (max-width: 760px) { .set-row { grid-template-columns: 1fr; } .set-detail { grid-template-columns: 1fr; } }
 .job { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
 .job-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .badge { font: 11px var(--mono); padding: 1px 7px; border-radius: 10px; border: 1px solid; text-transform: uppercase; }
@@ -848,6 +891,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="tab" data-tab="lab">⚗ Lab</div>
       <div class="tab" data-tab="steer">Steering <span id="steerTabN"></span></div>
       <div class="tab" data-tab="batch">Batch</div>
+      <div class="tab" data-tab="sets" title="a game's sprite list: several takes each, pick one, export into the game">🎚 Sets <span id="setsTabN"></span></div>
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
       <div class="tab" data-tab="analyze" title="compare images side by side — right-click any image → 🔬 Send to Analysis">🔬 Analyze <span id="anaN"></span></div>
@@ -1059,10 +1103,41 @@ fieldset.closed { padding-bottom: 2px; }
         <button class="btn small" id="batchAll">select shown</button><button class="btn small" id="batchNone">select none</button>
         <span id="batchCount" style="color:var(--dim)"></span>
         <button class="btn primary" id="batchGo" style="flex:0 0 auto">Queue rows</button>
+        <button class="btn small" id="batchToSet" title="several takes per row, compare with the game's sprite, pick one each — then export">🎚 Make this list a Set</button>
       </div>
       <div id="batchInfo" class="err" style="color:var(--dim)"></div>
       <table class="btable"><thead><tr><th></th><th>path</th><th>style</th><th>size</th><th>prompt</th><th>result</th></tr></thead>
         <tbody id="batchBody"><tr><td colspan="6" class="empty">Load a manifest file or paste rows above.</td></tr></tbody></table>
+    </div>
+    <div class="pane hidden" id="setsPane">
+      <div class="steer-top">
+        <select id="setSel" class="grow" aria-label="Sprite set"></select>
+        <button class="btn small" id="setEditBtn">✎ Edit set</button><button class="btn small" id="setNewBtn">＋ New set</button>
+      </div>
+      <div class="set-editor hidden" id="setEditor">
+        <div class="steer-top" style="margin:0;padding:0;background:none;border:0"><b id="setEdTitle">New set</b><span style="flex:1"></span><button class="btn small" id="setEdCancel">Cancel</button></div>
+        <label>Name<input type="text" id="setEdName" maxlength="80" placeholder="neon-caster monsters"></label>
+        <label>Game folder — where picks are exported as <code>&lt;path&gt;.png</code>, and where NOW is read from (inside your home folder)
+          <input type="text" id="setEdFolder" placeholder="~/git/qb64-dungeon/assets/pixel-art/default"></label>
+        <label>The sprite list — Batch's formats: <code>path | style | size | prompt</code>, <code>folder | name | style | size | prompt</code>, <code>path | prompt</code> or a prompt per line; <code>[Group]</code> lines group rows, <code>#</code> lines are skipped
+          <textarea id="setEdManifest" rows="9" placeholder="[Monsters]&#10;monsters/bat | | 64 | a vampire bat, wings spread&#10;monsters/skeleton | | 64 | a skeleton warrior with a rusty sword&#10;[Items]&#10;items/potion-red | | 32 | a small red healing potion"></textarea></label>
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px">
+          <div style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Theme — every sprite renders with these settings</div>
+          <div id="setEdTheme" style="font:12px var(--mono);margin:4px 0 6px;overflow-wrap:anywhere"></div>
+          <button class="btn small" id="setEdFromForm">Use the form's current settings</button> <button class="btn small" id="setEdToForm">Put the theme in the form</button></div>
+        <div class="steer-top" style="margin:0">
+          <span>takes per sprite <input type="number" id="setEdTakes" min="1" max="32" value="6" style="width:60px"></span>
+          <span>style <select id="setEdStyleMode"><option value="both">row + theme styles</option><option value="row">row style</option><option value="form">theme styles only</option></select></span>
+          <span>size <select id="setEdSizeMode"><option value="row">row size</option><option value="form">theme output size</option></select></span>
+        </div>
+        <div class="steer-top" style="margin:0">
+          <label class="inline" style="display:flex;gap:6px;align-items:center" title="cut each take out (BiRefNet) and fit it into the old sprite's footprint, so a pick drops in at the same size"><input type="checkbox" id="setEdFit"> ✂ fit into the old sprites' footprints</label>
+          <input type="text" id="setEdFitDir" class="grow" placeholder="old sprites folder (blank = the game folder)">
+          <span>at <select id="setEdFitScale"><option value="0">auto (4× art, 1× pixel)</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></span>
+        </div>
+        <div><button class="btn primary" id="setEdSave" style="flex:0 0 auto;padding:7px 18px">Create set</button> <span id="setEdErr" class="err" style="display:inline"></span></div>
+      </div>
+      <div id="setBody"></div>
     </div>
     <div class="pane hidden" id="steerPane">
       <div class="steer-top">
@@ -3660,6 +3735,221 @@ async function queueBatch() {
   }
   poll(); renderBatch();
 }
+// ---------------- Sets: a game's sprite list → several takes each → pick one → export (gui/sets.py) ----------------
+const SETS = { list: [], data: null, id: store.get("setId", ""), sel: null, filt: "all", q: "", heard: {}, sig: "", ed: null };
+const setUrl = t => `/files/${encodeURIComponent(t.job)}/${encodeURIComponent(t.file)}`;
+const setNowUrl = k => `/api/set/now?id=${encodeURIComponent(SETS.id)}&key=${encodeURIComponent(k)}&t=${SETS.data ? SETS.data.set.updated : 0}`;
+async function loadSets(keep) {
+  try {
+    SETS.list = (await api("/api/sets")).sets;
+    if (!SETS.list.some(s => s.id === SETS.id)) SETS.id = SETS.list[0] ? SETS.list[0].id : "";
+    $("setSel").innerHTML = SETS.list.length ? SETS.list.map(s => `<option value="${esc(s.id)}" ${s.id === SETS.id ? "selected" : ""}>${esc(s.name)} · ${s.keys} sprites</option>`).join("")
+      : `<option value="">no sets yet</option>`;
+    $("setEditBtn").disabled = !SETS.id;
+    if (!SETS.id) { SETS.data = null; drawSet(); if ($("setEditor").classList.contains("hidden")) openSetEditor(true); return; }
+    await loadSet(keep);
+  } catch (e) { showErr(e); }
+}
+async function loadSet(keep) {
+  SETS.data = await api("/api/set?id=" + encodeURIComponent(SETS.id));
+  store.set("setId", SETS.id);
+  SETS.sig = setJobSig(Object.values(JOBS));
+  const rows = SETS.data.set.rows;
+  if (!keep || !rows.some(r => r.key === SETS.sel)) SETS.sel = (rows.find(r => !SETS.data.set.picks[r.key]) || rows[0] || {}).key;
+  drawSet();
+}
+function setJobSig(jobs) { return JSON.stringify(jobs.filter(j => j.group === "set:" + SETS.id).map(j => [j.id, j.status, j.outputs.length])); }
+function setsOnPoll(jobs) {
+  const busy = jobs.filter(j => (j.group || "").startsWith("set:") && (j.status === "queued" || j.status === "running")).length;
+  $("setsTabN").textContent = busy ? `(${busy})` : "";
+  if ($("setsPane").classList.contains("hidden") || !SETS.id) return;
+  const s = setJobSig(jobs); if (s !== SETS.sig) { SETS.sig = s; loadSet(true).catch(showErr); }
+}
+function setVisible() {
+  const S = SETS.data.set, tk = SETS.data.takes, q = SETS.q.trim().toLowerCase();
+  return S.rows.filter(r => {
+    if (q && !`${r.key} ${r.prompt} ${r.style}`.toLowerCase().includes(q)) return false;
+    const has = (tk[r.key] || []).length, p = S.picks[r.key];
+    return SETS.filt === "all" || (SETS.filt === "missing" && !has) || (SETS.filt === "picked" && p) || (SETS.filt === "topick" && has && !p) || (SETS.filt === "flagged" && S.flags[r.key]);
+  });
+}
+function drawSet() {
+  const host = $("setBody");
+  if (!SETS.data) { host.innerHTML = `<div class="empty">A <b>set</b> is a list of sprites a game needs. pixelmon renders several takes of each, you compare them with the sprite the game has today, pick one per sprite, and export the picks into the game folder under their paths. Press <b>＋ New set</b>, or <b>🎚 Make this list a Set</b> in the Batch tab.</div>`; return; }
+  const S = SETS.data.set, T = S.theme, tk = SETS.data.takes, now = SETS.data.now, pend = SETS.data.pending;
+  const n = S.rows.length, missing = S.rows.filter(r => !(tk[r.key] || []).length).length, picked = S.rows.filter(r => S.picks[r.key]).length;
+  const nTakes = Object.values(tk).reduce((a, v) => a + v.length, 0), busy = Object.values(pend).reduce((a, v) => a + v, 0);
+  const F = [["all", "All"], ["topick", "To pick"], ["picked", "Picked"], ["missing", "Without takes"], ["flagged", "Flagged"]];
+  host.innerHTML = `<div class="set-pills"><span class="set-pill"><b>${n}</b> sprites</span><span class="set-pill"><b>${nTakes}</b> takes</span>
+      <span class="set-pill pk"><b>${picked}</b> picked</span><span class="set-pill wn"><b>${n - picked - missing}</b> to pick</span><span class="set-pill bd"><b>${missing}</b> without takes</span>
+      ${busy ? `<span class="set-pill"><b>${busy}</b> rendering</span>` : ""}${Object.keys(S.flags).length ? `<span class="set-pill bd"><b>${Object.keys(S.flags).length}</b> flagged</span>` : ""}</div>
+    <div class="set-theme"><div><span>Takes per sprite</span><code>${T.takes}</code></div><div><span>Game folder</span><code>${esc(T.game_folder || "— none (set one to export)")}</code></div>
+      <div><span>Styles · size</span><code>${{ both: "row + theme", row: "row", form: "theme" }[T.style_mode]} · ${T.size_mode === "row" ? "row size" : "theme size"}</code></div>
+      <div><span>Fit</span><code>${T.fit.on ? "✂ into " + esc(T.fit.dir || "the game folder") : "off"}</code></div>
+      <div style="grid-column:1/-1"><span>Theme prompt (with a row's words)</span><code>${esc(composedPrompt({ ...T.base.form, subject: "‹sprite›" }))}</code></div></div>
+    <div class="steer-top"><span class="chips">${F.map(([k, l]) => `<span class="chip ${SETS.filt === k ? "on" : ""}" data-setfilt="${k}">${l}</span>`).join("")}</span>
+      <input type="text" id="setQ" class="grow" placeholder="find a sprite or words in its prompt" value="${esc(SETS.q)}">
+      <button class="btn small" id="setRenderMissing" ${missing ? "" : "disabled"}>Render ${missing} without takes</button></div>
+    <div id="setRows"></div>
+    <div class="set-keys"><kbd>1</kbd>–<kbd>0</kbd> look at takes · <kbd>N</kbd> the game's sprite · <kbd>P</kbd> pick what you're looking at · <kbd>F</kbd> flag it · <kbd>J</kbd>/<kbd>K</kbd> next / previous sprite</div>
+    <div class="set-export" id="setExport"></div>`;
+  host.querySelectorAll("[data-setfilt]").forEach(c => c.onclick = () => { SETS.filt = c.dataset.setfilt; drawSet(); });
+  $("setQ").oninput = e => { SETS.q = e.target.value; drawSetRows(); };
+  $("setRenderMissing").onclick = () => renderSetKeys(S.rows.filter(r => !(tk[r.key] || []).length && !pend[r.key]).map(r => r.key));
+  drawSetRows(); drawSetExport();
+}
+function drawSetRows() {
+  const host = $("setRows"); if (!host) return;
+  const vis = setVisible(); let html = "", g = null;
+  for (const r of vis) { if (r.group && r.group !== g) { html += `<div class="set-group">${esc(r.group)}</div>`; } g = r.group; html += setRowHtml(r); }
+  host.innerHTML = html || `<div class="empty">No sprites match. Clear the search or pick another filter.</div>`;
+  host.querySelectorAll("[data-setsel]").forEach(e => e.onclick = () => { SETS.sel = e.dataset.setsel; drawSetRows(); });
+  host.querySelectorAll("[data-settake]").forEach(e => e.onclick = () => { const [k, i] = [e.dataset.setkey, +e.dataset.settake]; setLook(k, i); });
+  host.querySelectorAll("[data-setnow]").forEach(e => e.onclick = () => { SETS.sel = e.dataset.setnow; SETS.heard[e.dataset.setnow] = "now"; drawSetRows(); });
+  host.querySelectorAll("[data-setpick]").forEach(e => e.onclick = () => { const k = e.dataset.setpick, h = SETS.heard[k], p = SETS.data.set.picks[k]; setMark(k, "pick", h || (p ? null : undefined)); });
+  host.querySelectorAll("[data-setold]").forEach(e => e.onclick = () => setMark(e.dataset.setold, "pick", "now"));
+  host.querySelectorAll("[data-setmore]").forEach(e => e.onclick = () => renderSetKeys([e.dataset.setmore]));
+  host.querySelectorAll("[data-setagain]").forEach(e => e.onclick = () => renderSetKeys([e.dataset.setagain], +e.dataset.seed));
+  host.querySelectorAll("[data-setflag]").forEach(e => e.onclick = () => setMark(e.dataset.setflag, e.dataset.on ? "unflag" : "flag", e.dataset.take));
+  host.querySelectorAll("[data-setbig]").forEach(e => e.onclick = () => { const [job, file] = [e.dataset.job, e.dataset.file];
+    if (job && (JOBS[job] || GALLERY.find(x => x.id === job))) openLb(job, file); else window.open(e.src, "_blank"); });
+  host.querySelectorAll("[data-setprompt]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.setprompt, v = host.querySelector(`[data-setpin="${CSS.escape(k)}"]`).value;
+    try { SETS.data.set = (await api("/api/sets/update", { id: SETS.id, row: { key: k, prompt: v } })).set; drawSetRows(); showErr(""); } catch (e) { showErr(e); } });
+  host.querySelectorAll("[data-setcopy]").forEach(b => b.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(b.dataset.setcopy).catch(() => {}); b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy CLI", 1200); });
+}
+function setRowHtml(r) {
+  const S = SETS.data.set, k = r.key, takes = SETS.data.takes[k] || [], pick = S.picks[k], h = SETS.heard[k], flags = new Set(S.flags[k] || []);
+  const nowF = SETS.data.now[k] || [], pend = SETS.data.pending[k] || 0, sel = k === SETS.sel;
+  const sub = [r.style, r.size, nowF.length ? "" : "new", flags.size ? "flagged" : ""].filter(Boolean).join(" · ");
+  const tiles = (nowF.length ? `<button class="set-tk now ${pick === "now" ? "chosen" : h === "now" ? "heard" : ""}" data-setnow="${esc(k)}" title="the sprite the game has today" style="background-image:url('${setNowUrl(k)}')"><i>NOW</i></button>` : "")
+    + takes.map((t, i) => `<button class="set-tk ${pick === t.take ? "chosen" : h === t.take ? "heard" : ""} ${flags.has(t.take) ? "flag" : ""}" data-setkey="${esc(k)}" data-settake="${i}" title="take ${i + 1} · seed ${t.seed ?? "?"}" style="background-image:url('${setUrl(t)}')"><i>${i + 1}</i></button>`).join("")
+    + (pend ? `<span class="set-tk none">+${pend}…</span>` : "") + (!takes.length && !pend ? `<span style="color:var(--warn);font:12px var(--mono)">no takes yet</span>` : "");
+  const lookIdx = h && h !== "now" ? takes.findIndex(t => t.take === h) : -1, pickIdx = pick && pick !== "now" ? takes.findIndex(t => t.take === pick) : -1;
+  const pickLabel = h && h !== "now" ? (h === pick ? `PICKED ${pickIdx + 1}` : `PICK ${lookIdx + 1}`) : pick === "now" ? "KEEPING OLD" : pick ? `PICKED ${pickIdx + 1}` : "PICK";
+  let detail = "";
+  if (sel && (takes.length || nowF.length)) {
+    const cur = h && h !== "now" ? h : pick && pick !== "now" ? pick : takes[0] && takes[0].take, i = takes.findIndex(t => t.take === cur), t = takes[i];
+    const fl = t && flags.has(t.take);
+    detail = `<div class="set-detail">
+      ${t ? `<div class="set-big"><img src="${setUrl(t)}" data-setbig="1" data-job="${esc(t.job)}" data-file="${esc(t.file)}" alt="take ${i + 1}">take ${i + 1}</div>` : ""}
+      ${nowF.length ? `<div class="set-big"><img src="${setNowUrl(k)}" data-setbig="1" alt="the game's sprite">now · ${esc(nowF[0])}</div>` : ""}
+      <div class="set-recipe">${t ? `<div><b>${esc(k)}</b> · take ${i + 1} · seed <b>${esc(t.seed ?? "?")}</b></div><div>${esc(t.command || "")}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small" data-setagain="${esc(k)}" data-seed="${t.seed}" ${t.seed == null ? "disabled" : ""} title="render this exact take again">Again</button>
+          <button class="btn small" data-setflag="${esc(k)}" data-take="${esc(t.take)}" ${fl ? 'data-on="1"' : ""}>${fl ? "Unflag" : "Flag"}</button>
+          <button class="btn small" data-setcopy="${esc((t.command || "") + (t.seed != null && !/--seed/.test(t.command || "") ? " --seed " + t.seed : ""))}">Copy CLI</button></div>` : ""}
+        <div style="display:flex;gap:4px"><input type="text" class="grow" data-setpin="${esc(k)}" value="${esc(r.prompt)}" aria-label="prompt for ${esc(k)}"><button class="btn small" data-setprompt="${esc(k)}" title="change this sprite's prompt (new takes use it)">Save</button></div></div></div>`;
+  }
+  return `<div class="set-row ${sel ? "sel" : ""} ${pick ? "picked" : ""}">
+    <div class="k" data-setsel="${esc(k)}">${esc(k)}<small>${esc(sub)}</small></div>
+    <div style="min-width:0"><div class="p" data-setsel="${esc(k)}" title="${esc(r.prompt)}">${esc(r.prompt)}</div><div class="set-takes">${tiles}</div></div>
+    <div class="set-act"><button class="btn small pick ${pick && (!h || h === pick) ? "done" : ""}" data-setpick="${esc(k)}" ${!h && !pick ? "disabled" : ""}>${pickLabel}</button>
+      <button class="btn small" data-setold="${esc(k)}" ${!nowF.length || pick === "now" ? "disabled" : ""} title="keep the sprite the game has today">Keep old</button>
+      <button class="btn small" data-setmore="${esc(k)}" title="render more takes of this sprite">＋${S.theme.takes}</button></div>${detail}</div>`;
+}
+function setLook(k, i) { const t = (SETS.data.takes[k] || [])[i]; if (!t) return; SETS.sel = k; SETS.heard[k] = t.take; drawSetRows(); }
+async function setMark(k, action, take) {
+  if (take === undefined) return;
+  try { SETS.data.set = (await api("/api/sets/mark", { id: SETS.id, key: k, action, take: take === "now" && action === "pick" ? "now" : take })).set;
+    if (action === "pick") delete SETS.heard[k]; drawSet(); showErr(""); } catch (e) { showErr(e); }
+}
+async function renderSetKeys(keys, seed) {
+  if (!keys.length) return showErr("Every sprite already has takes.");
+  const S = SETS.data.set, T = S.theme, base = T.base, f = base.form, gen = abortGen;
+  for (const k of keys) {
+    const r = S.rows.find(x => x.key === k); if (!r) continue;
+    const rowStyles = r.style ? r.style.split(",") : [];
+    const styles = T.style_mode === "row" ? rowStyles : T.style_mode === "form" ? (f.styles || []) : [...new Set([...rowStyles, ...(f.styles || [])])];
+    const out = T.size_mode === "row" && r.size ? (/x/i.test(r.size) ? r.size.toLowerCase() : `${r.size}x${r.size}`) : base.out;
+    const p = { ...base, exact: false, negative: (f.negative || "").trim(), prompt: composedPrompt({ ...f, subject: r.prompt }), styles, out,
+                n: seed != null ? 1 : T.takes, seed: seed != null ? seed : -1, name: k.split("/").pop(), group: "set:" + S.id, label: k,
+                set: { id: S.id, key: k }, form: { ...f, subject: r.prompt, styles } };
+    if (T.fit.on) p.fit = { dir: T.fit.dir || T.game_folder, path: k, scale: T.fit.scale || (f.art || f.raw ? 4 : 1) };
+    try { if (!(await sendJob(p, gen))) break; } catch (e) { showErr(`${k}: ${e.message}`); break; }
+  }
+  poll(); setTimeout(() => loadSet(true).catch(showErr), 500);
+}
+function drawSetExport() {
+  const S = SETS.data.set, T = S.theme, n = S.rows.filter(r => S.picks[r.key] && S.picks[r.key] !== "now").length;
+  const two = Object.entries(SETS.data.now).filter(([, v]) => v.length > 1).map(([k]) => k);
+  $("setExport").innerHTML = `<div>${T.game_folder ? `Export <b>${n} pick${n === 1 ? "" : "s"}</b> → <code>${esc(T.game_folder)}</code> as <code>&lt;path&gt;.png</code> · anything replaced is copied to <code>.pixelmon-backup/</code> first`
+      + (two.length ? `<div class="w">⚠ ${two.length} sprite(s) exist as both .png and .gif in the game folder (${esc(two.slice(0, 4).join(", "))}); the game may load the other one.</div>` : "")
+      : "Set a <b>game folder</b> with ✎ Edit set to export picks into the game."}<div id="setPlan"></div></div>
+    <div style="display:flex;gap:6px"><button class="btn small" id="setPreview" ${T.game_folder && n ? "" : "disabled"}>Preview</button><button class="btn small go" id="setExportGo" ${T.game_folder && n ? "" : "disabled"}>Export picks</button></div>`;
+  $("setPreview").onclick = async () => {
+    try { const r = await api("/api/sets/export", { id: SETS.id, preview: true });
+      $("setPlan").innerHTML = `<table class="btable" style="margin-top:8px"><thead><tr><th>sprite</th><th>becomes</th><th>change</th></tr></thead><tbody>${r.plan.map(p =>
+        `<tr><td>${esc(p.key)}</td><td>${esc(p.to)}</td><td>${p.unchanged ? "already exported" : p.replaces ? "replaces (backed up)" : "new file"}${p.other_formats.length ? " · also " + esc(p.other_formats.join(", ")) : ""}</td></tr>`).join("")}</tbody></table>`;
+    } catch (e) { showErr(e); } };
+  $("setExportGo").onclick = async () => {
+    try { const r = await api("/api/sets/export", { id: SETS.id });
+      showErr(`Exported ${r.exported.length}` + (r.skipped ? `, ${r.skipped} unchanged` : "") + (r.backup ? ` · old files in ${r.backup}` : "") + (r.errors.length ? ` · ${r.errors.length} failed: ${r.errors[0].key}: ${r.errors[0].error}` : ""));
+      loadSet(true);
+    } catch (e) { showErr(e); } };
+}
+// ---- new / edit set ----
+function setThemeFromForm() {
+  const f = readForm(), base = { ...params(f), form: f };
+  for (const k of ["parent", "evolve_init", "evolve_steer", "gen", "prompt", "seed", "n", "name"]) delete base[k];
+  return base;
+}
+function showSetTheme() { $("setEdTheme").textContent = SETS.ed ? composedPrompt({ ...SETS.ed.form, subject: "‹sprite›" }) + (SETS.ed.lora ? `  · LoRA ${SETS.ed.lora}` : "") : "—"; }
+function openSetEditor(isNew, prefill) {
+  const S = !isNew && SETS.data ? SETS.data.set : null;
+  $("setEditor").classList.remove("hidden");
+  $("setEdTitle").textContent = S ? "Edit " + S.name : "New set";
+  $("setEdSave").textContent = S ? "Save set" : "Create set";
+  $("setEdName").value = S ? S.name : (prefill && prefill.name) || "";
+  $("setEdFolder").value = S ? S.theme.game_folder : (prefill && prefill.folder) || "";
+  $("setEdManifest").value = S ? S.rows.map((r, i) => (r.group && r.group !== (S.rows[i - 1] || {}).group && !r.key.startsWith(r.group + "/") ? `[${r.group}]\n` : "") + `${r.key} | ${r.style} | ${r.size} | ${r.prompt}`).join("\n") : (prefill && prefill.manifest) || "";
+  $("setEdTakes").value = S ? S.theme.takes : 6;
+  $("setEdStyleMode").value = S ? S.theme.style_mode : (prefill && prefill.style_mode) || "both";
+  $("setEdSizeMode").value = S ? S.theme.size_mode : (prefill && prefill.size_mode) || "row";
+  $("setEdFit").checked = S ? S.theme.fit.on : !!(prefill && prefill.fit);
+  $("setEdFitDir").value = S ? S.theme.fit.dir : (prefill && prefill.fitDir) || "";
+  $("setEdFitScale").value = String(S ? S.theme.fit.scale : 0);
+  SETS.ed = S ? S.theme.base : setThemeFromForm();
+  showSetTheme(); $("setEdErr").textContent = "";
+}
+function initSets() {
+  $("setSel").onchange = e => { SETS.id = e.target.value; SETS.sel = null; loadSet().catch(showErr); };
+  $("setNewBtn").onclick = () => openSetEditor(true);
+  $("setEditBtn").onclick = () => openSetEditor(false);
+  $("setEdCancel").onclick = () => $("setEditor").classList.add("hidden");
+  $("setEdFromForm").onclick = () => { SETS.ed = setThemeFromForm(); showSetTheme(); };
+  $("setEdToForm").onclick = () => { if (SETS.ed) { writeForm(SETS.ed.form); showErr("The set's theme is in the form now."); } };
+  $("setEdSave").onclick = async () => {
+    const S = $("setEdSave").textContent.startsWith("Save") && SETS.data ? SETS.data.set : null;
+    const theme = { base: SETS.ed, takes: +$("setEdTakes").value || 6, game_folder: $("setEdFolder").value.trim(), style_mode: $("setEdStyleMode").value,
+      size_mode: $("setEdSizeMode").value, fit: { on: $("setEdFit").checked, dir: $("setEdFitDir").value.trim(), scale: +$("setEdFitScale").value || 0 } };
+    try {
+      const r = S ? await api("/api/sets/update", { id: S.id, name: $("setEdName").value, theme, manifest: $("setEdManifest").value })
+                  : await api("/api/sets/create", { name: $("setEdName").value, theme, manifest: $("setEdManifest").value });
+      SETS.id = r.set.id; $("setEditor").classList.add("hidden"); await loadSets(true);
+      showErr(S ? "Set saved." : `Created ${r.set.name} with ${r.set.rows.length} sprites — press “Render … without takes” to start.`);
+    } catch (e) { $("setEdErr").textContent = e.message; }
+  };
+  $("batchToSet").onclick = () => {
+    const text = BATCH.rows.filter(r => !r.err).map(r => `${r.path} | ${r.style} | ${r.size} | ${r.prompt}`).join("\n");
+    if (!text) return showErr("Load or paste a batch list first.");
+    switchTab("sets");
+    openSetEditor(true, { name: (BATCH.source || "").replace(/^.*\//, "").replace(/\.\w+$/, ""), manifest: text, folder: $("batchExport").value.trim(),
+      style_mode: $("batchStyleMode").value, size_mode: $("batchSizeMode").value, fit: $("batchFit").checked, fitDir: $("batchFitDir").value.trim() });
+  };
+  document.addEventListener("keydown", e => {
+    if ($("setsPane").classList.contains("hidden") || !SETS.data || lbItem || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+    const vis = setVisible(), idx = vis.findIndex(r => r.key === SETS.sel), k = SETS.sel;
+    if (/^[0-9]$/.test(e.key) && k) setLook(k, e.key === "0" ? 9 : +e.key - 1);
+    else if ((e.key === "n" || e.key === "N") && k && (SETS.data.now[k] || []).length) { SETS.heard[k] = "now"; drawSetRows(); }
+    else if ((e.key === "p" || e.key === "P") && k && SETS.heard[k]) setMark(k, "pick", SETS.heard[k]);
+    else if ((e.key === "f" || e.key === "F") && k && SETS.heard[k] && SETS.heard[k] !== "now") setMark(k, "flag", SETS.heard[k]);
+    else if ((e.key === "j" || e.key === "J") && idx < vis.length - 1) { SETS.sel = vis[idx + 1].key; drawSetRows(); document.querySelector(".set-row.sel")?.scrollIntoView({ block: "nearest" }); }
+    else if ((e.key === "k" || e.key === "K") && idx > 0) { SETS.sel = vis[idx - 1].key; drawSetRows(); document.querySelector(".set-row.sel")?.scrollIntoView({ block: "nearest" }); }
+    else return;
+    e.preventDefault();
+  });
+}
+
 function initBatch() {
   $("batchPath").value = store.get("batchPath", "");
   $("batchExport").value = store.get("batchExport", "");
@@ -5802,7 +6092,7 @@ function jobCard(jobs) {
     <span>${running ? `rendering ${Math.min(done + 1, want)}/${want}` : "queued"} · ${done} done · ${want - done} remaining</span></div>` : "";
   const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
   return `<div class="job"><div class="job-head">
-      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : j.group.startsWith("lab-") ? "lab · " : "sweep · ") : ""}${status}${progress}</span>
+      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : j.group.startsWith("set:") ? "set · " : j.group.startsWith("lab-") ? "lab · " : "sweep · ") : ""}${status}${progress}</span>
       <span class="job-title" title="${title}">${title}</span>
       ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
       ${j.outputs.length ? `<button class="btn small" data-save-job="${j.id}" title="save this card's setup as a preset (first image = its picture)">💾</button>` : ""}
@@ -5819,6 +6109,7 @@ function renderQueue(jobs) {
   JOBS = Object.fromEntries(jobs.map(j => [j.id, j]));
   statusUpdate(jobs);
   if (BATCH.group) renderBatch();
+  setsOnPoll(jobs);
   if (LABS.group && !$("labPane").classList.contains("hidden")) renderLab();
   const active = jobs.filter(j => j.status === "queued" || j.status === "running").length;
   $("qcount").textContent = active ? `(${active})` : "";
@@ -5987,6 +6278,8 @@ function switchTab(t) {
   $("steerPane").classList.toggle("hidden", t !== "steer");
   $("presetsPane").classList.toggle("hidden", t !== "presets");
   $("batchPane").classList.toggle("hidden", t !== "batch");
+  $("setsPane").classList.toggle("hidden", t !== "sets");
+  if (t === "sets") loadSets();
   $("labPane").classList.toggle("hidden", t !== "lab");
   $("advPane").classList.toggle("hidden", t !== "adv");
   $("analyzePane").classList.toggle("hidden", t !== "analyze");
@@ -6028,6 +6321,7 @@ async function init() {
   initEvo();
   initPresets();
   initBatch();
+  initSets();
   initPaneTools();
   initThumbPick();
   initBrushCursor();

@@ -702,6 +702,21 @@ local copy at `/docs/3d-guide.html`).
   of a PSD, XCF, DRAW or ORA file, with ☐ **Include difference layer**, and open it in GIMP,
   Photoshop, Krita or DRAW.
 - **Batch:** a list of prompts (`path | style | size | prompt`) queued in one go.
+- **🎚 Sets:** for a game's sprite list when one take per row isn't enough. It's soundmon-gui's Sets,
+  for pictures.
+  1. Paste a list in the Batch formats (with `[Group]` lines if you like), or press
+     **🎚 Make this list a Set** in the Batch tab. The form's current settings become the set's
+     **theme**.
+  2. Every sprite renders **N takes**, shown as thumbnails beside **NOW**, the sprite the game has
+     today in the set's game folder. Look at them (keys `1`–`0`, `N`) and **PICK** one or
+     **Keep old** (`P`). Flag bad ones (`F`), render more (**＋N**), render a take again from its
+     seed, or edit a sprite's prompt. Optionally ✂ fit every take into the old sprite's footprint.
+  3. **Export picks** copies each pick to `<game folder>/<path>.png`. Anything it replaces goes to
+     `.pixelmon-backup/<date>/` first, and picks already exported are skipped.
+
+  A set is a frozen copy of the list, its theme and your picks, kept in
+  `~/pixelmon-gallery/sets/<set>/set.json`. Its takes are ordinary gallery renders tagged with the
+  set and sprite (`gui/sets.py`).
 - **Gallery / Queue:** every render with its settings and CLI command; hover for a
   blown-up preview, 🧬 to **evolve** variations of any result, reload or re-run a seed.
 - **⚙ Advanced:** every remaining pixelmon setting (sampler, scheduler, checkpoint,
@@ -976,7 +991,7 @@ pixelmon/
 ├── servers.example.json       template for --server aliases (copy to servers.json, gitignored)
 ├── bin/pixelmon               wrapper: ensures the server is up, then runs pixelmon.py
 ├── bin/pixelmon-gui           launches the web GUI (gui/server.py)
-├── gui/                       pixelmon-gui: server.py (stdlib), index.html, presets.json (LoRA presets),
+├── gui/                       pixelmon-gui: server.py (stdlib), index.html, sets.py (Sets tab), presets.json (LoRA presets),
 │                              make_starter_presets.py (builds the factory presets), presets_sync.py (tuned
 │                              presets ↔ repo), layered.py (reads/writes layered PSD · XCF · ORA · DRAW files)
 ├── native/                    build_dataset.py: native-pixel EGA training sets from the LoRA dataset (experimental, not used by pixelmon yet)
