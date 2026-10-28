@@ -702,8 +702,31 @@ when it's stuck, broken, or hasn't answered for 30 seconds, at most once every 3
 Renders waiting on it ride out the restart, and one the server forgot is sent again.
 
 **⛔ CANCEL AND ABORT** (left end of the status bar, while anything is queued or rendering) stops
-everything at once: every queued job, the running render, the render server's own ComfyUI queue
-and what it's sampling, and any batch still being sent.
+everything this GUI started: every queued job, the running render, and any batch still being sent.
+The running pixelmon takes its own prompts off ComfyUI's queue (and interrupts the one sampling if
+it is its own), so a ComfyUI shared with soundmon keeps soundmon's work. **Shift-click** also
+empties the render servers' whole queues. A job's own **Cancel** stops its GPU work the same way.
+
+**Everywhere:**
+- **Browse… and ↗ Open on every file and folder.** Every path field and drop zone (steering,
+  depth, LAB, batch lists and folders, Sets' game folder, Setup's programs…) has **Browse…**, a
+  picker over your home folder with thumbnails and shortcuts; every picture has a visible **↗**
+  (the same menu as right-click): open it in DRAW, Kaleidotron, a program from Setup or the
+  system default, or **📂 Show in folder**. With `--lan`, browsing and opening only work from
+  the machine running the GUI.
+- **Gallery:** search (every word must match), filter chips with counts (pixel / art / raw / LAB /
+  3D / sets / sweeps / steered, LoRAs), ★ ratings, ⬇ downloads, **Load** / **Again** on each
+  card and the render time. The tab is kept in the address, so Back/Forward move between tabs.
+- **🔎 Find:** index folders of pictures, then find the ones that look like a picture you drop,
+  browse to or right-click (shape, colours, proportions; Pillow only). Steer with a result,
+  send it to LAB, or open it.
+- **Jobs** keep a `log.txt` and the node's own error; a job that made some pictures and lost
+  others says "done · N failed"; jobs a stopped GUI left behind are marked when it starts.
+- **Setup** lists every `servers.json` box with whether it's up and has the models each feature
+  needs; chips under RENDER spread one render over chosen boxes; COPY CLI is built by the same
+  code the job runs, and hovering a field shows pixelmon's own `--help` text for it.
+- The GUI only answers its own page: requests from another site, or to a name that isn't this
+  machine, are refused.
 
 **📖 DOCS** (top of the form) opens the [settings atlas](docs/settings-atlas.html):
 every GUI control, CLI flag and ComfyUI node input with its range, default and an
