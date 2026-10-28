@@ -137,7 +137,7 @@ LOGIN_NOTE=""
 cat <<EOF
 
 ✅ install done ($GPU).
-   1) ./download-models.sh        # ~7.6 GB of models (Hugging Face + Civitai)$LOGIN_NOTE
+   1) ./download-models.sh        # ~7.9 GB of models (Hugging Face + Civitai)$LOGIN_NOTE
    3) pixelmon "a fierce dragon"
 
    Note: make sure ~/.local/bin is on your PATH.

@@ -3,51 +3,67 @@
 # Makes sure the ComfyUI server is up, then hands your prompt to pixelmon.py.
 set -euo pipefail
 
-COMFY="$HOME/ComfyUI"
+COMFY="${COMFYUI_DIR:-$HOME/ComfyUI}"
 PY="$COMFY/.venv/bin/python"
-URL="http://127.0.0.1:8188"
+PM="$COMFY/pixelmon.py"
+LAUNCH_PORT=8188          # the port launch-comfyui.sh serves on: the only ComfyUI this wrapper starts
 
-up() { curl -fsS "$URL/system_stats" >/dev/null 2>&1; }
+up() { curl -fsS "$1/system_stats" >/dev/null 2>&1; }
 
-# Help / palette listing / no args don't touch the GPU — never start the server.
-needs_server=1
-case " $* " in
-    *" -h "*|*" --help "*|*" --list-palettes "*|*" --list-styles "*) needs_server=0 ;;
-esac
-[ "$#" -eq 0 ] && needs_server=0
-
-# A remote render target (--server NAME|HOST, $PIXELMON_SERVER, or servers.json "_default") is managed elsewhere
-# (e.g. another box on the LAN) — don't try to start a local ComfyUI for it.
-TARGET="${PIXELMON_SERVER:-}"
-prev=""
-for arg in "$@"; do
-    [ "$prev" = "--server" ] && TARGET="$arg"
-    prev="$arg"
-done
-# Neither given: fall back to servers.json's "_default" (the same file pixelmon.py reads).
-if [ -z "$TARGET" ]; then
-    SERVERS_JSON="$(dirname "$(readlink -f "$0")")/../servers.json"
-    [ -f "$SERVERS_JSON" ] && TARGET="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("_default") or "")' "$SERVERS_JSON" 2>/dev/null || true)"
+# Which ComfyUI on THIS machine does the command render on? pixelmon.py answers itself, with the same rules it
+# renders by (--server NAME|HOST|URL in either form, $PIXELMON_SERVER, servers.json "_default", a repointed
+# "local", any member of a farm list), and answers nothing for help, listings, --version, --dry-run or a remote
+# target — so no skip-list here can drift from the real flags. (--version prints its version line: not a URL.)
+ANSWER=""
+if [ "$#" -gt 0 ] && [ -x "$PY" ]; then
+    ANSWER="$("$PY" "$PM" --wrapper-local-url "$@" 2>/dev/null || true)"
 fi
-if [ -n "$TARGET" ]; then
-    case "$TARGET" in
-        local|localhost|127.0.0.1*|http://127.0.0.1*|http://localhost*) ;;
-        *) needs_server=0 ;;
+LOCAL_URLS="$(printf '%s\n' "$ANSWER" | grep '^http' || true)"
+FARM=0
+printf '%s\n' "$ANSWER" | grep -qx farm && FARM=1
+
+# A farm runs on without a local box that won't start (it skips unreachable servers); a lone target can't.
+give_up() {
+    if [ "$FARM" = 1 ]; then
+        echo "[pixelmon] carrying on with the rest of the render farm." >&2
+        exec "$PY" "$PM" "$@"
+    fi
+    exit 1
+}
+
+START=""
+for url in $LOCAL_URLS; do
+    case "$url" in
+        http://127.0.0.1:"$LAUNCH_PORT"|http://localhost:"$LAUNCH_PORT"|"http://[::1]:$LAUNCH_PORT") ;;
+        *) continue ;;     # a second ComfyUI on another port (a test server, another install) is managed elsewhere
     esac
-fi
+    up "$url" || START="$url"
+done
 
-if [ "$needs_server" = 1 ] && ! up; then
+if [ -n "$START" ]; then
+    if [ ! -x "$HOME/launch-comfyui.sh" ]; then
+        echo "[pixelmon] ComfyUI isn't running at $START and there's no ~/launch-comfyui.sh to start it (run ./install.sh)." >&2
+        give_up "$@"
+    fi
     echo "[pixelmon] ComfyUI server isn't running — starting it (first run ~15s)..."
     nohup "$HOME/launch-comfyui.sh" >"$COMFY/server.log" 2>&1 &
+    launcher=$!
     for _ in $(seq 1 90); do
-        up && break
+        up "$START" && break
+        # the launcher died (no venv, bad flag, port taken by something else): say so now, not after 90s
+        if ! kill -0 "$launcher" 2>/dev/null; then
+            up "$START" && break
+            echo "[pixelmon] ComfyUI exited while starting. The end of $COMFY/server.log:" >&2
+            tail -n 15 "$COMFY/server.log" >&2 || true
+            give_up "$@"
+        fi
         sleep 1
     done
-    if ! up; then
+    if ! up "$START"; then
         echo "[pixelmon] server didn't come up. Check $COMFY/server.log" >&2
-        exit 1
+        give_up "$@"
     fi
     echo "[pixelmon] server ready."
 fi
 
-exec "$PY" "$COMFY/pixelmon.py" "$@"
+exec "$PY" "$PM" "$@"

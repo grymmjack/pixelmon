@@ -155,8 +155,33 @@ use short aliases — it's gitignored, so your IPs stay out of the repo:
 **`"_default"`** is where renders go when you don't pass `--server` (an alias, host/URL or
 comma-list farm; leave it out for `local`). `$PIXELMON_SERVER` works too, and beats `"_default"`. The remote box just needs ComfyUI + models running;
 the client only needs this repo (no GPU/torch). Results land in your local
-`~/ComfyUI/output/pixelmon/` (or wherever `--output-to` points). The `--server`
-flag also makes pixelmon **not** try to start a local server for a remote target.
+`~/ComfyUI/output/pixelmon/` (or wherever `--output-to` points). The `pixelmon`
+wrapper only starts a local ComfyUI when the target **is** this machine's default one
+(`127.0.0.1:8188`, the `local` alias, or a farm list that includes it) — never for a remote
+box, another local port, `--version`, `--help`, the `--list-*` flags or `--dry-run`.
+With no target at all pixelmon uses the `local` alias, so pointing `"local"` at another
+address in `servers.json` moves the default everywhere.
+
+Before sending work, pixelmon **checks the server has what the render needs** — every
+node, every node input (an outdated `pixelart_palette` on a farm box would silently
+ignore `--thin-lines`, `--pixel-size`, oklab …) and every model file (checkpoint,
+LoRAs, ControlNets, IPAdapter, BiRefNet) — and says what to run if not (`provision it:
+./download-models.sh --lab`, `update its pixelmon … then restart its ComfyUI`).
+`pixelmon --list-servers [your usual flags]` shows every box: up or down, its GPU, its
+queue, and whether it can render that command. `--no-check` skips the check.
+
+If ComfyUI rejects a request anyway, the error names the node and the input
+(`node 15 (LoraLoader): Value not in list: lora_name …`). A server that breaks
+(the `model_size` / `is_dynamic` errors that fail every prompt until a restart) is
+restarted with its `"_restart"` command from `servers.json` when it has one, and the
+render is sent again once it's back.
+
+**Stopping a run cleans up after it.** Ctrl-C, the GUI's Cancel (SIGTERM) or any early
+exit takes *this run's* queued prompts off every server's queue and interrupts the one
+rendering — only if it's ours, so a shared ComfyUI keeps rendering soundmon's, the
+GUI's or another pixelmon's work. A job that fails is reported (`✗ [3/8] … — the
+node's error`) and the batch carries on; pixelmon exits non-zero if any job produced
+nothing.
 
 ### Render farm — fan jobs across multiple GPUs
 
@@ -170,9 +195,13 @@ pixelmon --batch "bat,skeleton,spider" -n 30 --server rtx,titan,local
 
 It uses **dynamic dispatch** — each GPU is handed its next job the moment it goes
 free, so faster cards automatically do more (no manual balancing) and nobody idles.
-Unreachable boxes are skipped; if one drops mid-run its job is requeued to another.
+Unreachable boxes are skipped, and so are boxes missing a model or an up-to-date node
+(with the command that fixes them). If a box stops answering for 20 s mid-run its job
+goes to another; a job that fails is tried once more **on another box**; a box that
+fails 2 jobs in a row is dropped (a broken box fails fast, frees up first and would
+otherwise eat the queue). The run exits non-zero if any job produced nothing.
 Throughput scales ~linearly with the number of boxes. (Each ComfyUI still runs one
-job at a time, so parallelism = number of boxes.)
+job at a time, so parallelism = number of boxes.) More in [README-RENDER-FARM.md](README-RENDER-FARM.md).
 
 > **Windows + NVIDIA?** See **[README-WINDOWS-NVIDIA.md](README-WINDOWS-NVIDIA.md)**
 > for the WSL2 setup (GPU passthrough + the networking needed to join the farm).
@@ -295,6 +324,9 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
+| `--batch-file FILE` | a sprite list, one per line: `key \| prompt` (or `key \| style \| size \| prompt`); files are named by key — see [Batches](#batches--organizing-output) | — |
+| `--skip-existing` | with `--batch`/`--batch-file`/`-n`: only make the takes that aren't there yet (resume a stopped list) | off |
+| `--palette-from IMG` | lock to a reference picture's own colours: all of them up to 64 (pixel art), else its 32 main colours — the GUI's pick; `--palette-max N` caps it | — |
 | `--out N\|WxH` | exact final canvas size, up to 4096 (sampling still follows `--size`, which defaults to `--out`); also forces the size with `--snap-pixels`. Pixel art past 1024 is made at 1/2–1/16 of the size and enlarged by exactly that factor (crisp square pixels) | `--size` |
 | `--art` | digital art instead of pixel art — see [Art mode](#art-mode---art) | off |
 | `--raw` | the LoRA's own full-res picture: same prompt + LoRA as a pixel render, no downscale / palette / cleanup | off |
@@ -304,6 +336,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--snap-method M` | `--snap-pixels` engine: `unfake` finds the grid the model really drew and reduces it to `--out` (sharpest); `snapper` = pixel-snapper | `unfake` |
 | `--fit-subject` | **fill frame**: crop the full-res render to its subject before shrinking, so tiny sprites (16–32 px) spend their pixels on the subject, not the background | off |
 | `--color-match M` | how the palette lock picks each pixel's nearest color: `oklab` (perceptual: keeps hue and lightness as the eye sees them) or `redmean` (the pre-1.9 RGB approximation) | `oklab` |
+| `--init IMG` / `--denoise F` | img2img: start from a picture (keeps its composition; `--denoise` 0–1 = how much changes). Without `--size`/`--out` the result takes the picture's shape (a 320×200 screen → 128×80) | — / `0.6` |
 | `--depth IMG` | **depth lock**: keep a reference's camera angle + geometry, the prompt sets the rest — see [Depth lock](#depth-lock--camera-angle--geometry-from-a-reference---depth) | — |
 | `--despeckle N` | after the palette lock, recolor stray same-color islands of ≤ N px (removes speckle noise); 0 = off | `2` |
 | `--transparent` | cut out the background → transparent PNG | off |
@@ -334,6 +367,8 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 | `--steps`, `--cfg` | refinement steps / prompt adherence | 25 / 7 |
 | `--lora-strength N` | how strongly to pixelate | 1.0 |
 | `--custom-hex "…"` | colors for `--palette Custom` | — |
+| `--dry-run` / `--print-graph` | show the jobs, prompts and destinations / print the ComfyUI API graph (JSON) — nothing is sent | — |
+| `--list-servers` | every render server: up?, GPU, queue, can it render this command? | — |
 
 ### Style guides (`--style`)
 
@@ -590,6 +625,40 @@ Every other flag still applies (`--style`, `--palette random`, `--transparent`,
 `--snap-pixels`, …). An interrupted run is still organized — files are moved out
 of ComfyUI's output as each one finishes.
 
+**`--batch-file` is for a game's sprite list.** `--batch` splits on commas, so it can't
+hold real prompts ("a goblin, red cloak, holding a torch"). A list file can — one
+sprite per line, the same lists the GUI's **Sets** tab reads:
+
+```text
+# sprites.txt
+[Enemies]
+enemies/bat | a cave bat, wings spread, red eyes
+enemies/rat | geometric | 32x48 | a sewer rat holding a dagger     <- its own --style and --size
+door | 64 | a wooden door                                          <- its own size
+a glowing potion bottle                                            <- named by its slug
+```
+
+```bash
+cd ~/mygame/sprites
+pixelmon --batch-file sprites.txt -n 4 --palette EGA
+#  -> ./enemies/bat_128x128_EGA_s…_sprite_00001_.png (4 takes), ./enemies/rat_32x48_…, ./door_64x64_…, …
+pixelmon --batch-file sprites.txt -n 4 --palette EGA --skip-existing   # after a stop: only what's missing
+```
+
+Each row's files start with its key (a key with a folder goes into that folder),
+rows round-robin like `--batch`, and `-n` is takes per row. `--skip-existing` counts
+what each key already has (`-n 4` with 2 made → 2 more; with `--seed`, a seed whose
+file exists is skipped). Rows prefixed with another medium (`ansi-art/…`) are skipped.
+
+**Every PNG says how it was made.** ComfyUI embeds its graph in each PNG (a `prompt`
+text chunk) and pixelmon adds a `pixelmon` chunk: version, prompt, seed, server and
+the command line — kept through every resize, cut-out and palette pass.
+
+**Match an old sprite's colours** with `--palette-from old.png`: the picture's own
+colours become the palette lock — all of them when it has up to 64 (pixel art), else its
+32 main colours, exactly as the GUI picks them (`--palette-max N` caps it at N). With
+`--art` it's a colour pull at `--palette-strength`.
+
 ### Extra crispness (`--snap-pixels`)
 
 `--snap-pixels` runs the render through [Hugo-Dz/spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper)
@@ -768,18 +837,22 @@ USAGE
   pixelmon "a prompt" [options]
 
 EXAMPLES
-  pixelmon "a fierce dragon"                   best quality (the default)
-  pixelmon "a fierce dragon" --art             full-res digital art, not pixels
-  pixelmon "a spider" --style geometric        sharp, angular style guide
-  pixelmon "a goblin" -n 8 --palette random    8 variations, random palettes
-  pixelmon "a knight" --transparent --preview  transparent + zoomed preview
-  pixelmon --batch "bat,skeleton,spider" -n 128128 of each → own folders
-  pixelmon "a bandit" --animate "smoke from cigar"looping animated GIF
+  pixelmon "a fierce dragon"                     best quality (the default)
+  pixelmon "a fierce dragon" --art               full-res digital art, not pixels
+  pixelmon "a spider" --style geometric          sharp, angular style guide
+  pixelmon "a goblin" -n 8 --palette random      8 variations, random palettes
+  pixelmon "a knight" --transparent --preview    transparent + zoomed preview
+  pixelmon --batch "bat,skeleton,spider" -n 128  128 of each → own folders
+  pixelmon --batch-file sprites.txt -n 4         a game's sprite list: 'key | prompt' rows
+  pixelmon "a slime" --palette-from old.png      use an old sprite's colours
+  pixelmon "a bandit" --animate "smoke from cigar"  looping animated GIF
 
 OPTIONS
   prompt              what to draw (in quotes)
   -n, --number N      how many to make, each a different seed  [1]
   --batch "a,b,c"     round-robin subjects → a folder each (N of each)
+  --batch-file FILE   a sprite list: 'key | prompt' rows (+ 'key | style | size | prompt'), files named by key
+  --skip-existing     --batch/--batch-file/-n: only make the takes that aren't there yet (resume a list)
   --size N|WxH        square N, or non-square WxH e.g. 32x48  [128]
   --out N|WxH         exact final canvas size (default: --size); also with --snap-pixels
   --art               DIGITAL ART (not pixels): full-res illustration, no downscale  [1024]
@@ -787,10 +860,13 @@ OPTIONS
   --palette-strength F --art + --palette: pull colors toward the palette, 1 = exact (+ --dither)  [0.6]
   --post-sweep SPEC   render once, save every combination: 'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'
   --palette NAME      none / random / a name (--list-palettes)  [none]
+  --palette-from IMG  lock to a reference picture's own colours (sets --palette Custom)
+  --palette-max N     --palette-from: most colours to take  [all up to 64, else 32]
   --style NAMES       append proven style guide(s) — see --list-styles
   --transparent       cut out background -> transparent PNG
   --cutout            cut out the subject with BiRefNet on the render server (any background)
   --cutout-key [TOL]  --cutout: also keep what's far from the bg colour (grey-on-grey parts)  [34]
+  --cutout-model FILE background-removal model (models/background_removal/)  [birefnet]
   --fit-to OLD.png    fit the cut-out into an old sprite's footprint (same size + ground line)
   --fit-scale N       --fit-to canvas = old size x N  [4 art / 1 pixel]
   --mesh IMG          make a 3D model (.glb) of the picture's subject (Hunyuan3D 2 + Blender preview)
@@ -804,6 +880,7 @@ OPTIONS
   --texture-size PX   --texture: texture size  [1024 up to 1500 faces, else 2048]
   --texture-elev DEG  --texture: how high the picture was seen from  [guessed: 0/30/55]
   --blender CMD       Blender for 3D  [blender / org.blender.Blender flatpak]
+  --mesh-model FILE   Hunyuan3D 2 checkpoint (models/checkpoints/)  [hunyuan3d-dit-v2_fp16]
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
                         jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]
@@ -826,11 +903,15 @@ OPTIONS
   --custom-hex "..."  colors for --palette Custom
   --list-palettes     show every palette name
   --list-styles       show every style guide
+  --list-servers      each render server: up?, GPU, queue, has what this command needs?
   -h, --help          show this help
   --version           print the pixelmon version
 
 ADVANCED
   --server NAMES      render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs  [local]
+  --no-check          don't check the server has every node / input / model first
+  --dry-run           show the jobs, prompts and where files go; send nothing
+  --print-graph       print the first job's ComfyUI API graph (JSON) and exit
   --smooth MODE       pre-downscale flatten: mode / median / none  [mode]
   --filter MODE       downscale: nearest (crisp) / box (soft)  [nearest]
   --preview           also save an enlarged zoomed-in PNG
@@ -838,6 +919,8 @@ ADVANCED
   --negative "..."    negative prompt (what to avoid)
   --name NAME         output filename base  [from prompt]
   --res N             SDXL generation resolution  [1024]
+  --pixel-grid N      art-grid long side before the resize to --size (0 = auto)  [0]
+  --snap-colors N     colour cap for --snap-pixels (0 = auto)  [0]
   --sampler NAME      ksampler sampler  [euler / lcm]
   --scheduler NAME    ksampler noise schedule (karras, exponential …)  [normal / sgm_uniform]
   --base FILE         SDXL checkpoint  [sd_xl_base_1.0]
@@ -845,6 +928,11 @@ ADVANCED
   --lcm-lora FILE     LCM LoRA (used with --fast)  [lcm-lora-sdxl]
   --no-lora           base model only (skip pixel LoRA)
   --steer DIR         steer toward a folder of reference images (IPAdapter)
+  --steer-max N       most references taken from the folder (evenly sampled)  [16]
+  --steer-weight-type T IPAdapter weight type (linear, composition …)  [style transfer]
+  --steer-combine M   blend the refs: concat / average / norm average / add / subtract  [concat]
+  --steer-model FILE  IPAdapter model (models/ipadapter/)  [ip-adapter-plus_sdxl_vit-h]
+  --steer-clip FILE   CLIP-vision model (models/clip_vision/)  [CLIP-ViT-H-14-laion2B]
   --steer-start/--steer-end F when (fraction of steps) the refs apply  [0 / 1]
   --depth IMG         depth ControlNet: lock the camera angle + geometry of an image; the prompt sets the rest
   --depth-strength F  how strictly to follow the depth map, 0..2  [0.7]
@@ -852,11 +940,21 @@ ADVANCED
   --depth-raw         the --depth image is already a depth map (skip Depth Anything V2)
   --depth-mask-bg     cut out the foreground: all background depth goes black (no scenery)
   --depth-keep-bg     keep a plain backdrop's depth (it's blacked out automatically)
-  --init IMG          img2img: start from an image (keeps its composition)
+  --depth-only        make and save the processed depth map, then stop
+  --depth-model FILE  depth ControlNet (models/controlnet/)  [controlnet-depth-sdxl-1.0]
+  --depth-bg-model FILE background-removal model for --depth-mask-bg  [birefnet]
+  --init IMG          img2img: start from an image (keeps its composition and, without --size, its shape)
   --control IMG       ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)
+  --control-strength F how strictly to follow the --control image, 0..2  [0.8]
+  --control-end F     fraction of the steps the control applies for  [0.8]
+  --control-model FILE ControlNet (models/controlnet/)  [controlnet-union-sdxl-promax]
   --canny-low/--canny-high F canny edge thresholds (lower = more edges)  [0.3 / 0.7]
   --inpaint-model FILE with --mask: an SDXL inpainting UNet (models/unet/) — paints new things far better
   --mask IMG          inpaint with --init: redraw only the mask's white area
+  --mask-mode M       fill (draw something new) / blend (tweak what's there)  [fill]
+  --mask-grow PX      blend margin around the mask  [6]
+  --no-inpaint-crop   --mask: render the whole picture, not just the area around the mask
+  --no-keep-outside   --mask: don't paste the result back onto the original
   --denoise F         with --init: how much to change, 0..1  [0.6]
   --steer-strength N  how strongly the refs influence the result  [0.7]
   --no-open           don't auto-open the result
@@ -880,7 +978,7 @@ ANIMATION  (EXPERIMENTAL — looping portrait gestures → GIF; best for glow/li
   --anim-res N        base/inpaint gen resolution (detail)  [768]
 
 OUTPUT
-  /home/grymmjack/ComfyUI/output/pixelmon/
+  ~/ComfyUI/output/pixelmon/
   true-size _sprite_ PNG  (add --preview for an enlarged _preview_ PNG)
 
   TIP  explore with --fast, then re-run the --seed you liked (without --fast) for the full-quality keeper.
@@ -969,6 +1067,10 @@ automatically on AMD and skip them on NVIDIA. Item 3 applies to every vendor.
 | `Illegal instruction (core dumped)` when ComfyUI starts (older CPU) | a prebuilt wheel uses CPU instructions (e.g. AVX2) your CPU lacks. Find the culprit (`python -c "import kornia"` etc.) and remove it if optional — e.g. `pip uninstall -y kornia kornia_rs` (only used by ComfyUI post-processing nodes pixelmon doesn't need) |
 | Server dies when you log out / close SSH | `loginctl enable-linger "$USER"` once, then run ComfyUI under `tmux` (see [Keep it running headless](#running-on-an-nvidia-box)) |
 | `--server` job runs but no file appears locally | the result is fetched to `~/ComfyUI/output/pixelmon/` on the *client*; make sure that path is writable, or pass `--output-to DIR` |
+| `… can't render this: PixelArtPalette doesn't know inputs …` | that box runs an older `pixelart_palette` node (or its ComfyUI wasn't restarted after an update): update `custom_nodes/` there and restart its ComfyUI. `pixelmon --list-servers` shows every box at once |
+| `… isn't installed (LoraLoader)` / `(ControlNetLoader)` | the model isn't on that render server: run the `./download-models.sh --…` line printed under it on that box |
+| `[pixelmon] ComfyUI exited while starting` | the end of `~/ComfyUI/server.log` is printed with it (a missing venv, the port taken, a bad flag) |
+| a stopped run keeps the GPU busy | it shouldn't any more: Ctrl-C / Cancel clears this run's prompts. Prompts from runs killed with `kill -9` stay — clear them from the GUI's ⛔ or ComfyUI's queue |
 
 ---
 
@@ -982,6 +1084,9 @@ pixelmon/
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API); `pixelmon --version`
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
+├── colors.py                  a picture's colours (--palette-from, and the GUI's palette pick / .gpl export)
+├── manifest.py                sprite lists (--batch-file, and the GUI's Sets tab)
+├── tools/selfcheck.py         offline invariants (no server): run after touching pixelmon.py / animate.py / bin/
 ├── turnaround.py              --mesh / --turnaround: picture → 3D model (Hunyuan3D 2) → N angles → painted sprites
 ├── blender/turnaround.py      the Blender side: renders a model from every angle (+ depth maps), low-poly, .glb export
 ├── shapes.py                  --shape: a model built from the picture's outline (extrude / lathe), glTF writer, preview

@@ -21,8 +21,18 @@ pixelmon --batch "bat,skeleton,spider" -n 30 --server rtx,titan,local,mac
   via ComfyUI's `/view` endpoint. **No shared filesystem / NFS needed.**
 - **Dynamic dispatch:** the client keeps one job in flight per box and hands the next
   job to whichever box just finished. Faster GPUs naturally do more; nobody idles.
-- **Fault tolerance:** unreachable boxes are skipped at startup; if a box dies
-  *mid-run*, its in-flight job is **requeued** to another box. Zero lost sprites.
+- **Capability check:** before any work is sent, each box is asked (`/object_info`) whether it
+  has every node, node input and model the run needs. A box missing a LoRA or the ControlNet,
+  or running an older `pixelart_palette` (which would silently ignore `--thin-lines`,
+  `--pixel-size`, oklab …), is skipped with the command that fixes it.
+- **Fault tolerance:** unreachable boxes are skipped at startup. If a box stops answering
+  for 20 s *mid-run*, its in-flight job is **requeued** — and an idle box picks it up, so
+  nothing is left undone. A job that fails is tried once more **on another box**. A box
+  that fails 2 jobs in a row is **dropped** (a broken box — e.g. one that needs a ComfyUI
+  restart — fails in a second, frees up first, and would otherwise eat the whole queue).
+- **Exit status:** non-zero if any job produced nothing, so scripts can tell.
+- **Stopping:** Ctrl-C (or the GUI's Cancel) takes this run's queued prompts off every
+  box's queue and interrupts what's rendering — only where it's ours.
 - The client only needs this repo (no GPU/torch); each server needs ComfyUI + models.
 
 ---
@@ -47,6 +57,9 @@ renders locally:
 | **Windows/WSL2** | The tricky one. Use **mirrored networking** (`%UserProfile%\.wslconfig`: `[wsl2]` / `networkingMode=mirrored`, then `wsl --shutdown`), **and open 8188 in Windows Firewall** — a normal rule *and*, for mirrored mode, often a Hyper-V rule (PowerShell Admin): `New-NetFirewallRule -DisplayName "ComfyUI 8188" -Direction Inbound -Protocol TCP -LocalPort 8188 -Action Allow` and `New-NetFirewallHyperVRule -Name ComfyUI8188 -DisplayName "ComfyUI 8188" -Direction Inbound -Protocol TCP -LocalPorts 8188 -Action Allow`. |
 
 **Verify from another machine:** `curl http://<box-ip>:8188/system_stats` → JSON = good.
+Once they're named (step 3), `pixelmon --list-servers` shows the whole fleet: up/down, GPU,
+queue, and whether each box can render a plain sprite — add the flags you use
+(`pixelmon --list-servers --steer refs/ --depth pic.png`) to check those models too.
 
 ### 3. Name your boxes
 Copy `servers.example.json` → `servers.json` (gitignored, so your IPs stay private)
@@ -66,8 +79,10 @@ the default). You can also skip the file and pass raw hosts: `--server 192.168.1
 ### 4. Run it
 ```bash
 pixelmon "a goblin" -n 12 --server rtx,titan,local,mac
-PIXELMON_FARM=rtx,local ./somescript.sh        # subset via env, in scripts
+PIXELMON_SERVER=rtx,local pixelmon "a goblin"  # the env var works like --server
 ```
+(`PIXELMON_FARM` is read only by `examples/generate-style-demos.sh`; pixelmon itself reads
+`--server`, then `$PIXELMON_SERVER`, then `"_default"`.)
 Down boxes are skipped automatically. Watch any box live in a browser at
 `http://<box-ip>:8188`.
 
@@ -131,7 +146,8 @@ The real-world stuff, so you don't relearn it:
 | **macOS Homebrew PATH** | `python3.11`/`gh`/`tmux` "not found" over SSH | `/opt/homebrew/bin` isn't on the non-interactive PATH — `export PATH="/opt/homebrew/bin:$PATH"` (or `PYTHON=python3.11 ./install.sh`). |
 | **macOS `gh` over SSH** | `gh` clone fails 401 | its token is in the locked login keychain. Copy the repo over SSH (`tar \| ssh host 'tar x'`) or use an HTTPS token. |
 | **Old GPU crashes under load** | a box dies mid-run (no error, not OOM) | e.g. a Pascal card under sustained SDXL. Give it `--lowvram`: `~/launch-comfyui.sh --lowvram`. The farm requeues its job regardless. |
-| **A box keeps dropping** | repeated mid-run failures | exclude it: `--server rtx,local,mac` (or `PIXELMON_FARM=...`). You barely lose throughput if it was a slow box. |
+| **A box keeps dropping** | `⚠ dropping X after 2 failures in a row` | the farm drops it for the rest of the run by itself and its jobs go elsewhere; read its error lines. A box that "needs a restart" (`model_size` / `is_dynamic` errors) is fixed by restarting its ComfyUI (a `"_restart"` command in `servers.json` lets pixelmon and the GUI do it). To leave it out up front: `--server rtx,local,mac`. |
+| **A box is skipped: "can't render this"** | `PixelArtPalette doesn't know inputs …` / `… isn't installed` | it has an older node or lacks a model: run the printed `./download-models.sh --…` there, or update its `custom_nodes/` and restart its ComfyUI. `pixelmon --list-servers` shows every box at once. |
 
 ---
 

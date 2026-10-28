@@ -13,16 +13,16 @@ Pipeline:  base (txt2img) -> auto-mask region (CLIPSeg, text-prompted, works on
 dogs/monsters too) -> inpaint N variant frames -> downscale + palette-quantize all
 -> composite only the masked pixels onto the base -> assemble a looping GIF.
 
-Called by pixelmon.py when --animate is passed. Talks to the same ComfyUI server.
+Called by pixelmon.py when --animate is passed, with pixelmon itself as `P`: every render goes through
+pixelmon's submit / wait (the --server target, fail-fast on a node error, riding out a server restart, Ctrl-C
+cleanup) and pictures travel by upload and /view, so a remote render server works like the local one.
 """
-import json, os, shutil, sys, time, urllib.error, urllib.request
+import os, sys, tempfile
 import numpy as np
 from PIL import Image
 
-SERVER = "http://127.0.0.1:8188"
-COMFY  = os.path.expanduser("~/ComfyUI")
-OUTPUT = os.path.join(COMFY, "output")
-INPUT  = os.path.join(COMFY, "input")
+P = None          # the pixelmon module (set by run)
+_TMP = None       # this run's scratch folder: frames uploaded to / fetched from the server
 
 # Gesture presets: ready-made (region, change-prompt, frames, loop). Any CLI flag
 # overrides the preset, and --animate "free text" skips presets entirely.
@@ -50,36 +50,25 @@ _REGION_HINTS = [
 
 
 # --------------------------------------------------------------------------- API
-def _submit(graph):
-    data = json.dumps({"prompt": graph}).encode()
-    req = urllib.request.Request(f"{SERVER}/prompt", data=data,
-                                 headers={"Content-Type": "application/json"})
-    try:
-        return json.loads(urllib.request.urlopen(req, timeout=30).read())["prompt_id"]
-    except urllib.error.HTTPError as e:
-        sys.exit("ComfyUI rejected the animation request:\n" + e.read().decode()[:1500])
-    except urllib.error.URLError:
-        sys.exit("Couldn't reach ComfyUI — is the server running?")
-
-
-def _wait(pid, timeout=600):
-    for _ in range(timeout):
-        with urllib.request.urlopen(f"{SERVER}/history/{pid}", timeout=30) as r:
-            hist = json.loads(r.read())
-        if pid in hist and hist[pid].get("outputs"):
-            return hist[pid]["outputs"]
-        time.sleep(1)
-    sys.exit("Timed out waiting for ComfyUI.")
-
-
-def _result_image(outputs):
-    for node in outputs.values():
+def _render(g):
+    """Send one graph to the render server and return the picture it saved (PIL RGB)."""
+    outs = P.wait(P.submit(g), resubmit=lambda fresh: P.submit(P.fresh_copy(g) if fresh else g))
+    for node in outs.values():
         for im in node.get("images", []):
-            path = os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"])
+            path = os.path.join(P.OUTPUT, im.get("subfolder", ""), im["filename"])
+            if not (P.on_this_disk(P.SERVER) and os.path.exists(path)):
+                path = P.fetch_image(im, _TMP, P.SERVER)
             img = Image.open(path).convert("RGB")
             img.load()
             return img
     sys.exit("No image returned by ComfyUI.")
+
+
+def _upload(img, name):
+    """Put a picture on the render server's input folder (for LoadImage); returns its name there."""
+    path = os.path.join(_TMP, name)
+    img.save(path)
+    return P._upload_image(path, P.SERVER, "--animate")
 
 
 def _lora_nodes(a):
@@ -126,18 +115,18 @@ def _gen_base(a, subject, seed, w, h):
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "pixelmon_anim/base", "images": ["8", 0]}},
     })
-    return _result_image(_wait(_submit(g)))
+    return _render(g)
 
 
 def _inpaint(a, base_img, mask_img, subject, change, seed, denoise):
-    base_img.save(os.path.join(INPUT, "pm_anim_base.png"))
+    base_name = _upload(base_img, "pm_anim_base.png")
     # LoadImageMask reads a channel; save mask as white-on-black RGB
-    mask_img.convert("RGB").save(os.path.join(INPUT, "pm_anim_mask.png"))
+    mask_name = _upload(mask_img.convert("RGB"), "pm_anim_mask.png")
     model_src, clip_src, g = _lora_nodes(a)
     pos, neg = _prompts(a, subject, extra=change)
     g.update({
-        "20": {"class_type": "LoadImage", "inputs": {"image": "pm_anim_base.png"}},
-        "21": {"class_type": "LoadImageMask", "inputs": {"image": "pm_anim_mask.png", "channel": "red"}},
+        "20": {"class_type": "LoadImage", "inputs": {"image": base_name}},
+        "21": {"class_type": "LoadImageMask", "inputs": {"image": mask_name, "channel": "red"}},
         "22": {"class_type": "VAEEncode", "inputs": {"pixels": ["20", 0], "vae": ["4", 2]}},
         "23": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["22", 0], "mask": ["21", 0]}},
         "6":  {"class_type": "CLIPTextEncode", "inputs": {"clip": clip_src, "text": pos}},
@@ -150,7 +139,7 @@ def _inpaint(a, base_img, mask_img, subject, change, seed, denoise):
         "8":  {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "9":  {"class_type": "SaveImage", "inputs": {"filename_prefix": "pixelmon_anim/frame", "images": ["8", 0]}},
     })
-    return _result_image(_wait(_submit(g)))
+    return _render(g)
 
 
 # ----------------------------------------------------------------- auto-masking
@@ -233,7 +222,12 @@ def _sequence(n_variants, loop):
 
 
 # -------------------------------------------------------------------- the engine
-def run(a, pal_map=None, slug=lambda s: s):
+def run(a, pal_map=None, slug=lambda s: s, P=None):
+    global _TMP
+    if P is None:
+        import pixelmon as P
+    globals()["P"] = P
+    _TMP = tempfile.mkdtemp(prefix="pixelmon-anim-")
     subject = a.prompt or "character"
 
     # 1) resolve the gesture -> (region, change-prompt, frames, loop), CLI overrides win
@@ -266,6 +260,10 @@ def run(a, pal_map=None, slug=lambda s: s):
     print(f"   region='{region}'  frames={n_variants + 1}  loop={loop}  "
           f"fps={a.anim_fps}  hold={a.anim_hold}s  denoise={denoise}")
     print(f"   base {aw}x{ah} -> sprite {sw}x{sh}  |  palette={a.palette}  seed={base_seed}")
+    if len(P.POOL) > 1:
+        print(f"   note: an animation renders on one server — using {P._short(P.SERVER)}")
+    elif P.REMOTE:
+        print(f"🌐 rendering on remote server {P.SERVER} (results fetched back here)")
 
     # 2) base portrait
     print("   [1] generating base portrait...")
@@ -337,11 +335,6 @@ def run(a, pal_map=None, slug=lambda s: s):
 
     print(f"   ✅ {len(seq)}-step loop @ {a.anim_fps}fps  ->  {gif}")
     print(f"      frames (sprite-size): {fdir}/frame_*.png")
-    if not a.no_open and shutil.which("xdg-open"):
-        try:
-            __import__("subprocess").Popen(["xdg-open", gif],
-                                           stdout=__import__("subprocess").DEVNULL,
-                                           stderr=__import__("subprocess").DEVNULL)
-        except Exception:
-            pass
+    if not a.no_open:
+        P.open_file(gif)
     return gif

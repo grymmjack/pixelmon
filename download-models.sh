@@ -12,6 +12,7 @@
 #   ./download-models.sh --all        everything above                                     (~30 GB)
 #   ./download-models.sh --list       show what's installed and what's missing, download nothing
 #
+# An interrupted download resumes where it stopped the next time you run it.
 # Civitai sometimes asks for a login on downloads; if one fails, create a free API key at
 # https://civitai.com/user/account and run with  CIVITAI_TOKEN=<key> ./download-models.sh …
 set -euo pipefail
@@ -28,7 +29,7 @@ for a in "$@"; do
         --juggernaut) WANT_JUGG=1 ;;
         --all) WANT_LAB=1; WANT_STEER=1; WANT_DEPTH=1; WANT_3D=1; WANT_JUGG=1 ;;
         --list) LIST=1 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
         *) echo "unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -44,11 +45,20 @@ get() {  # url  folder  file  size-label  what-for
     echo "↓ $2/$file  ($size) — $why"
     local auth=()
     if [[ "$url" == *civitai.com* && -n "${CIVITAI_TOKEN:-}" ]]; then auth=(-H "Authorization: Bearer $CIVITAI_TOKEN"); fi
-    if curl -L --fail --progress-bar ${auth[@]+"${auth[@]}"} -o "$dest.part" "$url"; then
+    # -C - resumes a .part left by an interrupted run (a 6.9 GB checkpoint shouldn't restart from zero). A 416
+    # means the .part doesn't fit what the server has now (a newer file, or a stale one): start that one over.
+    # (curl exit 33 = the server can't resume at all: the same.)
+    local code rc
+    code="$(curl -L --fail --progress-bar -C - -w '%{http_code}' ${auth[@]+"${auth[@]}"} -o "$dest.part" "$url")" && rc=0 || rc=$?
+    if [ "$code" = 416 ] || [ "$rc" = 33 ]; then
+        rm -f "$dest.part"
+        code="$(curl -L --fail --progress-bar -w '%{http_code}' ${auth[@]+"${auth[@]}"} -o "$dest.part" "$url")" && rc=0 || rc=$?
+    fi
+    if [ "$rc" = 0 ]; then
         mv "$dest.part" "$dest"
     else
-        rm -f "$dest.part"
-        echo "  ✗ download failed: $url"
+        echo "  ✗ download failed (HTTP ${code:-no answer}): $url"
+        [ -s "$dest.part" ] && echo "    (kept $dest.part — re-run to resume it)"
         [[ "$url" == *civitai.com* ]] && echo "    (Civitai may need a free API key: CIVITAI_TOKEN=<key> $0)"
         MISSING+=("$file")
     fi

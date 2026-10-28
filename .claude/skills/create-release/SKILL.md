@@ -118,9 +118,10 @@ Smoke renders queue fine behind other jobs, but **never restart rtx's ComfyUI wh
 1. **Syntax**: every Python file and the GUI's script:
    ```bash
    cd ~/pixelmon
-   for f in pixelmon.py animate.py gui/*.py custom_nodes/pixelart_palette/*.py; do ~/ComfyUI/.venv/bin/python -m py_compile "$f" || echo "FAIL $f"; done
+   for f in pixelmon.py animate.py turnaround.py shapes.py colors.py manifest.py tools/*.py gui/*.py custom_nodes/pixelart_palette/*.py; do ~/ComfyUI/.venv/bin/python -m py_compile "$f" || echo "FAIL $f"; done
    python3 -c "import re; s=open('gui/index.html').read(); open('/tmp/pm-gui.js','w').write(re.search(r'<script>(.*)</script>', s, re.S).group(1))" && node --check /tmp/pm-gui.js
    ~/ComfyUI/.venv/bin/python pixelmon.py --help >/dev/null
+   ~/ComfyUI/.venv/bin/python tools/selfcheck.py        # offline invariants: must end "N/N checks passed"
    ```
 2. **Smoke render on rtx** (**always `--no-open`**: without it pixelmon opens the image on the user's screen):
    ```bash
@@ -132,7 +133,9 @@ Smoke renders queue fine behind other jobs, but **never restart rtx's ComfyUI wh
    ```bash
    ssh daw 'tmux kill-session -t comfy; sleep 2; tmux new-session -d -s comfy "bash -lc ~/launch-comfyui.sh"'
    ```
-   Then confirm `curl -s http://192.168.1.77:8188/object_info/PixelArtPalette` answers, and re-run the smoke render.
+   Then confirm `pixelmon --list-servers --thin-lines 3 --pixel-angles 1.25` shows every box `✓ ready` (it checks each
+   box has every node input and model the command needs — an un-synced node shows as "doesn't know input …"),
+   and re-run the smoke render.
 4. **GUI**: start a throwaway server on a spare port, so the user's running `pixelmon-gui` on 8190 is untouched:
    ```bash
    (timeout 30 ~/ComfyUI/.venv/bin/python gui/server.py --port 8199 >/dev/null 2>&1 &); sleep 3
