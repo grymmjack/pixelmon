@@ -24,7 +24,7 @@ __version__ = "1.12.0"
 # or the PIXELMON_SERVER env var. Default is local. When the target is remote, results
 # are fetched back over HTTP (/view) — no shared filesystem needed. Actual resolution
 # happens in main(); these module-level values are the local default.
-SERVER = "http://127.0.0.1:8188"
+SERVER = "http://127.0.0.1:8188"   # until servers.json is read (below)
 REMOTE = False
 POOL = []   # >1 entry (--server a,b,c) turns on render-farm mode (jobs fan across GPUs)
 COMFY = os.path.expanduser("~/ComfyUI")
@@ -64,8 +64,9 @@ try:
         _svjson = json.load(_svf)
     SERVERS = {k: v for k, v in _svjson.items() if not k.startswith("_")}
     DEFAULT_SERVER = str(_svjson.get("_default") or "").strip()
+    RESTARTS = {k: v for k, v in (_svjson.get("_restart") or {}).items() if not k.startswith("_") and v}
 except Exception:
-    SERVERS, DEFAULT_SERVER = {}, ""
+    SERVERS, DEFAULT_SERVER, RESTARTS = {}, "", {}
 SERVERS.setdefault("local", "http://127.0.0.1:8188")
 
 
@@ -79,6 +80,20 @@ def resolve_server(value):
     if not parsed.port:                        # default ComfyUI port
         url = f"{parsed.scheme}://{parsed.hostname}:8188"
     return url.rstrip("/")
+
+
+def is_local(url):
+    """True for a ComfyUI on this machine (its files are on this disk)."""
+    import urllib.parse
+    host = urllib.parse.urlparse(url).hostname or ""
+    return host == "localhost" or host == "::1" or host.startswith("127.")
+
+
+# No --server / $PIXELMON_SERVER / "_default": the "local" alias, so a servers.json that repoints "local" (at a
+# box on the LAN, or another port) is the one default everywhere, not a hard-coded 127.0.0.1:8188 here and that
+# alias elsewhere.
+SERVER = resolve_server("local")
+REMOTE = not is_local(SERVER)
 
 
 def _colors():
@@ -100,7 +115,7 @@ def print_help():
         return f"  {c['grn']}{flag:<19}{c['rst']} {desc}{tail}"
 
     def ex(cmd, note):
-        return f"  {c['yel']}{cmd:<45}{c['rst']}{c['dim']}{note}{c['rst']}"
+        return f"  {c['yel']}{cmd:<45}{c['rst']}  {c['dim']}{note}{c['rst']}"
 
     print("\n".join([
         f"{c['b']}{c['mag']}pixelmon{c['rst']} — generate pixel-art sprites from a text prompt",
@@ -115,12 +130,16 @@ def print_help():
         ex('pixelmon "a goblin" -n 8 --palette random', "8 variations, random palettes"),
         ex('pixelmon "a knight" --transparent --preview', "transparent + zoomed preview"),
         ex('pixelmon --batch "bat,skeleton,spider" -n 128', "128 of each → own folders"),
+        ex("pixelmon --batch-file sprites.txt -n 4", "a game's sprite list: 'key | prompt' rows"),
+        ex('pixelmon "a slime" --palette-from old.png', "use an old sprite's colours"),
         ex('pixelmon "a bandit" --animate "smoke from cigar"', "looping animated GIF"),
         "",
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
         opt("-n, --number N", "how many to make, each a different seed", "1"),
         opt('--batch "a,b,c"', "round-robin subjects → a folder each (N of each)"),
+        opt("--batch-file FILE", "a sprite list: 'key | prompt' rows (+ 'key | style | size | prompt'), files named by key"),
+        opt("--skip-existing", "--batch/--batch-file/-n: only make the takes that aren't there yet (resume a list)"),
         opt("--size N|WxH", "square N, or non-square WxH e.g. 32x48", "128"),
         opt("--out N|WxH", "exact final canvas size (default: --size); also with --snap-pixels"),
         opt("--art", "DIGITAL ART (not pixels): full-res illustration, no downscale", "1024"),
@@ -128,10 +147,13 @@ def print_help():
         opt("--palette-strength F", "--art + --palette: pull colors toward the palette, 1 = exact (+ --dither)", "0.6"),
         opt("--post-sweep SPEC", "render once, save every combination: 'angle_grid=pixel,hex;dither=none,bayer4;dither_amount=0.5,1'"),
         opt("--palette NAME", "none / random / a name (--list-palettes)", "none"),
+        opt("--palette-from IMG", "lock to a reference picture's own colours (sets --palette Custom)"),
+        opt("--palette-max N", "--palette-from: most colours to take", "all up to 64, else 32"),
         opt("--style NAMES", "append proven style guide(s) — see --list-styles"),
         opt("--transparent", "cut out background -> transparent PNG"),
         opt("--cutout", "cut out the subject with BiRefNet on the render server (any background)"),
         opt("--cutout-key [TOL]", "--cutout: also keep what's far from the bg colour (grey-on-grey parts)", "34"),
+        opt("--cutout-model FILE", "background-removal model (models/background_removal/)", "birefnet"),
         opt("--fit-to OLD.png", "fit the cut-out into an old sprite's footprint (same size + ground line)"),
         opt("--fit-scale N", "--fit-to canvas = old size x N", "4 art / 1 pixel"),
         opt("--mesh IMG", "make a 3D model (.glb) of the picture's subject (Hunyuan3D 2 + Blender preview)"),
@@ -145,6 +167,7 @@ def print_help():
         opt("--texture-size PX", "--texture: texture size  [1024 up to 1500 faces, else 2048]"),
         opt("--texture-elev DEG", "--texture: how high the picture was seen from  [guessed: 0/30/55]"),
         opt("--blender CMD", "Blender for 3D", "blender / org.blender.Blender flatpak"),
+        opt("--mesh-model FILE", "Hunyuan3D 2 checkpoint (models/checkpoints/)", "hunyuan3d-dit-v2_fp16"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
@@ -167,11 +190,15 @@ def print_help():
         opt('--custom-hex "..."', "colors for --palette Custom"),
         opt("--list-palettes", "show every palette name"),
         opt("--list-styles", "show every style guide"),
+        opt("--list-servers", "each render server: up?, GPU, queue, has what this command needs?"),
         opt("-h, --help", "show this help"),
         opt("--version", "print the pixelmon version"),
         "",
         f"{c['b']}{c['cyan']}ADVANCED{c['rst']}",
         opt("--server NAMES", "render on a remote ComfyUI (alias/host/URL); comma-list = render farm across GPUs", DEFAULT_SERVER or "local"),
+        opt("--no-check", "don't check the server has every node / input / model first"),
+        opt("--dry-run", "show the jobs, prompts and where files go; send nothing"),
+        opt("--print-graph", "print the first job's ComfyUI API graph (JSON) and exit"),
         opt("--smooth MODE", "pre-downscale flatten: mode / median / none", "mode"),
         opt("--filter MODE", "downscale: nearest (crisp) / box (soft)", "nearest"),
         opt("--preview", "also save an enlarged zoomed-in PNG"),
@@ -179,6 +206,8 @@ def print_help():
         opt('--negative "..."', "negative prompt (what to avoid)"),
         opt("--name NAME", "output filename base", "from prompt"),
         opt("--res N", "SDXL generation resolution", "1024"),
+        opt("--pixel-grid N", "art-grid long side before the resize to --size (0 = auto)", "0"),
+        opt("--snap-colors N", "colour cap for --snap-pixels (0 = auto)", "0"),
         opt("--sampler NAME", "ksampler sampler", "euler / lcm"),
         opt("--scheduler NAME", "ksampler noise schedule (karras, exponential …)", "normal / sgm_uniform"),
         opt("--base FILE", "SDXL checkpoint", "sd_xl_base_1.0"),
@@ -186,6 +215,11 @@ def print_help():
         opt("--lcm-lora FILE", "LCM LoRA (used with --fast)", "lcm-lora-sdxl"),
         opt("--no-lora", "base model only (skip pixel LoRA)"),
         opt("--steer DIR", "steer toward a folder of reference images (IPAdapter)"),
+        opt("--steer-max N", "most references taken from the folder (evenly sampled)", "16"),
+        opt("--steer-weight-type T", "IPAdapter weight type (linear, composition …)", "style transfer"),
+        opt("--steer-combine M", "blend the refs: concat / average / norm average / add / subtract", "concat"),
+        opt("--steer-model FILE", "IPAdapter model (models/ipadapter/)", "ip-adapter-plus_sdxl_vit-h"),
+        opt("--steer-clip FILE", "CLIP-vision model (models/clip_vision/)", "CLIP-ViT-H-14-laion2B"),
         opt("--steer-start/--steer-end F", "when (fraction of steps) the refs apply", "0 / 1"),
         opt("--depth IMG", "depth ControlNet: lock the camera angle + geometry of an image; the prompt sets the rest"),
         opt("--depth-strength F", "how strictly to follow the depth map, 0..2", "0.7"),
@@ -193,11 +227,21 @@ def print_help():
         opt("--depth-raw", "the --depth image is already a depth map (skip Depth Anything V2)"),
         opt("--depth-mask-bg", "cut out the foreground: all background depth goes black (no scenery)"),
         opt("--depth-keep-bg", "keep a plain backdrop's depth (it's blacked out automatically)"),
-        opt("--init IMG", "img2img: start from an image (keeps its composition)"),
+        opt("--depth-only", "make and save the processed depth map, then stop"),
+        opt("--depth-model FILE", "depth ControlNet (models/controlnet/)", "controlnet-depth-sdxl-1.0"),
+        opt("--depth-bg-model FILE", "background-removal model for --depth-mask-bg", "birefnet"),
+        opt("--init IMG", "img2img: start from an image (keeps its composition and, without --size, its shape)"),
         opt("--control IMG", "ControlNet: keep an image's shape, restyle it (--control-mode canny|tile)"),
+        opt("--control-strength F", "how strictly to follow the --control image, 0..2", "0.8"),
+        opt("--control-end F", "fraction of the steps the control applies for", "0.8"),
+        opt("--control-model FILE", "ControlNet (models/controlnet/)", "controlnet-union-sdxl-promax"),
         opt("--canny-low/--canny-high F", "canny edge thresholds (lower = more edges)", "0.3 / 0.7"),
         opt("--inpaint-model FILE", "with --mask: an SDXL inpainting UNet (models/unet/) — paints new things far better"),
         opt("--mask IMG", "inpaint with --init: redraw only the mask's white area"),
+        opt("--mask-mode M", "fill (draw something new) / blend (tweak what's there)", "fill"),
+        opt("--mask-grow PX", "blend margin around the mask", "6"),
+        opt("--no-inpaint-crop", "--mask: render the whole picture, not just the area around the mask"),
+        opt("--no-keep-outside", "--mask: don't paste the result back onto the original"),
         opt("--denoise F", "with --init: how much to change, 0..1", "0.6"),
         opt("--steer-strength N", "how strongly the refs influence the result", "0.7"),
         opt("--no-open", "don't auto-open the result"),
@@ -641,20 +685,205 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
     return g
 
 
+# Prompts this run has sent and not yet seen finish, per server. On Ctrl-C, a stop signal (the GUI's Cancel) or
+# any early exit they are taken off ComfyUI's queue, and the one rendering is interrupted only if it is ours: a
+# shared ComfyUI may be busy with soundmon, the GUI or another pixelmon, and those must keep going. Without this,
+# `-n 128` + Ctrl-C (or one failed job ending a batch) left the rest rendering on the GPU for nobody.
+SENT = {}
+STOPPING = False    # set by a stop signal: code that catches SystemExit (a box refusing a job) must let it through
+
+
+def _forget(server, pid):
+    SENT.get(server, set()).discard(pid)
+
+
+def cancel_sent(why="stopped"):
+    """Remove this run's prompts from every server's queue; interrupt the running one if it is ours."""
+    told = []
+    for server, pids in list(SENT.items()):
+        if not pids:
+            continue
+        ids = sorted(pids)
+        try:
+            req = urllib.request.Request(f"{server}/queue", data=json.dumps({"delete": ids}).encode(), method="POST",
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3).close()
+            with urllib.request.urlopen(f"{server}/queue", timeout=3) as r:
+                running = {e[1] for e in json.loads(r.read()).get("queue_running", []) if len(e) > 1}
+            if running & pids:
+                urllib.request.urlopen(urllib.request.Request(f"{server}/interrupt", data=b"{}", method="POST",
+                                                              headers={"Content-Type": "application/json"}),
+                                       timeout=3).close()
+            told.append(f"{_short(server)} ({len(ids)} prompt{'s' if len(ids) > 1 else ''})")
+        except Exception:
+            told.append(f"{_short(server)} (unreachable; its queue may still hold {len(ids)})")
+        pids.clear()
+    if told:
+        print(f"   ⛔ {why}: cleared {', '.join(told)}", flush=True)
+
+
+def _on_stop(signum, frame):
+    import signal
+    global STOPPING
+    STOPPING = True
+    signal.signal(signum, signal.SIG_IGN)             # a second Ctrl-C while cleaning up shouldn't cut it short
+    cancel_sent("cancelled")
+    sys.exit(130 if signum == signal.SIGINT else 143)
+
+
+def rejection_text(body):
+    """ComfyUI's 400 answer to /prompt, as one readable line per problem ("node 10 (PixelArtPalette): ...")
+    instead of a 1200-character JSON dump."""
+    try:
+        j = json.loads(body)
+    except ValueError:
+        return body.strip()[:1200]
+    lines = []
+    err = j.get("error")
+    head = (err.get("message") if isinstance(err, dict) else err) or "rejected"
+    for nid, ne in sorted((j.get("node_errors") or {}).items(), key=lambda kv: str(kv[0])):
+        cls = ne.get("class_type") or ""
+        for e in ne.get("errors") or []:
+            msg = e.get("message") or e.get("type") or "error"
+            det = (e.get("details") or "").strip()
+            inp = (e.get("extra_info") or {}).get("input_name")
+            what = f"node {nid}" + (f" ({cls})" if cls else "")
+            lines.append(f"   {what}: {msg}" + (f" — {det}" if det and det not in msg else
+                                                 f" — input {inp}" if inp and inp not in msg else ""))
+    if isinstance(err, dict) and err.get("details") and not lines:
+        head += f" — {err['details']}"
+    return "\n".join([head] + lines[:20] + ([f"   … and {len(lines) - 20} more"] if len(lines) > 20 else []))
+
+
 def submit(graph, server=None):
     server = server or SERVER
+    if not CHECKS_OFF:
+        probs = graph_problems(graph, server)
+        if probs:
+            sys.exit(f"{_short(server)} can't render this:\n" + "\n".join(f"   • {x}" for x in probs)
+                     + "\n" + provision_hint(probs, server))
     data = json.dumps({"prompt": graph}).encode()
     req = urllib.request.Request(f"{server}/prompt", data=data,
                                  headers={"Content-Type": "application/json"})
     try:
-        return json.loads(urllib.request.urlopen(req, timeout=30).read())["prompt_id"]
+        pid = json.loads(urllib.request.urlopen(req, timeout=30).read())["prompt_id"]
     except urllib.error.HTTPError as e:
-        sys.exit("ComfyUI rejected the request:\n" + e.read().decode()[:1200])
+        sys.exit(f"ComfyUI on {_short(server)} rejected the request: " + rejection_text(e.read().decode(errors="replace")))
     except urllib.error.URLError:
         sys.exit("Couldn't reach ComfyUI at " + server + " — is the server running?")
+    SENT.setdefault(server, set()).add(pid)
+    return pid
+
+
+# --- capability check: does a box have every node, input and model file a graph needs? ---------------------
+# A farm box with a stale custom_nodes/pixelart_palette silently IGNORES inputs it doesn't know (ComfyUI drops
+# undeclared inputs), so thin lines / pixel size / oklab just don't happen there; a box missing a LoRA or the
+# ControlNet fails mid-batch. Ask each box once (/object_info/<node>, cached) before sending it work.
+CHECKS_OFF = False          # --no-check
+_OBJ_INFO = {}              # (server, class) -> its object_info entry, or None when the server has no such node
+MODEL_INPUTS = {"ckpt_name", "lora_name", "control_net_name", "ipadapter_file", "clip_name", "unet_name",
+                "bg_removal_name"}
+UPLOAD_NODES = {"LoadImage", "LoadImageMask"}     # their file list is what this run uploads
+
+
+def _object_info(server, cls):
+    import urllib.parse
+    key = (server, cls)
+    if key not in _OBJ_INFO:
+        with urllib.request.urlopen(f"{server}/object_info/{urllib.parse.quote(cls)}", timeout=15) as r:
+            info = json.loads(r.read())
+        _OBJ_INFO[key] = info.get(cls) or None
+    return _OBJ_INFO[key]
+
+
+def _combo_options(spec):
+    """The allowed values of a combo input spec: legacy [[a, b], {...}] or the newer ["COMBO", {"options": [...]}]."""
+    if isinstance(spec, (list, tuple)) and spec:
+        if isinstance(spec[0], list):
+            return spec[0]
+        if spec[0] == "COMBO" and len(spec) > 1 and isinstance(spec[1], dict):
+            return spec[1].get("options")
+    return None
+
+
+def graph_problems(graph, server):
+    """What `server` lacks to run `graph` as asked: node classes it doesn't have, inputs its version of a node
+    doesn't know, model files that aren't installed. [] = ready, or couldn't ask (an old ComfyUI, or the server
+    is unreachable — submit reports that)."""
+    probs = []
+    try:
+        for node in graph.values():
+            cls = node.get("class_type")
+            info = _object_info(server, cls)
+            if info is None:
+                probs.append(f"no {cls} node — its custom node isn't installed (or ComfyUI wasn't restarted)")
+                continue
+            spec = info.get("input") or {}
+            known = dict(spec.get("required") or {}, **(spec.get("optional") or {}))
+            if not known:                               # nothing to compare against
+                continue
+            unknown = []
+            for k, v in (node.get("inputs") or {}).items():
+                if k not in known and k not in (spec.get("hidden") or {}):
+                    unknown.append(k)
+                elif k in MODEL_INPUTS and cls not in UPLOAD_NODES and isinstance(v, str):
+                    opts = _combo_options(known.get(k))
+                    if opts is not None and v not in opts:
+                        probs.append(f"{k.replace('_name', '').replace('_file', '')} {v} isn't installed ({cls})")
+            if unknown:
+                probs.append(f"{cls} doesn't know input{'s' if len(unknown) > 1 else ''} {', '.join(unknown)} — "
+                             f"that box runs an older {cls}")
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+    return list(dict.fromkeys(probs))
+
+
+def _model_groups():
+    """model file -> the download-models.sh flag that fetches it ('' = the core set), read from the script itself
+    so the hint can't drift from it."""
+    groups, flag = {}, ""
+    flags = {"WANT_LAB": "--lab", "WANT_STEER": "--steer", "WANT_DEPTH": "--depth", "WANT_3D": "--3d",
+             "WANT_JUGG": "--juggernaut"}
+    try:
+        with open(os.path.join(_SCRIPT_DIR, "download-models.sh"), encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r'if \[ "\$(WANT_\w+)" = 1 \]', line.strip())
+                if m:
+                    flag = flags.get(m.group(1), "")
+                elif line.strip() == "fi":
+                    flag = ""
+                else:
+                    m = re.match(r"\s+\w+ (\S+\.(?:safetensors|pth|ckpt|bin)) \"", line)
+                    if m:
+                        groups[m.group(1)] = flag
+    except OSError:
+        pass
+    return groups
+
+
+def provision_hint(probs, server=None):
+    """What to run on the box to fix `probs`."""
+    groups = _model_groups()
+    want, other = set(), False
+    for x in probs:
+        m = re.match(r"\w+ (\S+) isn't installed", x)
+        if m and m.group(1) in groups:
+            want.add(groups[m.group(1)])
+        elif m:
+            other = True                                # a model download-models.sh doesn't know (your own LoRA)
+    out = []
+    if want:
+        out.append("   provision it:  ./download-models.sh " + " ".join(sorted(f for f in want if f)))
+    if other:
+        out.append("   copy your own models into the same models/ folders on that box")
+    if any("doesn't know input" in x or "node —" in x for x in probs):
+        out.append("   update its pixelmon (custom_nodes/ + ./install.sh), then restart its ComfyUI")
+    out.append("   (--no-check skips this check)")
+    return "\n".join(o.rstrip() for o in out)
 
 
 _STEER_UPLOADS = {}   # server -> [uploaded reference filenames] (uploaded once per server)
+DRY = "dry://"        # a "server" that is never contacted: build_graph for --dry-run and the capability check
 
 
 def _gather_steer_paths(spec, cap):
@@ -684,6 +913,8 @@ def _upload_image(path, server, what="--steer"):
     `what` names the flag in error messages. Retries for ~20s, so a server that's briefly restarting doesn't
     fail the job."""
     import mimetypes, hashlib
+    if server == DRY:                            # --dry-run / the capability check: name it, send nothing
+        return f"<upload:{os.path.basename(path)}>"
     with open(path, "rb") as f:
         content = f.read()
     name = "pmsteer_" + hashlib.md5(path.encode()).hexdigest()[:8] + "_" + os.path.basename(path)
@@ -840,7 +1071,7 @@ def stitch_inpaint(a, sprite):
         full = full.resize((ow, oh), Image.LANCZOS if a.art else Image.NEAREST)
     px, py = round(x0 * ow / fw), round(y0 * oh / fh)
     full.paste(part.convert(mode), (px, py))
-    full.save(sprite)
+    resave(full, sprite)
 
 
 def _hex_rgb(colors):
@@ -864,6 +1095,97 @@ def _palette_node():
         return None
 
 
+# --- provenance: ComfyUI's SaveImage embeds the API graph (a "prompt" text chunk) in every PNG, but each PIL
+# re-save below (enlarge, art palette, cut-out, inpaint stitch) dropped it. Chunks are carried over byte for byte,
+# and a compact "pixelmon" chunk records how to make the picture again (version, prompt, seed, command line).
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+
+
+def png_text_chunks(path):
+    """The raw tEXt / zTXt / iTXt chunks of a PNG ([] if it has none or isn't a PNG)."""
+    import struct
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return []
+    if data[:8] != PNG_SIG:
+        return []
+    out, i = [], 8
+    while i + 8 <= len(data):
+        n, kind = struct.unpack(">I4s", data[i:i + 8])
+        if kind in (b"tEXt", b"zTXt", b"iTXt"):
+            out.append(data[i:i + 12 + n])
+        if kind == b"IEND":
+            break
+        i += 12 + n
+    return out
+
+
+def _chunk_key(chunk):
+    return chunk[8:].split(b"\0", 1)[0]
+
+
+def png_add_chunks(path, chunks, replace=False):
+    """Splice text chunks in before IEND without touching the pixels. A keyword the file already has is kept
+    (or replaced, with replace=True)."""
+    if not chunks:
+        return
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return
+    end = data.rfind(b"IEND") - 4
+    if data[:8] != PNG_SIG or end < 8:
+        return
+    new = {_chunk_key(c) for c in chunks}
+    if replace:
+        for c in png_text_chunks(path):
+            if _chunk_key(c) in new:
+                data = data.replace(c, b"", 1)
+        end = data.rfind(b"IEND") - 4
+        add = chunks
+    else:
+        have = {_chunk_key(c) for c in png_text_chunks(path)}
+        add = [c for c in chunks if _chunk_key(c) not in have]
+    if not add and not replace:
+        return
+    tmp = path + ".pmtmp"
+    with open(tmp, "wb") as f:
+        f.write(data[:end] + b"".join(add) + data[end:])
+    os.replace(tmp, path)
+
+
+def png_itxt(key, text):
+    """One iTXt chunk (UTF-8 text; tEXt is Latin-1 only)."""
+    import struct
+    import zlib
+    body = b"iTXt" + key.encode("latin-1") + b"\0\0\0\0\0" + text.encode("utf-8")
+    return struct.pack(">I", len(body) - 4) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+
+def resave(im, path, **kw):
+    """im.save(path) that keeps the text chunks the file had (a plain PIL save drops them)."""
+    keep = png_text_chunks(path)
+    im.save(path, **kw)
+    png_add_chunks(path, keep)
+
+
+def stamp_recipe(path, a, seed, subject, server):
+    """Record how this picture was made in the PNG itself: a 'pixelmon' chunk next to ComfyUI's 'prompt'."""
+    if not (path and os.path.isfile(path) and path.lower().endswith(".png")):
+        return
+    rec = {"tool": "pixelmon", "version": __version__, "prompt": subject, "seed": seed,
+           "server": _short(server or SERVER), "argv": sys.argv[1:]}
+    if getattr(a, "_row_key", None):
+        rec["key"] = a._row_key
+    try:
+        png_add_chunks(path, [png_itxt("pixelmon", json.dumps(rec, ensure_ascii=False))], replace=True)
+    except OSError:
+        pass
+
+
 def enlarge_output(a, sprite):
     """Pixel art past 1024 was made at 1/k size: enlarge it by exactly k, nearest neighbour (crisp square pixels)."""
     k = getattr(a, "enlarge", 1)
@@ -871,7 +1193,7 @@ def enlarge_output(a, sprite):
         return
     from PIL import Image
     im = Image.open(sprite)
-    im.resize((im.width * k, im.height * k), Image.NEAREST).save(sprite)
+    resave(im.resize((im.width * k, im.height * k), Image.NEAREST), sprite)
 
 
 def _bbox(alpha, thr):
@@ -995,7 +1317,7 @@ def cutout_output(a, sprite, server=None, files=()):
             canvas.alpha_composite(piece, (max(0, round(x0 + (bw - pw) / 2)), max(0, y1 - ph)))   # standing where it stood
         cut = canvas
         note = f"cut out, fitted to {os.path.basename(a.fit_to)}'s footprint at {scale}x ({cut.width}x{cut.height})"
-    (_bleed(cut) if smooth else cut).save(sprite)
+    resave(_bleed(cut) if smooth else cut, sprite)
     print(f"      ✂ {note}")
 
 
@@ -1038,7 +1360,7 @@ def art_palette(a, sprite, pal):
     res = Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8), "RGB")
     if alpha is not None:
         res.putalpha(alpha)
-    res.save(sprite)
+    resave(res, sprite)
 
 
 def keep_outside_mask(a, sprite):
@@ -1057,7 +1379,7 @@ def keep_outside_mask(a, sprite):
     m = Image.open(os.path.expanduser(a.mask)).convert("L").resize(new.size, Image.NEAREST)
     m = m.point(lambda v: 255 if v > 127 else 0).filter(ImageFilter.MaxFilter(3))   # +1 px so no seam shows
     orig.paste(new, (0, 0), m)
-    orig.save(sprite)
+    resave(orig, sprite)
 
 
 def steer_files(a, server):
@@ -1067,7 +1389,8 @@ def steer_files(a, server):
         paths = a._steer_paths = _gather_steer_paths(a.steer, a.steer_max)
     if server not in _STEER_UPLOADS:
         _STEER_UPLOADS[server] = [_upload_image(p, server) for p in paths]
-        print(f"   \U0001f9ed steer: {len(_STEER_UPLOADS[server])} reference(s) -> {_short(server)}")
+        if server != DRY:
+            print(f"   \U0001f9ed steer: {len(_STEER_UPLOADS[server])} reference(s) -> {_short(server)}")
     return _STEER_UPLOADS[server]
 
 
@@ -1079,6 +1402,8 @@ def _render_error(entry):
     for kind, m in st.get("messages", []):
         if kind == "execution_error":
             return f"{m.get('node_type')} (node {m.get('node_id')}): {m.get('exception_type')}: {m.get('exception_message', '').strip()}"
+    if any(kind == "execution_interrupted" for kind, _ in st.get("messages", [])):
+        return "interrupted on the server (someone pressed Cancel / Interrupt there)"
     return "the render failed on the server"
 
 
@@ -1093,10 +1418,38 @@ def _transient(err):
 POISONED = ("object has no attribute 'model_size'", "object has no attribute 'is_dynamic'")
 
 
+RESTART_EVERY = 180   # seconds: at most one "_restart" of a server, shared with other pixelmon runs (stamp file)
+
+
+def restart_server(server):
+    """Run servers.json's "_restart" command for this server (by alias), as pixelmon-gui does, so a headless run
+    doesn't just wait for someone else to restart a broken ComfyUI. At most once per RESTART_EVERY per server
+    across runs. True if it ran."""
+    alias = next((k for k, v in SERVERS.items() if resolve_server(k) == server), None)
+    cmd = RESTARTS.get(alias) if alias else None
+    if not cmd:
+        return False
+    stamp = os.path.join(os.path.expanduser("~/.cache/pixelmon"), "restart-" + re.sub(r"\W", "_", _short(server)))
+    try:
+        if time.time() - os.path.getmtime(stamp) < RESTART_EVERY:
+            return False
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(stamp), exist_ok=True)
+    open(stamp, "w").close()
+    print(f"   ↻ restarting {alias}'s ComfyUI (servers.json _restart): {cmd}")
+    try:
+        subprocess.run(cmd, shell=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        print("   … the restart command is still running after 120s; waiting for the server anyway")
+    return True
+
+
 def _wait_restart(pid, server, limit=120):
     """After a POISONED error: wait (up to `limit` s) for the server to be restarted, which shows as the
-    prompt dropping out of its history. True once it has been."""
-    t = time.time()
+    prompt dropping out of its history. True once it has been. Restarts it itself (servers.json "_restart")
+    when nobody else has after a few seconds."""
+    t, tried = time.time(), False
     while time.time() - t < limit:
         time.sleep(3)
         try:
@@ -1104,7 +1457,11 @@ def _wait_restart(pid, server, limit=120):
                 if pid not in json.loads(r.read()):
                     return True
         except OSError:                            # down: restarting
-            pass
+            tried = True
+            continue
+        if not tried and time.time() - t >= 6:     # the GUI didn't restart it: do it ourselves if we know how
+            tried = True
+            restart_server(server)
     return False
 
 
@@ -1156,17 +1513,27 @@ def _known(pid, server):
 SERVER_GRACE = 240    # seconds wait() rides out a render server that stops answering (a restart takes ~10-30s)
 
 
+class RenderFailed(SystemExit):
+    """This one job failed on the server (a node raised, it returned nothing). A SystemExit, so a lone render
+    still ends with the message as before, but a batch can catch it, report the job and carry on."""
+
+
 def wait(pid, server=None, timeout=600, resubmit=None):
     """Wait for a prompt's outputs. timeout = seconds of actual rendering; time spent queued behind
     other jobs doesn't count. A server-side error stops at once with the node's message — except a
     transient model-loading hiccup, which is resubmitted once when resubmit(fresh) is given. An identical
     re-run that ComfyUI answers from its cache with no images is resubmitted once with fresh=True.
     A server that restarts mid-wait (pixelmon-gui restarts a stuck one) is waited out, and a prompt it
-    forgot (not done, waiting or running) is sent again, up to twice."""
+    forgot (not done, waiting or running) is sent again, up to twice. A failed job raises RenderFailed;
+    a server that is gone or broken for good ends the run (sys.exit)."""
     server = server or SERVER
     waited = 0
     refreshed = False
     again, relost, lost, n, down = resubmit, 2, 0, 0, None
+
+    def swap(new):                                # a resubmit replaces the prompt we are waiting on
+        _forget(server, pid)
+        return new
     while waited < timeout:
         try:
             with urllib.request.urlopen(f"{server}/history/{pid}", timeout=30) as r:
@@ -1189,29 +1556,33 @@ def wait(pid, server=None, timeout=600, resubmit=None):
                 if not (again and relost):
                     sys.exit("The render server restarted and lost this render.")
                 print("   ↻ the render server restarted and lost this render — sending it again")
-                pid, relost, lost, waited = again(False), relost - 1, 0, 0
+                pid, relost, lost, waited = swap(again(False)), relost - 1, 0, 0
                 continue
         if pid in hist:
             err = _render_error(hist[pid])
             if err and again and relost and any(p in err for p in POISONED):
                 print("   ↻ the render server broke (it needs a restart) — waiting for it to come back, then sending this again")
                 if not _wait_restart(pid, server):
+                    _forget(server, pid)
                     sys.exit(f"Render failed on the server — {err}\n   Its ComfyUI needs a restart.")
-                pid, relost, lost, waited = again(False), relost - 1, 0, 0
+                pid, relost, lost, waited = swap(again(False)), relost - 1, 0, 0
                 continue
             if err and resubmit and _transient(err):
                 print(f"   ↻ server hiccup ({err.split(': ', 1)[-1][:60]}) — retrying once")
-                pid, resubmit, waited = resubmit(False), None, 0
+                pid, resubmit, waited = swap(resubmit(False)), None, 0
                 continue
             if _cached_empty(hist[pid]):
                 if resubmit and not refreshed:
                     print("   ↻ identical re-run answered from the server's cache without images — re-saving")
-                    pid, refreshed, waited = resubmit(True), True, 0
+                    pid, refreshed, waited = swap(resubmit(True)), True, 0
                     continue
-                sys.exit("The server finished but returned no images (identical cached prompt).")
+                _forget(server, pid)
+                raise RenderFailed("The server finished but returned no images (identical cached prompt).")
             if err:
-                sys.exit(f"Render failed on the server — {err}")
+                _forget(server, pid)
+                raise RenderFailed(f"Render failed on the server — {err}")
             if hist[pid].get("outputs"):
+                _forget(server, pid)
                 return hist[pid]["outputs"]
         time.sleep(1)
         if waited % 10 or not _queued(pid, server):
@@ -1226,10 +1597,13 @@ def poll(pid, server):
     if pid in hist:
         err = _render_error(hist[pid])
         if err:
+            _forget(server, pid)
             raise RuntimeError(err)
         if _cached_empty(hist[pid]):
+            _forget(server, pid)
             raise CachedNoOutput("identical cached prompt returned no images")
         if hist[pid].get("outputs"):
+            _forget(server, pid)
             return hist[pid]["outputs"]
     return None
 
@@ -1261,111 +1635,226 @@ def fetch_image(im, dest_dir, server=None):
     return out
 
 
-def run_farm(a, work):
+def on_this_disk(server):
+    """True when the server writes into this machine's ~/ComfyUI/output (the ComfyUI launch-comfyui.sh starts).
+    Any other ComfyUI — remote, or a second one on another local port — is read over /view."""
+    import urllib.parse
+    return is_local(server) and (urllib.parse.urlparse(server).port or 8188) == 8188
+
+
+def collect(outs, dest, server):
+    """A finished job's files, here: moved out of ComfyUI's output into dest (or left there) for the local
+    server, downloaded over /view from any other."""
+    imgs = [im for node in outs.values() for im in node.get("images", [])]
+    here = dest or os.path.join(OUTPUT, "pixelmon")
+    files = []
+    for im in imgs:
+        f = os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"])
+        if not (on_this_disk(server) and os.path.exists(f)):
+            files.append(fetch_image(im, here, server))
+        elif dest:
+            tgt = os.path.join(dest, os.path.basename(f))
+            shutil.move(f, tgt)
+            files.append(tgt)
+        else:
+            files.append(f)
+    return files
+
+
+def pick_sprite(files):
+    return next((f for f in files if ("_sprite_" in f or "_art_" in f or "_raw_" in f) and "_cutmask_" not in f), None)
+
+
+class Job:
+    """One picture to make: the subject, its seed and palette, where it goes, and the settings it's made with
+    (a --batch-file row may have its own style and size)."""
+    def __init__(self, idx, subj, seed, pal, dest, a, label=""):
+        self.idx, self.subj, self.seed, self.pal, self.dest, self.a, self.label = idx, subj, seed, pal, dest, a, label
+        self.bad = set()        # servers it already failed on (a requeued job goes to another box)
+
+    def graph(self, server):
+        return build_graph(self.a, self.seed, self.pal, subject=self.subj, server=server)
+
+
+def finish(job, files, server):
+    """The post-processing every render gets after the server is done; returns the sprite's path."""
+    ja, sprite = job.a, pick_sprite(files)
+    keep_outside_mask(ja, sprite)
+    stitch_inpaint(ja, sprite)
+    art_palette(ja, sprite, job.pal)
+    enlarge_output(ja, sprite)
+    cutout_output(ja, sprite, server, files)
+    stamp_recipe(sprite, ja, job.seed, job.subj, server)
+    return sprite
+
+
+FARM_FAILS = 2      # a box that fails this many jobs in a row is dropped (circuit breaker)
+POLL_GRACE = 20     # seconds a farm box may not answer before its job goes to another box
+
+
+def check_boxes(boxes, jobs):
+    """The boxes that have every node, input and model these jobs need; the others are reported with what to run
+    on them. One graph per distinct job settings is checked (no uploads: build_graph against DRY)."""
+    if CHECKS_OFF:
+        return list(boxes)
+    probes = {}
+    for j in jobs:
+        probes.setdefault(id(j.a), j)
+    graphs = [j.graph(DRY) for j in probes.values()]
+    ready = []
+    for s in boxes:
+        probs = list(dict.fromkeys(x for g in graphs for x in graph_problems(g, s)))
+        if probs:
+            print(f"   ⚠ skipping {_short(s)}: it can't render this —\n" + "\n".join(f"      • {x}" for x in probs)
+                  + "\n" + "\n".join("   " + h for h in provision_hint(probs, s).splitlines()))
+        else:
+            ready.append(s)
+    return ready
+
+
+def run_farm(a, jobs):
     """Render farm: distribute jobs across POOL with dynamic dispatch (feed the free GPU).
-    Faster boxes naturally pull more jobs; results are fetched back from whichever GPU made them."""
+    Faster boxes naturally pull more jobs; results are fetched back from whichever GPU made them.
+    A box that fails FARM_FAILS jobs in a row is dropped (a broken box fails fast, is free first, and would
+    otherwise eat the queue); a failed job is tried once more on another box; requeued work reaches boxes that
+    already went idle. Returns (pictures made, jobs that produced nothing)."""
     live = [s for s in POOL if server_up(s)]
     down = [s for s in POOL if s not in live]
     if down:
         print(f"   ⚠ skipping unreachable: {', '.join(_short(s) for s in down)}")
     if not live:
         sys.exit("render farm: no reachable servers in the pool.")
+    live = check_boxes(live, jobs)
+    if not live:
+        sys.exit("render farm: no server in the pool can render this (see above).")
     print(f"   \U0001f69c render farm: {len(live)} GPU(s) — {', '.join(_short(s) for s in live)}")
-    pending = list(work)        # (subject, seed, palette, dest)
-    inflight = {}               # server -> (subject, seed, palette, dest, pid)
-    total = len(work)
-    done = failed = 0
-    retried = set()             # jobs already requeued once after a transient server error
+    pending = list(jobs)
+    inflight = {}               # server -> (job, pid)
+    total = len(jobs)
+    made, failed = [], 0
+    fails = {}                  # server -> failed jobs in a row
+    tries = {}                  # job idx -> failed attempts
+    silent = {}                 # server -> when its polls started failing
+    retried = set()             # jobs already resent once (transient error / cached-empty re-save)
+
+    def name(job):
+        return f"{job.label or job.subj}  " if (a.batch or a.batch_file) else ""
 
     def launch(srv):
         """Submit the next pending job to srv. False = server unusable (drop it)."""
-        while pending:
-            subj, seed, pal, d = pending.pop(0)
-            try:
-                pid = submit(build_graph(a, seed, pal, subject=subj, server=srv), srv)
-            except SystemExit:
-                pending.insert(0, (subj, seed, pal, d))   # couldn't submit; keep the job
-                return False
-            inflight[srv] = (subj, seed, pal, d, pid)
+        if not pending:
             return True
-        return True             # nothing left to do
+        cands = [j for j in pending if srv not in j.bad]
+        if not cands:
+            if any(s != srv for s in live):      # leave it for a box it hasn't failed on
+                return True
+            cands = pending
+        job = cands[0]
+        pending.remove(job)
+        try:
+            pid = submit(job.graph(srv), srv)
+        except SystemExit as e:
+            if STOPPING:
+                raise
+            pending.insert(0, job)               # couldn't submit; keep the job
+            print(f"   ⚠ dropping {_short(srv)}: {e}")
+            return False
+        inflight[srv] = (job, pid)
+        return True
 
-    for srv in list(live):
-        if launch(srv) is False:
-            live.remove(srv)
+    def give_up_or_requeue(srv, job, why, breaker=True):
+        nonlocal failed
+        tries[job.idx] = tries.get(job.idx, 0) + 1
+        job.bad.add(srv)
+        if tries[job.idx] >= 2:
+            print(f"   ✗ {_short(srv)}: {name(job)}seed={job.seed} failed twice — giving up on it ({why})")
+            failed += 1
+        else:
+            print(f"   ⚠ {_short(srv)}: {name(job)}seed={job.seed} failed ({why}) — trying it once more elsewhere")
+            pending.append(job)
+        if breaker:
+            fails[srv] = fails.get(srv, 0) + 1
+            if fails[srv] >= FARM_FAILS and srv in live:
+                print(f"   ⚠ dropping {_short(srv)} after {fails[srv]} failures in a row")
+                live.remove(srv)
 
-    while inflight:
+    while True:
+        # feed every idle box — including ones that went idle before a job was requeued, or it is lost
+        for srv in list(live):
+            if pending and srv not in inflight and launch(srv) is False:
+                live.remove(srv)
+        if not inflight:
+            break
         advanced = False
-        for srv, (subj, seed, pal, d, pid) in list(inflight.items()):
+        for srv, (job, pid) in list(inflight.items()):
             try:
                 outs = poll(pid, srv)
+                silent.pop(srv, None)
             except CachedNoOutput:
-                if (subj, seed, pal, d) not in retried:   # re-save the cached result under a fresh folder
-                    retried.add((subj, seed, pal, d))
-                    g = fresh_copy(build_graph(a, seed, pal, subject=subj, server=srv))
-                    inflight[srv] = (subj, seed, pal, d, submit(g, srv))
-                    advanced = True
-                    continue
-                print(f"   ✗ {_short(srv)}: the server returned no images for {subj or 'the job'} (seed {seed})")
-                failed += 1
                 del inflight[srv]
                 advanced = True
-                launch(srv)
+                if job.idx not in retried:      # re-save the cached result under a fresh folder
+                    retried.add(job.idx)
+                    try:
+                        inflight[srv] = (job, submit(fresh_copy(job.graph(srv)), srv))
+                    except SystemExit as e:
+                        if STOPPING:
+                            raise
+                        give_up_or_requeue(srv, job, str(e))
+                    continue
+                give_up_or_requeue(srv, job, "the server returned no images", breaker=False)
                 continue
-            except RuntimeError as e:          # the render itself failed: report it, don't retry it forever
-                if _transient(str(e)) and (subj, seed, pal, d) not in retried:
+            except RuntimeError as e:          # the render itself failed
+                del inflight[srv]
+                advanced = True
+                if _transient(str(e)) and job.idx not in retried:
                     print(f"   ↻ {_short(srv)}: server hiccup — requeueing once")
-                    retried.add((subj, seed, pal, d))
-                    pending.append((subj, seed, pal, d))
-                    del inflight[srv]
-                    advanced = True
-                    launch(srv)
+                    retried.add(job.idx)
+                    pending.append(job)
                     continue
-                print(f"   ✗ {_short(srv)}: render failed — {e}")
-                failed += 1
-                del inflight[srv]
-                advanced = True
-                if launch(srv) is False:
-                    live.remove(srv)
+                give_up_or_requeue(srv, job, f"render failed — {e}")
                 continue
-            except Exception:
-                print(f"   ⚠ {_short(srv)} unreachable — requeueing its job")
-                pending.append((subj, seed, pal, d))
+            except Exception as e:             # no answer: a blip, or the box went away
+                t0 = silent.setdefault(srv, time.time())
+                if time.time() - t0 < POLL_GRACE:
+                    continue
+                print(f"   ⚠ {_short(srv)} hasn't answered for {POLL_GRACE}s ({getattr(e, 'reason', e)}) — "
+                      f"dropping it, requeueing its job")
                 del inflight[srv]
+                silent.pop(srv, None)
+                _forget(srv, pid)              # nothing to clear there at the end: we can't reach it
+                pending.append(job)
+                if srv in live:
+                    live.remove(srv)
                 advanced = True
                 continue
             if outs is None:
                 continue
             advanced = True
-            imgs = [im for node in outs.values() for im in node.get("images", [])]
-            dest_dir = d or os.path.join(OUTPUT, "pixelmon")
-            files = [fetch_image(im, dest_dir, srv) for im in imgs]
-            sprite = next((f for f in files if ("_sprite_" in f or "_art_" in f or "_raw_" in f) and "_cutmask_" not in f), None)
-            keep_outside_mask(a, sprite)
-            stitch_inpaint(a, sprite)
-            art_palette(a, sprite, pal)
-            enlarge_output(a, sprite)
-            cutout_output(a, sprite, srv, files)
-            done += 1
-            sj = f"{subj}  " if a.batch else ""
-            print(f"   ✅ [{done}/{total}] {_short(srv):<20} {sj}seed={seed}  ->  {sprite}")
             del inflight[srv]
-            launch(srv)          # feed the now-free GPU its next job
+            try:
+                sprite = finish(job, collect(outs, job.dest, srv), srv)
+            except Exception as e:             # a fetch / post-processing error is this job's, not the box's
+                give_up_or_requeue(srv, job, f"couldn't fetch or finish the picture: {e}", breaker=False)
+                continue
+            fails[srv] = 0
+            made.append(sprite)
+            print(f"   ✅ [{len(made)}/{total}] {_short(srv):<20} {name(job)}seed={job.seed}  ->  {sprite}")
         if not advanced:
             time.sleep(1)
 
     if pending:
-        print(f"   ⚠ {len(pending)} job(s) left undone (all GPUs dropped).")
+        print(f"   ⚠ {len(pending)} job(s) left undone (no GPU left that can take them).")
     if failed:
         print(f"   ✗ {failed} of {total} render(s) failed on the server (see above).")
-        if not done:
-            sys.exit(1)
+    return made, failed + len(pending)
 
 
 def main():
     # Flush each line even when piped (GUI, tee, logs), so progress and every
     # finished image show up as they happen instead of all at exit.
-    sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
     # add_help=False so we can render our own friendly, colorized help instead
     # of argparse's plain default (shown via print_help on -h or no args).
     p = argparse.ArgumentParser(prog="pixelmon", add_help=False)
@@ -1592,7 +2081,8 @@ def main():
     p.add_argument("--no-keep-outside", dest="keep_outside", action="store_false",
                    help="with --mask: don't paste the result back onto the original (let the whole image drift)")
     p.add_argument("--init", default=None, metavar="IMG",
-                   help="img2img: start from this image instead of noise (keeps its composition)")
+                   help="img2img: start from this image instead of noise (keeps its composition). without "
+                        "--size / --out the result takes the image's shape")
     p.add_argument("--denoise", type=float, default=0.6, metavar="F",
                    help="with --init: how much to change, 0..1 (0 = same image, 1 = ignore it). default 0.6")
     p.add_argument("--steer-strength", dest="steer_strength", type=float, default=0.7,
@@ -1679,21 +2169,68 @@ def main():
     p.add_argument("--no-sprite-suffix", dest="no_sprite_suffix", action="store_true",
                    help="don't append 'game sprite, ..., solid background' (automatic when the "
                         "prompt contains 'scene background')")
+    p.add_argument("--batch-file", dest="batch_file", default=None, metavar="FILE",
+                   help="a list of sprites, one per line: 'key | prompt' (also 'key | style | size | prompt', "
+                        "'key | style-or-size | prompt', or a prompt on its own; '# comments', [Group] lines). "
+                        "each row's files are named by its key (a key like enemies/bat goes in ./enemies/); "
+                        "-n = takes of each. the same lists the GUI's Sets tab reads")
+    p.add_argument("--skip-existing", dest="skip_existing", action="store_true",
+                   help="with --batch/--batch-file/-n: don't make takes that are already there (a key with 2 of "
+                        "-n 4 files gets 2 more; with --seed, a seed whose file exists is skipped) — re-run a "
+                        "stopped list and it carries on")
+    p.add_argument("--palette-from", dest="palette_from", default=None, metavar="IMG",
+                   help="lock to the colours of a reference picture (sets --palette Custom): all of them when it "
+                        "has few (pixel art), else its main colours (--palette-max). with --art, a colour pull at "
+                        "--palette-strength")
+    p.add_argument("--palette-max", dest="palette_max", type=int, default=None, metavar="N",
+                   help="--palette-from: most colours to take from the picture (2..256). default: all of them "
+                        "up to 64 (pixel art), else its 32 main colours — what the GUI picks")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="show what would be made (jobs, prompts, where the files go) without contacting a server")
+    p.add_argument("--print-graph", dest="print_graph", action="store_true",
+                   help="print the first job's ComfyUI API graph as JSON and exit (no server; uploads are "
+                        "shown as <upload:NAME>)")
+    p.add_argument("--list-servers", dest="list_servers", action="store_true",
+                   help="every render server in servers.json (or --server's list): up/down, GPU, queue, and "
+                        "whether it has what this command needs (add your usual flags)")
+    p.add_argument("--no-check", dest="no_check", action="store_true",
+                   help="don't check that the server has every node, input and model the render needs "
+                        "before sending it")
+    p.add_argument("--wrapper-local-url", dest="wrapper_local_url", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args()
 
     # Resolve the render target: --server (alias/URL) > $PIXELMON_SERVER > servers.json
     # "_default" > local. Sets the module globals used by submit() / wait() / fetch_image().
-    global SERVER, REMOTE, POOL
+    global SERVER, REMOTE, POOL, CHECKS_OFF
     _target = a.server or os.environ.get("PIXELMON_SERVER") or DEFAULT_SERVER
     if _target:
         POOL = [resolve_server(s.strip()) for s in _target.split(",") if s.strip()]
         SERVER = POOL[0]                       # first entry is the single-server default
-        REMOTE = not any(h in SERVER for h in ("127.0.0.1", "localhost", "[::1]"))
+    REMOTE = not is_local(SERVER)
+    CHECKS_OFF = a.no_check
+
+    nothing_to_make = not (a.prompt or a.batch or a.batch_file or a.mesh or a.turnaround)
+    if a.wrapper_local_url:
+        # bin/pixelmon asks which ComfyUI on this machine (if any) this command renders on, and starts the
+        # default one when it's down. Help, listings and dry runs need none; neither does a remote target.
+        if not (a.show_help or a.list_palettes or a.list_styles or a.list_servers or a.dry_run or a.print_graph
+                or nothing_to_make):
+            for srv in (POOL or [SERVER]):
+                if is_local(srv):
+                    print(srv)
+            if len(POOL) > 1:
+                print("farm")                  # the other boxes can carry on if this one won't start
+        return
 
     # Friendly help on -h/--help, or when run with no prompt at all.
-    if a.show_help or (not a.prompt and not a.batch and not a.list_palettes and not a.list_styles and not a.mesh):
+    if a.show_help or (nothing_to_make and not a.list_palettes and not a.list_styles and not a.list_servers):
         print_help()
         return
+    if a.list_servers and nothing_to_make:      # check the boxes for a plain render
+        a.prompt = "a test sprite"
+    graph_out = sys.stdout
+    if a.print_graph:                    # only the JSON on stdout, so it can be piped; notes go to stderr
+        sys.stdout = sys.stderr
     if a.mesh or a.turnaround:               # 3D: a model, and rotation sprites painted from it (turnaround.py)
         import turnaround
         return turnaround.run(sys.modules[__name__], a, p)
@@ -1708,10 +2245,41 @@ def main():
         a.custom_hex = " ".join("#" + ("".join(c * 2 for c in h) if len(h) == 3 else h) for h in hexes)
     if a.palette not in ("none", "random", "Custom") and a.palette not in PALETTES:
         p.error(f"unknown palette {a.palette!r}. See --list-palettes.")
+    if a.palette_from:                   # the reference's own colours become a Custom palette
+        src = os.path.expanduser(a.palette_from)
+        if not os.path.isfile(src):
+            p.error(f"--palette-from: no such image: {a.palette_from}")
+        if a.palette != "none" or a.custom_hex:
+            p.error("--palette-from sets the palette itself: drop --palette / --custom-hex")
+        if a.palette_max is not None and not 2 <= a.palette_max <= 256:
+            p.error("--palette-max must be 2..256")
+        sys.path.insert(0, _SCRIPT_DIR)
+        from colors import picture_palette
+        try:
+            # the GUI's pick by default (exact up to 64, else 32 by median cut); --palette-max caps both
+            hexes = (picture_palette(src) if a.palette_max is None else
+                     picture_palette(src, cap=a.palette_max, exact=a.palette_max))
+        except Exception as e:
+            p.error(f"--palette-from: couldn't read {a.palette_from}: {e}")
+        a.palette, a.custom_hex = "Custom", " ".join(hexes)
+        print(f"   🎨 palette from {os.path.basename(src)}: {len(hexes)} colours")
 
     # Mode-dependent defaults (only when the user didn't override them):
     #   --art  -> full-res illustration: bigger canvas, illustration-tuned negative.
     #   pixel  -> small sprite, pixel-tuned negative.
+    if a.size is None and not a.out and a.init and os.path.isfile(os.path.expanduser(a.init)):
+        # --init with no size: keep the reference's shape (a 320x200 screen stays 16:10 instead of being squashed
+        # into the default square), at the usual long side
+        try:
+            from PIL import Image
+            with Image.open(os.path.expanduser(a.init)) as im:
+                iw, ih = im.size
+            side = 1024 if a.art else 128
+            if iw != ih:
+                a.size = f"{side}x{max(8, round(side * ih / iw))}" if iw > ih else f"{max(8, round(side * iw / ih))}x{side}"
+                print(f"   🎯 from the reference: {a.size} (its shape; --size / --out override)")
+        except Exception:
+            pass
     if a.size is None:
         a.size = a.out if a.out else ("1024" if a.art else "128")
     if a.negative is None:
@@ -1819,53 +2387,59 @@ def main():
         a.sampler = "euler" if a.sampler is None else a.sampler
         a.scheduler = "normal" if a.scheduler is None else a.scheduler
 
-    # Parse --size into target W x H (square if a single number), plus a matching
-    # generation resolution (long side = --res, kept ~proportional so the subject
-    # isn't distorted); the node then nails the exact W x H.
-    try:
-        if "x" in str(a.size).lower():
-            a.sw, a.sh = (int(v) for v in str(a.size).lower().split("x", 1))
-        else:
-            a.sw = a.sh = int(a.size)
-    except ValueError:
-        p.error(f"bad --size {a.size!r}; use N or WxH (e.g. 32 or 32x48)")
-    if a.sw < 1 or a.sh < 1:
-        p.error("--size dimensions must be >= 1")
-    a.ow, a.oh = a.sw, a.sh
-    if a.out:
-        try:
-            if "x" in str(a.out).lower():
-                a.ow, a.oh = (int(v) for v in str(a.out).lower().split("x", 1))
-            else:
-                a.ow = a.oh = int(a.out)
-        except ValueError:
-            p.error(f"bad --out {a.out!r}; use N or WxH (e.g. 320x200)")
-        if not (1 <= a.ow <= 4096 and 1 <= a.oh <= 4096):
-            p.error("--out dimensions must be 1..4096")
-    # Pixel art past 1024 (wallpapers): the palette node works up to 1024, so the art is made at 1/k of the
-    # size and enlarged by exactly k afterwards — nearest neighbour, so every pixel stays square and crisp.
-    a.enlarge = 1
-    if not a.art and max(a.ow, a.oh) > 1024:
-        k = next((k for k in range(2, 17) if a.ow % k == 0 and a.oh % k == 0 and max(a.ow, a.oh) <= 1024 * k), None)
-        if not k:
-            p.error(f"--out {a.ow}x{a.oh}: past 1024, pixel art has to divide evenly by a whole number "
-                    f"(1920x1080, 2560x1440, 3840x2160 … all do)")
-        a.enlarge, a.ow, a.oh = k, a.ow // k, a.oh // k
-        if max(a.sw, a.sh) > 1024:
-            a.sw, a.sh = a.ow, a.oh
-
     def _r64(v):
         return max(64, int(round(v / 64.0)) * 64)
-    a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
-    a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
 
-    if a.art and max(a.sw, a.sh) > a.res:
-        # Art mode bigger than --res (wallpapers): SDXL paints its own ~1-megapixel size for that shape
-        # (1344x768 for 16:9) and the picture is resized up to W x H. Painting straight at 1920+ repeats
-        # the subject, and 4K doesn't fit an 8 GB card. Smaller sizes keep the --res render above and
-        # are resized down: SDXL can't draw at 256 px (it makes abstract blobs).
-        ar = a.sw / a.sh
-        a.gen_w, a.gen_h = _r64(a.res * ar ** 0.5), _r64(a.res / ar ** 0.5)
+    def apply_size(a):
+        """--size / --out -> output, art-grid and generation sizes (also run for a --batch-file row with its own
+        size)."""
+        # Parse --size into target W x H (square if a single number), plus a matching
+        # generation resolution (long side = --res, kept ~proportional so the subject
+        # isn't distorted); the node then nails the exact W x H.
+        try:
+            if "x" in str(a.size).lower():
+                a.sw, a.sh = (int(v) for v in str(a.size).lower().split("x", 1))
+            else:
+                a.sw = a.sh = int(a.size)
+        except ValueError:
+            p.error(f"bad --size {a.size!r}; use N or WxH (e.g. 32 or 32x48)")
+        if a.sw < 1 or a.sh < 1:
+            p.error("--size dimensions must be >= 1")
+        a.ow, a.oh = a.sw, a.sh
+        if a.out:
+            try:
+                if "x" in str(a.out).lower():
+                    a.ow, a.oh = (int(v) for v in str(a.out).lower().split("x", 1))
+                else:
+                    a.ow = a.oh = int(a.out)
+            except ValueError:
+                p.error(f"bad --out {a.out!r}; use N or WxH (e.g. 320x200)")
+            if not (1 <= a.ow <= 4096 and 1 <= a.oh <= 4096):
+                p.error("--out dimensions must be 1..4096")
+        # Pixel art past 1024 (wallpapers): the palette node works up to 1024, so the art is made at 1/k of the
+        # size and enlarged by exactly k afterwards — nearest neighbour, so every pixel stays square and crisp.
+        a.enlarge = 1
+        if not a.art and max(a.ow, a.oh) > 1024:
+            k = next((k for k in range(2, 17) if a.ow % k == 0 and a.oh % k == 0 and max(a.ow, a.oh) <= 1024 * k), None)
+            if not k:
+                p.error(f"--out {a.ow}x{a.oh}: past 1024, pixel art has to divide evenly by a whole number "
+                        f"(1920x1080, 2560x1440, 3840x2160 … all do)")
+            a.enlarge, a.ow, a.oh = k, a.ow // k, a.oh // k
+            if max(a.sw, a.sh) > 1024:
+                a.sw, a.sh = a.ow, a.oh
+
+        a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
+        a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
+
+        if a.art and max(a.sw, a.sh) > a.res:
+            # Art mode bigger than --res (wallpapers): SDXL paints its own ~1-megapixel size for that shape
+            # (1344x768 for 16:9) and the picture is resized up to W x H. Painting straight at 1920+ repeats
+            # the subject, and 4K doesn't fit an 8 GB card. Smaller sizes keep the --res render above and
+            # are resized down: SDXL can't draw at 256 px (it makes abstract blobs).
+            ar = a.sw / a.sh
+            a.gen_w, a.gen_h = _r64(a.res * ar ** 0.5), _r64(a.res / ar ** 0.5)
+
+    apply_size(a)
 
     # Inpaint crop-and-stitch: a small mask is a small patch of a 1024px render, so the model mostly
     # continues the surroundings. Cut out the mask's neighbourhood (with context), render THAT at full
@@ -1878,24 +2452,43 @@ def main():
     if a.animate:
         sys.path.insert(0, _SCRIPT_DIR)
         import animate
-        animate.run(a, pal_map=(_pal.ALL_PALETTES if _pal else None), slug=slug)
+        animate.run(a, pal_map=(_pal.ALL_PALETTES if _pal else None), slug=slug, P=sys.modules[__name__])
         return
 
     n = max(1, a.number)
-    # Subjects: one (the prompt) or many (--batch round-robins one of each per pass).
-    subjects = [s.strip() for s in a.batch.split(",") if s.strip()] if a.batch else [a.prompt]
+    # Subjects: one (the prompt), many (--batch round-robins one of each per pass), or the rows of a
+    # --batch-file, each named by its key and maybe with its own style / size.
+    rows = None
+    if a.batch_file:
+        if a.prompt or a.batch:
+            p.error("--batch-file gives the prompts: drop the prompt / --batch")
+        if a.animate:
+            p.error("--batch-file makes still pictures (not --animate)")
+        sys.path.insert(0, _SCRIPT_DIR)
+        import manifest
+        try:
+            with open(os.path.expanduser(a.batch_file), encoding="utf-8") as f:
+                rows = manifest.parse_manifest(f.read())
+        except (OSError, ValueError) as e:
+            p.error(f"--batch-file: {e}")
+        subjects = [r["prompt"] for r in rows]
+    else:
+        subjects = [s.strip() for s in a.batch.split(",") if s.strip()] if a.batch else [a.prompt]
 
     # Where finished files go — relative to the directory you ran pixelmon FROM:
     #   --batch        -> one folder per subject  (./<subject>/)
+    #   --batch-file   -> the folder in each key  (enemies/bat -> ./enemies/), flat for a plain key
     #   --move-to-dirs -> one folder named after the prompt  (./<prompt>/)
     #   --output-to D  -> that folder D (flat); else left in ComfyUI's output.
     base = os.path.abspath(os.path.expanduser(a.output_to)) if a.output_to else os.getcwd()
 
-    def dest_for(subject):
+    def dest_for(subject, key=None):
         if a.no_subdirs:
             # flatten: everything into the one base folder (files are uniquely named,
             # so you can browse them all in a single dir)
-            d = base if (a.output_to or a.batch or a.move_to_dirs) else None
+            d = base if (a.output_to or a.batch or a.batch_file or a.move_to_dirs) else None
+        elif key is not None:
+            d = os.path.join(base, os.path.dirname(key)) if os.path.dirname(key) else base
         elif a.batch:
             d = os.path.join(base, slug(subject))
         elif a.move_to_dirs:
@@ -1906,24 +2499,81 @@ def main():
             d = None
         if d is None:
             return None
-        if not os.path.isdir(d):
-            if a.create_dirs or a.move_to_dirs or a.batch:
+        if not os.path.isdir(d) and not (a.dry_run or a.print_graph or a.list_servers):   # those write nothing
+            if a.create_dirs or a.move_to_dirs or a.batch or a.batch_file:
                 os.makedirs(d, exist_ok=True)
             else:
                 p.error(f"output dir does not exist: {d}\n  (add --create-dirs to make it)")
         return d
 
-    dests = {subj: dest_for(subj) for subj in subjects}
+    def row_args(row):
+        """The settings one --batch-file row is made with: its key as the file name, its style and size."""
+        import copy
+        ja = copy.copy(a)
+        ja.name = re.sub(r"[^\w.=+-]+", "_", os.path.basename(row["key"])).strip("_") or "sprite"
+        ja._row_key = row["key"]
+        if row.get("style"):
+            if a.exact_prompt:
+                p.error(f"--batch-file row {row['key']!r} has a style, which --exact-prompt can't add")
+            try:
+                ja.style = row["style"]
+                ja.style_add, ja.style_neg = resolve_styles(row["style"])
+            except ValueError as e:
+                p.error(f"--batch-file row {row['key']!r}: {e}")
+        if row.get("size"):
+            if a.mask or a.depth:
+                p.error(f"--batch-file row {row['key']!r} has its own size, which --mask / --depth can't follow")
+            ja.size, ja.out = row["size"], None
+            apply_size(ja)
+        return ja
 
-    total = n * len(subjects)
+    if rows:
+        settings = [row_args(r) for r in rows]
+        dests = [dest_for(r["prompt"], r["key"]) for r in rows]
+        labels = [r["key"] for r in rows]
+    else:
+        settings = [a] * len(subjects)
+        dests = [dest_for(subj) for subj in subjects]
+        labels = list(subjects)
+
+    # Build the work list. --batch round-robins (one of each subject per pass) so
+    # every folder fills evenly instead of finishing one subject at a time.
+    jobs = []
+    k = 0
+    for _ in range(n):
+        for i, subj in enumerate(subjects):
+            seed = (a.seed + k) if a.seed >= 0 else random.randint(0, 2**31 - 1)
+            pal = random.choice(PALETTES) if a.palette == "random" else a.palette
+            jobs.append(Job(len(jobs), subj, seed, pal, dests[i], settings[i], labels[i]))
+            k += 1
+    if a.depth:                          # until prepare_depth makes the real map: for graphs nobody sends
+        a._depth_map = os.path.abspath(os.path.expanduser(a.depth))
+    if a.skip_existing:
+        jobs = skip_made(a, jobs)
+        if not jobs:
+            print("   ⏭ every take is already there (--skip-existing): nothing to do")
+            return
+
+    if a.list_servers:                   # which boxes can render THIS command
+        list_servers(a, jobs)
+        return
+    if a.print_graph:                    # the JSON alone, so it can be piped
+        print(json.dumps(jobs[0].graph(DRY), indent=1), file=graph_out)
+        return
+
+    total = len(jobs)
     per = 20 if a.fast else 100  # rough seconds/image for the ETA
     art_pal = f" + {a.palette} @ {a.palette_strength:g}" if a.palette != "none" and a.palette_strength > 0 else ""
     pal_label = ("ART / full-res" + art_pal) if a.art else "RAW / model output (no pixel step)" if a.raw else ("random" if a.palette == "random" else a.palette)
     style_label = f"  |  style: {a.style}" if a.style else ""
-    subj_label = f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt)
-    count_label = f"{n} each = {total} total" if a.batch else f"{n} image(s)"
+    many = bool(a.batch or a.batch_file)
+    subj_label = (f"{len(subjects)} rows from {os.path.basename(a.batch_file)}" if a.batch_file else
+                  f"{len(subjects)} subjects: {', '.join(subjects)}" if a.batch else repr(a.prompt))
+    count_label = f"{n} each = {total} total" if many else f"{total} image(s)"
     lw, lh = (a.sw, a.sh) if a.art else (a.gen_w, a.gen_h) if a.raw else (a.ow * a.enlarge, a.oh * a.enlarge)
     size_label = f"{lw}x{lh}" if lw != lh else f"{lw}px"
+    if a.dry_run:
+        print("🧪 dry run: nothing is sent to a server")
     if len(POOL) > 1:
         print(f"🚜 render farm: {len(POOL)} servers — {', '.join(_short(s) for s in POOL)}")
     elif REMOTE:
@@ -1931,100 +2581,197 @@ def main():
     print(f"🎨 {subj_label}  |  {size_label}  |  {pal_label}"
           f"{' |  transparent' if a.transparent else ''}{style_label}  |  "
           f"{'FAST/LCM' if a.fast else 'quality'} {a.steps}st  |  {count_label}")
-    if a.show_prompt:
+    if a.show_prompt or a.dry_run:
         lora = ("none" if a.no_lora or a.art else f"{a.lora} @ {a.lora_strength:g}") + \
                (f" + {a.lcm_lora}" if a.fast else "")
-        for subj in subjects:
-            pos, neg = final_prompts(a, subj)
+        shown = set()
+        for job in jobs:
+            if (job.subj, id(job.a)) in shown:
+                continue
+            shown.add((job.subj, id(job.a)))
+            pos, neg = final_prompts(job.a, job.subj)
             print(f"   📝 positive: {pos}\n   🚫 negative: {neg}\n   🧩 lora:     {lora}")
+    if a.dry_run:
+        for i, job in enumerate(jobs, 1):
+            ja = job.a
+            sz = f"{ja.ow * ja.enlarge}x{ja.oh * ja.enlarge}" if not (ja.art or ja.raw) else f"{ja.sw}x{ja.sh}"
+            print(f"   · [{i}/{total}] {job.label + '  ' if many else ''}seed={job.seed}  {sz}  pal={job.pal}  "
+                  f"->  {job.dest or os.path.join(OUTPUT, 'pixelmon')}/{(ja.name if rows else slug(job.subj) if a.batch else a.name or slug(job.subj))}_…png")
+        return
     if total > 1:
         eta = total * per
         tip = "" if a.fast else "  (tip: add --fast for quick variations)"
         print(f"   ~{eta // 60}m{eta % 60:02d}s estimated{tip}")
 
-    # Build the work list. --batch round-robins (one of each subject per pass) so
-    # every folder fills evenly instead of finishing one subject at a time.
-    work = []  # (subject, seed, palette, dest)
-    k = 0
-    for _ in range(n):
-        for subj in subjects:
-            seed = (a.seed + k) if a.seed >= 0 else random.randint(0, 2**31 - 1)
-            pal = random.choice(PALETTES) if a.palette == "random" else a.palette
-            work.append((subj, seed, pal, dests[subj]))
-            k += 1
-
     if a.depth:
-        prepare_depth(a, next((d for d in dests.values() if d), None) or os.path.join(OUTPUT, "pixelmon"),
+        prepare_depth(a, next((d for d in dests if d), None) or os.path.join(OUTPUT, "pixelmon"),
                       a.name or slug(subjects[0]))
+        for ja in settings:                  # --batch-file rows were copied before the map existed
+            ja._depth_map = a._depth_map
         if a.depth_only:
             return
 
     t0 = time.time()
     first_open = None
+    failed = 0
     if len(POOL) > 1 and a.post_combos:
         print("   note: --post-sweep renders on one server — using the first in the list")
     if len(POOL) > 1 and not a.post_combos:
         # Render farm: fan the whole work list out across all the GPUs in the pool.
-        run_farm(a, work)
+        made, failed = run_farm(a, jobs)
+        first_open = made[0] if made else None
     else:
-        # Single server: queue everything up front; ComfyUI runs them one at a time.
-        graphs = [build_graph(a, seed, pal, subject=subj, server=SERVER) for (subj, seed, pal, d) in work]
-        jobs = [(subj, seed, pal, d, submit(g), g) for (subj, seed, pal, d), g in zip(work, graphs)]
+        # Single server: queue everything up front; ComfyUI runs them one at a time. A job that fails is
+        # reported and the batch carries on (the rest were already queued and would render for nobody).
+        queued = []
+        for job in jobs:
+            g = job.graph(SERVER)
+            queued.append((job, submit(g), g))
         if total > 1:
             print(f"   queued {total} jobs; generating...")
-        for i, (subj, seed, pal, d, pid, g) in enumerate(jobs, 1):
-            outs = wait(pid, timeout=600 + 5 * len(a.post_combos or []),       # a combo sweep runs many palette steps
-                        resubmit=lambda fresh, g=g: submit(fresh_copy(g) if fresh else g))
-            imgs = [im for node in outs.values() for im in node.get("images", [])]
-            if REMOTE:
-                # Files live on the remote server's disk — download them here over HTTP.
-                dest_dir = d or os.path.join(OUTPUT, "pixelmon")
-                files = [fetch_image(im, dest_dir) for im in imgs]
-            else:
-                files = [os.path.join(OUTPUT, im.get("subfolder", ""), im["filename"]) for im in imgs]
-                if d:  # move finished files out of ComfyUI's output into the target folder
-                    moved = []
-                    for f in files:
-                        if os.path.exists(f):
-                            tgt = os.path.join(d, os.path.basename(f))
-                            shutil.move(f, tgt)
-                            moved.append(tgt)
-                    files = moved
+        for i, (job, pid, g) in enumerate(queued, 1):
+            tag = f"[{i}/{total}] " if total > 1 else ""
+            subj_note = f"{job.label}  " if many else ""
+            try:
+                outs = wait(pid, timeout=600 + 5 * len(a.post_combos or []),       # a combo sweep runs many palette steps
+                            resubmit=lambda fresh, g=g: submit(fresh_copy(g) if fresh else g))
+                files = collect(outs, job.dest, SERVER)
+            except (RenderFailed, OSError) as e:
+                failed += 1
+                print(f"   ✗ {tag}{subj_note}seed={job.seed}: {e}")
+                continue
             if a.post_combos:                     # one render, a picture per combination
                 shots = sorted(f for f in files if "_sprite_" in f)
                 for j, f in enumerate(shots, 1):
                     enlarge_output(a, f)
+                    stamp_recipe(f, a, job.seed, job.subj, SERVER)
                     m = re.search(r"_v(\d{3})-", os.path.basename(f))
                     k = int(m.group(1)) if m else -1
                     lab = post_label(a.post_combos[k]) if 0 <= k < len(a.post_combos) else ""
-                    print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={seed}  ->  {f}")
+                    print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={job.seed}  ->  {f}")
                 first_open = first_open or (shots[0] if shots else None)
                 continue
-            sprite = next((f for f in files if ("_sprite_" in f or "_art_" in f or "_raw_" in f) and "_cutmask_" not in f), None)
-            keep_outside_mask(a, sprite)
-            stitch_inpaint(a, sprite)
-            art_palette(a, sprite, pal)
-            enlarge_output(a, sprite)
-            cutout_output(a, sprite, files=files)
+            try:
+                sprite = finish(job, files, SERVER)
+            except Exception as e:                # post-processing broke on this one picture
+                failed += 1
+                print(f"   ✗ {tag}{subj_note}seed={job.seed}: couldn't finish the picture: {e}")
+                continue
             preview = next((f for f in files if "_preview_" in f), None)
             tiled = next((f for f in files if "_tiled_" in f), None)
             first_open = first_open or tiled or preview or sprite   # open the seam check / preview if saved, else the sprite
-            tag = f"[{i}/{total}] " if total > 1 else ""
-            subj_note = f"{subj}  " if a.batch else ""
-            pal_note = f"pal={pal}  " if a.palette == "random" else ""
-            print(f"   ✅ {tag}{subj_note}{pal_note}seed={seed}  ->  {sprite}")
+            pal_note = f"pal={job.pal}  " if a.palette == "random" else ""
+            print(f"   ✅ {tag}{subj_note}{pal_note}seed={job.seed}  ->  {sprite}")
             if tiled:
                 print(f"      3x3 seam check  ->  {tiled}")
 
-    where = ", ".join(sorted({str(x) for x in dests.values() if x})) or f"{OUTPUT}/pixelmon/"
+    where = ", ".join(sorted({str(x) for x in dests if x})) or f"{OUTPUT}/pixelmon/"
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {where}")
-    if first_open and not a.no_open and shutil.which("xdg-open"):
+    if first_open and not a.no_open:
+        open_file(first_open)
+    if failed:
+        sys.exit(f"pixelmon: {failed} of {total} job(s) produced nothing (see above).")
+
+
+def open_file(path):
+    """Show a finished picture with the desktop's viewer (Linux, WSL, macOS, Windows). Never waits."""
+    if sys.platform == "darwin":
+        cmd = ["open"]
+    elif os.name == "nt":
+        cmd = ["explorer"]
+    elif os.environ.get("WSL_DISTRO_NAME") and shutil.which("wslview"):
+        cmd = ["wslview"]
+    else:
+        cmd = ["xdg-open"]
+    if not shutil.which(cmd[0]):
+        return
+    try:
+        subprocess.Popen(cmd + [path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+TAKE_RE = r"_\d+x\d+_.+_s(\d+)_(?:sprite|art|raw)_\d+_?\.png$"
+
+
+def skip_made(a, jobs):
+    """--skip-existing: drop the takes whose files are already there. With --seed, a job whose seed has a file
+    is skipped; with random seeds a key that already has k files needs k fewer takes."""
+    have, keep, skipped = {}, [], 0
+    for job in jobs:
+        d = job.dest or os.path.join(OUTPUT, "pixelmon")
+        nm = job.a.name if getattr(job.a, "_row_key", None) else (slug(job.subj) if a.batch else (a.name or slug(job.subj)))
+        if (d, nm) not in have:
+            rx = re.compile("^" + re.escape(nm) + TAKE_RE)
+            seeds = []
+            if os.path.isdir(d):
+                for f in os.listdir(d):
+                    m = rx.match(f)
+                    if m:
+                        seeds.append(int(m.group(1)))
+            have[(d, nm)] = seeds
+        seeds = have[(d, nm)]
+        if a.seed >= 0:
+            if job.seed in seeds:
+                skipped += 1
+                continue
+        elif seeds:
+            seeds.pop()
+            skipped += 1
+            continue
+        keep.append(job)
+    if skipped:
+        print(f"   ⏭ {skipped} take(s) already made — skipped (--skip-existing)")
+    return keep
+
+
+def list_servers(a, jobs):
+    """--list-servers: each render server's state, and whether it has what these jobs need."""
+    c = C
+    targets = POOL if a.server else [resolve_server(k) for k in SERVERS]
+    names = {resolve_server(k): k for k in SERVERS}
+    default = DEFAULT_SERVER or "local"
+    print(f"{c['b']}{c['cyan']}Render servers{c['rst']}  {c['dim']}(servers.json; default: {default}){c['rst']}\n")
+    graphs = []
+    seen = set()
+    for j in jobs:
+        if id(j.a) not in seen:
+            seen.add(id(j.a))
+            graphs.append(j.graph(DRY))
+    for url in dict.fromkeys(targets):
+        alias = names.get(url, "")
+        head = f"  {alias:<12} {_short(url):<24}"
         try:
-            subprocess.Popen(["xdg-open", first_open],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with urllib.request.urlopen(f"{url}/system_stats", timeout=4) as r:
+                st = json.loads(r.read())
+        except Exception as e:
+            print(f"{head} {c['yel']}✗ unreachable{c['rst']} {c['dim']}({getattr(e, 'reason', e)}){c['rst']}")
+            continue
+        dev = (st.get("devices") or [{}])[0]
+        gpu = re.sub(r"^\w+:\d+\s+", "", dev.get("name", "?").split(" : ")[0])   # "cuda:0 NVIDIA … : cudaMallocAsync"
+        if dev.get("vram_total"):
+            gpu += f" {dev['vram_total'] / 2**30:.0f} GB"
+        flags = [f for f in ((st.get("system") or {}).get("argv") or []) if f in ("--lowvram", "--force-fp32", "--cpu", "--highvram")]
+        try:
+            with urllib.request.urlopen(f"{url}/queue", timeout=4) as r:
+                q = json.loads(r.read())
+            queue = f"queue {len(q.get('queue_running', []))} running, {len(q.get('queue_pending', []))} waiting"
         except Exception:
-            pass
+            queue = "queue ?"
+        probs = list(dict.fromkeys(x for g in graphs for x in graph_problems(g, url)))
+        state = f"{c['grn']}✓ ready{c['rst']}" if not probs else f"{c['yel']}⚠ can't render this{c['rst']}"
+        print(f"{head} {state}  {c['dim']}{gpu}{' ' + ' '.join(flags) if flags else ''} · {queue}{c['rst']}")
+        for x in probs:
+            print(f"      • {x}")
+        if probs:
+            print("\n".join("   " + h for h in provision_hint(probs, url).splitlines()))
 
 
 if __name__ == "__main__":
+    import atexit
+    import signal
+    signal.signal(signal.SIGINT, _on_stop)
+    signal.signal(signal.SIGTERM, _on_stop)
+    # Any other way out with prompts still queued (a fatal error, an exit mid-batch) clears them too.
+    atexit.register(cancel_sent, "stopped early")
     main()

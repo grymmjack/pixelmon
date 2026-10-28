@@ -426,6 +426,22 @@ def passthrough(parser, argv):
     return kept
 
 
+def run_angle(cmd):
+    """Run one angle's pixelmon and return its exit code. If this run is stopped (Ctrl-C, the GUI's Cancel), the
+    child gets SIGTERM and a moment to take its prompt off the server's queue — subprocess.run would SIGKILL it,
+    and that prompt would render on for nobody."""
+    proc = subprocess.Popen(cmd)
+    try:
+        return proc.wait()
+    except BaseException:
+        proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        raise
+
+
 def run(P, a, parser):
     if a.mesh and a.turnaround:
         parser.error("--mesh makes a model; --turnaround makes a model and its angles: use one")
@@ -440,7 +456,9 @@ def run(P, a, parser):
     if not 2 <= a.angles <= 64:
         parser.error("--angles must be 2..64")
     for bad, flag in ((a.depth, "--depth"), (a.animate, "--animate"), (a.mask, "--mask"), (a.init, "--init"),
-                      (a.tile, "--tile"), (a.post_sweep, "--post-sweep"), (a.batch, "--batch")):
+                      (a.tile, "--tile"), (a.post_sweep, "--post-sweep"), (a.batch, "--batch"),
+                      (a.batch_file, "--batch-file"), (a.dry_run, "--dry-run"), (a.print_graph, "--print-graph"),
+                      (a.list_servers, "--list-servers")):
         if bad:
             parser.error(f"{flag} doesn't go with --mesh / --turnaround")
     dest = os.path.expanduser(a.output_to) if a.output_to else os.path.join(P.OUTPUT, "pixelmon")
@@ -517,7 +535,7 @@ def run(P, a, parser):
         if not has("--no-open"):
             cmd.append("--no-open")
         print(f"   🧭 [{k + 1}/{a.angles}] {az}° — {words}", flush=True)
-        failed += subprocess.run(cmd).returncode != 0
+        failed += run_angle(cmd) != 0
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {dest}"
           + (f"  |  {failed} angle(s) failed" if failed else ""))
     if failed == a.angles:

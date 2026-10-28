@@ -33,7 +33,8 @@ GPU="$(detect_gpu)"
 # (e.g. you were added with usermod but haven't logged out/in). No-op once permanent.
 if [ "$GPU" = amd ] && ! id -nG | tr ' ' '\n' | grep -qx render; then
     echo "[launch] 'render' group not active in this shell; re-exec via sg render..."
-    exec sg render -c "$(readlink -f "$0")"
+    # keep our arguments (soundmon passes --force-fp32 through this script): a bare re-exec dropped them
+    exec sg render -c "$(printf '%q ' "$(readlink -f "$0")" "$@")"
 fi
 
 cd "$COMFY"

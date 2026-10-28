@@ -15,8 +15,10 @@ venv/
 # A cloned ComfyUI engine, if anyone clones it inside the repo
 /ComfyUI/
 
-# pixel-snapper: Rust source + build (cloned & built by install.sh, see --snap-pixels)
-/tools/
+# pixel-snapper: Rust source + build (cloned & built by install.sh into tools/pixel-snapper, see
+# --snap-pixels). Everything else in tools/ stays ignored too, except the offline self-check.
+/tools/*
+!/tools/selfcheck.py
 
 # Generated images / scratch
 output/

@@ -23,8 +23,38 @@ import shutil
 import threading
 import time
 
+from manifest import KEY_RE, key_ok, parse_manifest, slug   # noqa: F401  (repo root: the CLI's --batch-file reads lists the same way)
+
 IMG_EXT = (".png", ".gif")
-KEY_RE = re.compile(r"[\w.\-/ ]{1,160}")
+EXPORT_FORMATS = ("same", "png", "gif", "webp")
+
+
+def convert_image(src, dest, o):
+    """Write src as the game wants it: whole-number upscale (nearest neighbour, so pixels stay square),
+    a palette-indexed PNG (exact colours when there are 256 or fewer), or GIF / lossless WebP."""
+    from PIL import Image
+    with Image.open(src) as im:
+        if getattr(im, "n_frames", 1) > 1:           # an animation: frames are kept, so it's copied as it is
+            if o["scale"] == 1 and not o["indexed"] and os.path.splitext(src)[1].lower() == os.path.splitext(dest)[1].lower():
+                shutil.copy2(src, dest)
+                return
+            raise ValueError("animated pictures are exported as they are: pick format 'same' and ×1")
+        im = im.convert("RGBA")
+    if o["scale"] > 1:
+        im = im.resize((im.width * o["scale"], im.height * o["scale"]), Image.NEAREST)
+    fmt = os.path.splitext(dest)[1].lower().lstrip(".")
+    if o["indexed"] or fmt == "gif":
+        exact = im.getcolors(256)                      # ≤256 colours (with alpha): an exact palette, no dithering
+        q = im.quantize(colors=len(exact) if exact else 256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+        if fmt == "webp":
+            q = q.convert("RGBA")
+        q.save(dest, "GIF" if fmt == "gif" else "WEBP" if fmt == "webp" else "PNG", **({"lossless": True} if fmt == "webp" else {}))
+    elif fmt == "webp":
+        im.save(dest, "WEBP", lossless=True)
+    else:
+        im.save(dest, "GIF" if fmt == "gif" else "PNG")
+
+
 LOCK = threading.Lock()
 
 
@@ -44,59 +74,6 @@ def _write(path, data):
     os.replace(tmp, path)
 
 
-def slug(text, n=48):
-    return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")[:n] or "sprite"
-
-
-def parse_manifest(text):
-    """The Batch tab's row formats (parseBatch in index.html), plus [Group] lines:
-
-        path | style | size | prompt          path | prompt          a prompt on its own
-        folder | name | style | size | prompt  path | style-or-size | prompt
-    Canonical manifests list every medium ("ansi-art/…", "pixel-art/…"): only pixel-art rows are kept.
-    """
-    rows, seen, group = [], set(), ""
-    for raw in str(text or "").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        m = re.fullmatch(r"\[(.+)\]", line)
-        if m:
-            group = m.group(1).strip()
-            continue
-        c = [x.strip() for x in line.split("|")]
-        style = size = ""
-        if len(c) >= 5:
-            path, style, size, prompt = f"{c[0]}/{c[1]}", c[2], c[3], " | ".join(c[4:])
-        elif len(c) == 4:
-            path, style, size, prompt = c
-        elif len(c) == 3:
-            path, prompt = c[0], c[2]
-            if re.fullmatch(r"\d+(x\d+)?", c[1], re.I):
-                size = c[1]
-            else:
-                style = c[1]
-        elif len(c) == 2:
-            path, prompt = c
-        else:
-            prompt = c[0]
-            path = slug(prompt)
-        mm = re.fullmatch(r"([\w-]+-art)/(.*)", path)
-        if mm and mm.group(1) != "pixel-art":
-            continue
-        path = re.sub(r"\.(png|gif|ans)$", "", mm.group(2) if mm else path, flags=re.I).strip("/")
-        if not path or not KEY_RE.fullmatch(path) or ".." in path.split("/"):
-            raise ValueError(f"{path!r} can't be a file path — letters, digits, spaces, . - _ /")
-        if path in seen:
-            raise ValueError(f"{path!r} appears twice")
-        if not prompt:
-            raise ValueError(f"{path}: no prompt")
-        seen.add(path)
-        g = group or (path.split("/")[0] if "/" in path else "")
-        rows.append({"key": path, "style": re.sub(r"\s+", "", style), "size": size, "prompt": prompt, "group": g})
-    if not rows:
-        raise ValueError("no sprites in that list — one per line: `path | style | size | prompt`, `path | prompt`, or a prompt")
-    return rows
 
 
 class Sets:
@@ -280,31 +257,52 @@ class Sets:
         return full
 
     # ---------------- export ----------------
-    def export_plan(self, s):
+    @staticmethod
+    def export_opts(opts):
+        """{format: same|png|gif|webp, scale: 1..8 (whole-number, nearest neighbour), indexed: bool} — the
+        picture as the game wants it. The default ({} / same, 1, no) copies the take as it is."""
+        o = opts if isinstance(opts, dict) else {}
+        fmt = str(o.get("format") or "same").lower()
+        if fmt not in EXPORT_FORMATS:
+            raise ValueError(f"export format must be one of {', '.join(EXPORT_FORMATS)}")
+        scale = int(o.get("scale") or 1)
+        if not 1 <= scale <= 8:
+            raise ValueError("export scale must be 1..8")
+        return {"format": fmt, "scale": scale, "indexed": bool(o.get("indexed"))}
+
+    def export_plan(self, s, opts=None):
         d = self.game_dir(s)
         if not d:
             raise ValueError("this set has no game folder — set one with ✎ Edit set")
+        o = self.export_opts(opts)
         now, plan = self.now_files(s), []
         for r in s["rows"]:
             k, pick = r["key"], s["picks"].get(r["key"])
             if not pick or pick == "now":
                 continue
             src = self.take_path(pick)
-            ext = os.path.splitext(src)[1].lower()
+            ext = os.path.splitext(src)[1].lower() if o["format"] == "same" else "." + o["format"]
             rel = k + ext
             dest = os.path.realpath(os.path.join(d, rel))
             if not dest.startswith(os.path.realpath(d) + os.sep):
                 raise ValueError(f"{k!r} points outside the game folder")
             done = s["exported"].get(k)
-            plan.append({"key": k, "from": pick, "to": rel, "replaces": os.path.exists(dest),
+            conv = [x for x in (ext != os.path.splitext(src)[1].lower() and o["format"].upper(), o["scale"] > 1 and f"×{o['scale']}",
+                                o["indexed"] and "indexed") if x]
+            plan.append({"key": k, "from": pick, "to": rel, "replaces": os.path.exists(dest), "convert": " · ".join(conv),
                          "other_formats": [f for f in now.get(k, []) if f != rel],
-                         "unchanged": bool(done and done.get("from") == pick and done.get("path") == rel and os.path.exists(dest))})
+                         "unchanged": bool(done and done.get("from") == pick and done.get("path") == rel
+                                           and (done.get("opts") or {}) == (o if conv else {}) and os.path.exists(dest))})
         return plan
 
-    def export(self, s, only_changed=True):
+    def export(self, s, only_changed=True, opts=None):
         d = self.game_dir(s)
-        plan = self.export_plan(s)
-        backup = os.path.join(d, ".pixelmon-backup", time.strftime("%Y-%m-%d_%H%M%S"))
+        o = self.export_opts(opts)
+        plan = self.export_plan(s, o)
+        stamp, k = time.strftime("%Y-%m-%d_%H%M%S"), 1
+        backup = os.path.join(d, ".pixelmon-backup", stamp)
+        while os.path.exists(backup):                    # two exports in one second keep separate backups
+            backup, k = os.path.join(d, ".pixelmon-backup", f"{stamp}-{k}"), k + 1
         done, errors = [], []
         for item in plan:
             if only_changed and item["unchanged"]:
@@ -316,10 +314,14 @@ class Sets:
                     b = os.path.join(backup, item["to"])
                     os.makedirs(os.path.dirname(b), exist_ok=True)
                     shutil.copy2(dest, b)
-                shutil.copy2(src, dest)
-                s["exported"][item["key"]] = {"at": time.time(), "path": item["to"], "from": item["from"]}
+                if item["convert"]:
+                    convert_image(src, dest, o)
+                else:
+                    shutil.copy2(src, dest)
+                s["exported"][item["key"]] = {"at": time.time(), "path": item["to"], "from": item["from"],
+                                              **({"opts": o} if item["convert"] else {})}
                 done.append(item)
-            except OSError as e:
+            except (OSError, ValueError, ImportError) as e:
                 errors.append({"key": item["key"], "error": str(e)[:300]})
         with LOCK:
             fresh = self.load(s["id"])

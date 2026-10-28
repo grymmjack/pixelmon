@@ -2,7 +2,7 @@
   "_comment": "Named ComfyUI render targets for `pixelmon --server NAME`. Copy this file to servers.json and add your machines. Keys starting with _ are ignored. You can also pass a raw host/URL: `--server 192.168.1.50`. RENDER FARM: pass a comma-list to fan jobs across all of them, e.g. `--server gpubox,titan,local` (dynamic dispatch — faster GPUs do more).",
   "_default_comment": "_default = the target used when no --server is passed (and $PIXELMON_SERVER is unset). An alias, host/URL, or comma-list farm. Omit it for 'local'.",
   "_default": "local",
-  "_restart_comment": "_restart = optional shell commands that restart a server's ComfyUI, by alias. pixelmon-gui runs one when that server is stuck (prompts waiting, nothing running, for 20s) or hasn't answered for 30s — at most once every 3 minutes. Renders waiting on it ride out the restart and are sent again if the server forgot them.",
+  "_restart_comment": "_restart = optional shell commands that restart a server's ComfyUI, by alias. pixelmon-gui runs one when that server is stuck (prompts waiting, nothing running, for 20s) or hasn't answered for 30s — at most once every 3 minutes. The pixelmon command runs it too when a render breaks the server (the 'model_size' / 'is_dynamic' errors that fail every prompt until a restart) and nobody restarted it within a few seconds — at most once every 3 minutes per server. Renders waiting on it ride out the restart and are sent again if the server forgot them.",
   "_restart": {"_example_gpubox": "ssh gpubox 'sudo systemctl restart comfyui'"},
   "local": "http://127.0.0.1:8188",
   "_example_gpubox": "http://192.168.1.50:8188"
