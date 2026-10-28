@@ -41,8 +41,11 @@ from zlib import error as zlib_error
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
-import sets as setsmod                          # noqa: E402  (gui/sets.py: list → takes → pick → export)
 REPO = os.path.dirname(HERE)
+sys.path.insert(1, REPO)                        # the repo's shared modules (colors.py, manifest.py)
+import sets as setsmod                          # noqa: E402  (gui/sets.py: list → takes → pick → export)
+import similar                                  # noqa: E402  (gui/similar.py: 🔎 find similar pictures)
+from colors import image_colors, picture_palette, gpl_text   # noqa: E402  (one palette readout for the CLI and the GUI)
 PIXELMON = os.path.join(REPO, "bin", "pixelmon")
 SERVER_ARG = ""          # --server / $PIXELMON_SERVER: overrides the Setup tab's choice
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -90,6 +93,49 @@ def pixelmon_constant(name, default):
     return default
 
 
+_CLI_SPEC = {"t": 0, "v": None}
+
+
+def cli_spec():
+    """Every pixelmon flag's default / choices / help, read from the add_argument calls in pixelmon.py —
+    the GUI's flag tooltips (and Setup's model checks) come from the CLI itself, so they never drift."""
+    path = os.path.join(REPO, "pixelmon.py")
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}
+    if _CLI_SPEC["v"] is not None and _CLI_SPEC["t"] == mtime:
+        return _CLI_SPEC["v"]
+    out = {}
+    try:
+        tree = ast.parse(open(path, encoding="utf-8").read())
+    except (OSError, SyntaxError):
+        return out
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "add_argument"):
+            continue
+        flags = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+        if not flags or not flags[0].startswith("-"):
+            continue
+        rec = {"flags": flags}
+        for kw in node.keywords:
+            if kw.arg in ("default", "choices", "help", "action", "metavar", "dest"):
+                try:
+                    rec[kw.arg] = ast.literal_eval(kw.value)
+                except Exception:
+                    if kw.arg == "help":            # f-strings / concatenations: keep the literal parts
+                        parts = [n.value for n in ast.walk(kw.value) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+                        if parts:
+                            rec["help"] = "".join(parts)
+            elif kw.arg == "type":
+                rec["type"] = getattr(kw.value, "id", None)
+        if "default" in rec and not isinstance(rec["default"], (str, int, float, bool, type(None))):
+            del rec["default"]
+        out[max(flags, key=len)] = rec              # keyed by the long form (--steer-strength, not -s)
+    _CLI_SPEC.update(t=mtime, v=out)
+    return out
+
+
 def style_samples():
     """style -> {sample, montage} image paths under examples/styles (the repo's style gallery).
     The sample prefers the 'castle' render (same subject + seed across every style)."""
@@ -110,6 +156,7 @@ def style_samples():
 
 
 HOME = os.path.realpath(os.path.expanduser("~"))
+LAN = False              # --lan: the page is open to other devices; browsing / opening paths stays on this machine
 
 
 def home_path(path, must_exist=True):
@@ -120,6 +167,63 @@ def home_path(path, must_exist=True):
     if must_exist and not os.path.exists(full):
         raise ValueError(f"not found: {path}")
     return full
+
+
+def browse(path, kind="any", exts=None, hidden=False, gallery=None, sets=None):
+    """One folder of the user's home for the Browse dialog: sub-folders, then files (filtered by
+    extension), breadcrumbs back to home, and shortcuts. Home-confined like every other path here."""
+    full = home_path(path or "~")
+    if os.path.isfile(full):
+        full = os.path.dirname(full)
+    dirs, files = [], []
+    try:
+        with os.scandir(full) as it:
+            for e in it:
+                if not hidden and e.name.startswith("."):
+                    continue
+                try:
+                    if e.is_dir():
+                        dirs.append(e.name)
+                    elif kind != "dir" and e.is_file() and (not exts or e.name.lower().endswith(exts)):
+                        st = e.stat()
+                        files.append({"name": e.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+                except OSError:
+                    continue
+    except OSError as e:
+        raise ValueError(f"can't read {full}: {e.strerror or e}")
+    dirs.sort(key=str.lower)
+    files.sort(key=lambda f: f["name"].lower())
+    crumbs, p = [], full
+    while True:
+        crumbs.append({"name": "~" if p == HOME else os.path.basename(p), "path": p})
+        if p == HOME or os.path.dirname(p) == p:
+            break
+        p = os.path.dirname(p)
+    places = [{"name": "Home", "path": HOME}]
+    for label, d in (("Gallery", gallery), ("Steering refs", REFS), ("LAB inputs", LAB), ("Corkboards", BOARDS),
+                     ("Presets", PRESETS), ("Pictures", "~/Pictures"), ("Downloads", "~/Downloads"),
+                     ("Desktop", "~/Desktop"), ("Documents", "~/Documents"), ("git", "~/git")):
+        if d and os.path.isdir(os.path.expanduser(d)):
+            places.append({"name": label, "path": os.path.realpath(os.path.expanduser(d))})
+    folders = []
+    if sets is not None:                     # every set's game folder (and old-sprites folder)
+        for s in sets.list()[:12]:
+            try:
+                t = sets.load(s["id"])["theme"]
+            except (ValueError, KeyError):
+                continue
+            folders += [(s["name"], t.get("game_folder")), (s["name"] + " (old)", (t.get("fit") or {}).get("dir"))]
+    for name, f in folders:
+        try:
+            d = home_path(f) if f else None
+        except ValueError:
+            continue
+        if d and os.path.isdir(d) and all(x["path"] != d for x in places):
+            places.append({"name": name, "path": d})
+    cap = 3000
+    return {"path": full, "home": HOME, "parent": None if full == HOME else os.path.dirname(full), "crumbs": crumbs[::-1],
+            "dirs": dirs[:cap], "files": files[:cap], "more": max(0, len(dirs) + len(files) - 2 * cap), "places": places,
+            "sep": os.sep}
 
 
 def export_target(p):
@@ -423,6 +527,98 @@ def load_adv_lists():
     return v
 
 
+# What each pixelmon feature needs on a render server: (feature, ComfyUI node, its model input, pixelmon flag whose
+# default names the file). A None field only checks that the node (a custom node pack) is installed.
+NEEDS = [("render", "CheckpointLoaderSimple", "ckpt_name", "--base"),
+         ("pixel LoRA", "LoraLoader", "lora_name", "--lora"),
+         ("palette", "PixelArtPalette", None, None),
+         ("fast (LCM)", "LoraLoader", "lora_name", "--lcm-lora"),
+         ("LAB / edit", "ControlNetLoader", "control_net_name", "--control-model"),
+         ("depth lock", "ControlNetLoader", "control_net_name", "--depth-model"),
+         ("depth map", "DepthAnythingV2Preprocessor", None, None),
+         ("steering", "IPAdapterModelLoader", "ipadapter_file", "--steer-model"),
+         ("steering vision", "CLIPVisionLoader", "clip_name", "--steer-clip"),
+         ("cut-out", "LoadBackgroundRemovalModel", "bg_removal_name", "--cutout-model"),
+         ("3D model", "CheckpointLoaderSimple", "ckpt_name", "--mesh-model")]
+_MODELS = {}
+
+
+def server_models(name):
+    """[{feature, ok, need, why}] for one render server (its /object_info, cached a minute), or None if it didn't answer."""
+    hit = _MODELS.get(name)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    url, info = server_url(name), {}
+    if not url:
+        return None
+    for node in sorted({n for _, n, _, _ in NEEDS}):
+        try:
+            with urllib.request.urlopen(f"{url.rstrip('/')}/object_info/{node}", timeout=4) as r:
+                info.update(json.load(r))
+        except Exception:
+            pass
+    if not info:
+        return None
+    spec, out = cli_spec(), []
+    for feat, node, field, flag in NEEDS:
+        want = str((spec.get(flag) or {}).get("default") or "") if flag else ""
+        if node not in info:
+            out.append({"feature": feat, "ok": False, "need": want or node, "why": f"node {node} isn't installed"})
+            continue
+        if not field:
+            out.append({"feature": feat, "ok": True, "need": node, "why": ""})
+            continue
+        have = _combo(info, node, field)
+        ok = (want in have) if want else bool(have)
+        out.append({"feature": feat, "ok": ok, "need": want or field,
+                    "why": "" if ok else f"{want or 'a model'} isn't in {node} ({len(have)} other{'s' if len(have) != 1 else ''})"})
+    _MODELS[name] = (time.time(), out)
+    return out
+
+
+def servers_report():
+    """Every known render server: up/down, its URL, the default / current pick, auto-restart, and the
+    models each pixelmon feature needs (all checked in parallel)."""
+    names = sorted(known_servers())
+    cur = [s.strip() for s in render_server().split(",")]
+    for s in cur:                                # a typed host:port in Setup counts too
+        if s and s not in names:
+            names.append(s)
+    out = {n: {"name": n, "url": server_url(n), "up": False, "models": None} for n in names}
+
+    def check(n):
+        out[n]["up"] = server_up(n)
+        if out[n]["up"]:
+            out[n]["models"] = server_models(n)
+    ts = [threading.Thread(target=check, args=(n,), daemon=True) for n in names]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(12)
+    for n in names:
+        out[n].update(default=n == default_server(), selected=n in cur, restart=bool(restart_command(n)))
+    return {"servers": [out[n] for n in names], "render": render_server(), "locked": SERVER_ARG}
+
+
+def servers_for(p):
+    """Where this render goes: the form's own pick (p['servers'], the chips under RENDER), else render_server()."""
+    pick = p.get("servers")
+    if not pick:
+        return render_server()
+    if isinstance(pick, str):
+        pick = pick.split(",")
+    known, out = known_servers(), []
+    for s in list(pick)[:16]:
+        s = re.sub(r"\s+", "", str(s or ""))
+        if not s:
+            continue
+        if s not in known and not re.fullmatch(r"(https?://)?[\w.-]+(:\d{1,5})?/?", s):
+            raise ValueError(f"unknown render server {s!r}")
+        if s not in out:
+            out.append(s)
+    return ",".join(out) or render_server()
+
+
 def adv_argv(adv, art, has_control, has_mask, mask_mode="fill", rough=False):
     """The Advanced tab: extra pixelmon flags. Blank / missing = pixelmon's own default. Validated like the rest."""
     adv = adv if isinstance(adv, dict) else {}
@@ -625,7 +821,8 @@ def watch_server():
         why = ("is stuck: prompts waiting, nothing running" if stuck
                else f"fails every prompt ({poisoned['error']})" if poisoned
                else f"hasn't answered for {DOWN_AFTER}s" if down_since and time.time() - down_since >= DOWN_AFTER else None)
-        if why and restart_command(name) and time.time() - last_restart.get(name, 0) >= RESTART_EVERY:
+        gpu_work = Handler.jobs is not None and Handler.jobs.busy()   # nothing to render: don't restart anyone's ComfyUI
+        if why and gpu_work and restart_command(name) and time.time() - last_restart.get(name, 0) >= RESTART_EVERY:
             last_restart[name] = time.time()           # a restart empties its history, so this can't loop
             head = None
             restart_server(name, why)
@@ -778,7 +975,7 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
     prompt = str(p.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is empty")
-    argv = [PIXELMON, prompt, "--server", render_server(), "--no-open", "--show-prompt"]
+    argv = [PIXELMON, prompt, "--server", servers_for(p), "--no-open", "--show-prompt"]
     art = bool(p.get("art"))
     if art:
         argv.append("--art")
@@ -1007,6 +1204,122 @@ def depth_preview(params, gallery):
             "command": shjoin(["pixelmon"] + argv[1:])}
 
 
+def command_preview(p, jobs):
+    """The pixelmon command RENDER would run for these form params (Copy CLI), built by build_argv itself so
+    it can't drift from what a job runs. The files a job copies into its folder are shown where they are now."""
+    p = dict(p)
+    for k in ("group", "label", "form", "set", "preview"):
+        p.pop(k, None)
+    srcs = [ref_path(str(r)) for r in (p.get("steer") or [])][:32]
+    init = control = mask = depth = turn = None
+    parent = p.get("parent") or None
+    if parent:
+        psrc = jobs.gallery_path(parent)
+        if p.get("evolve_init"):
+            init = psrc
+        if float(p.get("evolve_steer") or 0) > 0:
+            srcs = [psrc] + srcs
+            p.update(steer_strength=p["evolve_steer"], steer_weight_type=p.get("evolve_weight_type") or "style and composition",
+                     steer_start=p.get("evolve_steer_start", 0.0), steer_end=p.get("evolve_steer_end", 1.0))
+    lab = (p.get("control") or {}).get("file") or p.get("lab_init") or (p.get("inpaint") or {}).get("file")
+    if lab:
+        src = lab_path(lab)
+        control = src if p.get("control") else None
+        if p.get("lab_init") or p.get("inpaint"):
+            init = src
+            p["evolve_denoise"] = p.get("lab_denoise", 0.7)
+        if p.get("inpaint"):
+            mask = "mask.png"
+    if (p.get("depth") or {}).get("ref"):
+        depth = ref_path(p["depth"]["ref"])
+    if (p.get("turnaround") or {}).get("src"):
+        turn = jobs.gallery_path(p["turnaround"]["src"])
+    steer_dir = None
+    if len(srcs) == 1:
+        steer_dir = srcs[0]                              # one image: --steer takes a file too
+    elif srcs:
+        folders = {os.path.dirname(s) for s in srcs}
+        whole = len(folders) == 1 and len([f for f in os.listdir(next(iter(folders))) if f.lower().endswith(IMG_EXT)]) == len(srcs)
+        steer_dir = next(iter(folders)) if whole else "<a-folder-with-the-selected-refs>"
+    argv = build_argv(p, steer_dir, len(srcs), init, control, mask, depth, turn)
+    return shjoin(["pixelmon"] + argv[1:])
+
+
+def scan_outputs(d, job):
+    """Fill job outputs / models / depth_map / tiled from what is really in its folder (the log may miss some)."""
+    found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
+                   if not os.path.basename(f).startswith(("parent.", "input", "mask."))
+                   and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f)
+                   and "_cutmask_" not in os.path.basename(f)
+                   and not f.endswith("_texture.png"))   # kept parent / LAB input / seam checks / a model's texture aren't output
+    job["outputs"] = list(job.get("outputs") or [])
+    known = {o["file"] for o in job["outputs"]}
+    for f in found:
+        if f not in known:
+            m = re.search(r"_s(\d+)_", f)
+            job["outputs"].append({"seed": int(m.group(1)) if m else None, "file": f})
+    job["outputs"] = [o for o in job["outputs"] if o["file"] in found]
+    models = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.glb"))
+                    if not os.path.basename(f).startswith("input"))   # not the job's copy of its source
+    if models:                                   # 🧊 3D models the job made
+        job["models"] = models
+    dm = sorted(glob.glob(os.path.join(d, "depth", "*_depth.png")))
+    if dm:                                       # --depth: the map the sampler actually got
+        job["depth_map"] = "depth/" + os.path.basename(dm[-1])
+    for o in job["outputs"]:                     # --tile: the 3x3 seam check saved beside each texture
+        t = re.sub(r"_(sprite|art)_(\d+_\.png)$", r"_tiled_\2", o["file"])
+        if t != o["file"] and os.path.isfile(os.path.join(d, t)):
+            o["tiled"] = t
+    return job
+
+
+def recover_interrupted(gallery):
+    """Jobs a killed GUI left saying queued / running: mark them interrupted and keep whatever they finished,
+    so those pictures (and Sets takes) show up. Returns how many were fixed."""
+    n = 0
+    for jf in glob.glob(os.path.join(gallery, "*", "job.json")):
+        job = _read_json(jf, None)
+        if not isinstance(job, dict) or job.get("status") not in ("queued", "running"):
+            continue
+        scan_outputs(os.path.dirname(jf), job)
+        job["status"] = "interrupted"
+        job["error"] = job.get("error") or "pixelmon-gui stopped while this was rendering"
+        job["finished"] = job.get("finished") or os.path.getmtime(jf)
+        _write_json(jf, job)
+        n += 1
+    return n
+
+
+CANCEL_GRACE = 8         # seconds pixelmon gets after SIGTERM to clear its prompts off ComfyUI before it's killed
+# lines that say why a render failed, most telling first (pixelmon's own messages, then ComfyUI's, then Python's)
+ERROR_LINES = [re.compile(x) for x in (
+    r"Render failed on the server|render failed —|ComfyUI rejected|rejected the request|returned no images|restarted and lost",
+    r"[Cc]ouldn't reach|unreachable|Timed out|upload failed|no reachable servers",
+    r"pixelmon(\.py)?: error:|^\s*--[\w-]+: |not found|no such file",
+    r"^\w*(Error|Exception)\b.*:")]
+
+
+def job_error(log, rc):
+    """Why a job failed, in one line: the CLI's (or the render node's) own message, plus the last line when
+    that adds something — instead of a bare exit code."""
+    lines = [ln.strip() for ln in log if ln.strip() and not ln.startswith("⛔")]
+    last = lines[-1] if lines else f"pixelmon exited with code {rc}"
+    for i, ln in enumerate(lines):               # the capability check: "<box> can't render this:" + • problems + the fix
+        if "can't render this" in ln:
+            rest = lines[i + 1:i + 12]
+            probs = [x.lstrip("• ").strip() for x in rest if x.startswith("•")]
+            fix = next((x for x in rest if not x.startswith("•")), "")
+            return (ln.rstrip(":") + ": " + "; ".join(probs[:3]) + (f" (+{len(probs) - 3} more)" if len(probs) > 3 else "")
+                    + (f"  —  {fix}" if fix else ""))[:600]
+    why = ""
+    for rx in ERROR_LINES:
+        why = next((ln for ln in lines if rx.search(ln)), "")
+        if why:
+            break
+    msg = why + ("  —  " + last if why and last not in why and why not in last else "") if why else last
+    return msg[:600]
+
+
 class JobQueue:
     def __init__(self, gallery):
         self.gallery = gallery
@@ -1019,13 +1332,24 @@ class JobQueue:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def add(self, params, group=None, label=None):
+        """Queue a render. Everything is validated before the job counts: a bad parameter (or a missing file)
+        leaves nothing behind, not even the job folder the copies were going into."""
+        jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
+        try:
+            return self._add(params, group, label, jid)
+        except Exception:
+            for d in (os.path.join(self.gallery, jid), os.path.join(self.gallery, "_preview", jid)):
+                if os.path.isdir(d) and not os.path.exists(os.path.join(d, "job.json")):
+                    shutil.rmtree(d, ignore_errors=True)
+            raise
+
+    def _add(self, params, group, label, jid):
         ref = params.get("set")
         if ref is not None:                          # a Sets render: which set and sprite the takes belong to
             if not (isinstance(ref, dict) and re.fullmatch(r"[\w-]{1,64}", str(ref.get("id") or ""))
-                    and setsmod.KEY_RE.fullmatch(str(ref.get("key") or ""))):
+                    and setsmod.key_ok(ref.get("key"))):
                 raise ValueError("bad set reference")
             params = dict(params, set={"id": ref["id"], "key": ref["key"]})
-        jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
         sent, params = params, dict(params)          # job records what was sent; overrides stay internal
         steer = [str(r) for r in (params.get("steer") or [])]
         if len(steer) > 32:
@@ -1188,10 +1512,42 @@ class JobQueue:
                 return False
             if job["status"] == "queued":
                 job["status"] = "cancelled"
+                self._save_if_started(job)
             elif job["status"] == "running" and self.current == jid and self.proc:
                 job["status"] = "cancelled"
-                self.proc.terminate()
+                job["log"].append("⛔ cancelled — pixelmon is taking its prompts off the render server's queue")
+                self._stop(self.proc)
             return True
+
+    def _save_if_started(self, job):
+        """A queued job whose folder already holds copies (steer refs, a LAB input) records that it was
+        cancelled, so the folder isn't a mystery; one that never touched disk leaves nothing."""
+        if os.path.isdir(os.path.join(self.gallery, job["dir"])):
+            job["finished"] = time.time()
+            self._save(job)
+
+    def all(self):
+        """Every job this session (Sets' pending counts need all of them, not the last 60 the page gets)."""
+        with self.lock:
+            return [dict(self.jobs[j], log=[]) for j in self.order]
+
+    def busy(self):
+        """Is there GPU work queued or running?"""
+        with self.lock:
+            return any(j["status"] in ("queued", "running") for j in self.jobs.values())
+
+    @staticmethod
+    def _stop(proc, grace=CANCEL_GRACE):
+        """SIGTERM pixelmon: it removes its own prompts from ComfyUI's queue and interrupts only the one it's
+        running, then exits. Give it `grace` seconds for that before it's killed (never blocks the caller)."""
+        proc.terminate()
+
+        def reap():
+            try:
+                proc.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        threading.Thread(target=reap, daemon=True).start()
 
     def clear(self, stop_running=False):
         """Clear the Queue tab: cancel waiting jobs, forget finished ones (their files stay in the
@@ -1202,11 +1558,12 @@ class JobQueue:
                 job = self.jobs[jid]
                 if job["status"] == "queued":
                     job["status"] = "cancelled"
+                    self._save_if_started(job)
                     cancelled += 1
                 elif job["status"] == "running":
                     if stop_running and self.current == jid and self.proc:
                         job["status"] = "cancelled"
-                        self.proc.terminate()
+                        self._stop(self.proc)
                         cancelled += 1
                     continue                     # it drops off the list once it has stopped
                 self.order.remove(jid)
@@ -1214,17 +1571,20 @@ class JobQueue:
                 removed += 1
         return {"cancelled": cancelled, "removed": removed}
 
-    def abort(self):
-        """⛔ CANCEL AND ABORT: cancel every waiting job, stop the running one, then empty the render
-        server's own ComfyUI queue and interrupt what it's sampling (every server of a farm list)."""
+    def abort(self, clear_server=False):
+        """⛔ CANCEL AND ABORT: cancel every waiting job and stop the running one. pixelmon, sent SIGTERM, takes its
+        OWN prompts off the render server's queue and interrupts only the one it's running — other tools' prompts
+        on a shared ComfyUI are left alone. clear_server=True (an explicit opt-in) also empties every render
+        server's whole queue and interrupts it, for a box that's stuck on someone else's work."""
         servers = set(render_server().split(","))
         with self.lock:
-            proc = None
+            proc, stopped = None, None
             cancelled = 0
             for jid in self.order:
                 job = self.jobs[jid]
                 if job["status"] == "queued":
                     job["status"] = "cancelled"
+                    self._save_if_started(job)
                     cancelled += 1
                 elif job["status"] == "running":
                     argv = job["argv"]
@@ -1232,28 +1592,37 @@ class JobQueue:
                         servers.update(argv[argv.index("--server") + 1].split(","))
                     if self.current == jid and self.proc:
                         job["status"] = "cancelled"
-                        proc = self.proc
+                        job["log"].append("⛔ aborted — pixelmon is taking its prompts off the render server's queue")
+                        proc, stopped = self.proc, job
                         proc.terminate()
                         cancelled += 1
-        if proc:                                         # let pixelmon exit first, so it can't send one more prompt
+        said, killed = "", False
+        if proc:                                         # let pixelmon clean up and exit, so it can't send one more prompt
             try:
-                proc.wait(timeout=5)
+                proc.wait(timeout=CANCEL_GRACE)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                killed = True
+            time.sleep(0.2)                              # the worker reads pixelmon's last lines
+            with self.lock:
+                said = next((ln for ln in reversed(stopped["log"]) if ln.strip() and "aborted —" not in ln), "")
         comfy = {}
-        for name in sorted(s.strip() for s in servers if s.strip()):
-            url = server_url(name)
-            if not url or url in comfy.values():
-                continue
-            try:
-                for path, body in (("/queue", {"clear": True}), ("/interrupt", {})):
-                    req = urllib.request.Request(url + path, data=json.dumps(body).encode(), method="POST",
-                                                 headers={"Content-Type": "application/json"})
-                    urllib.request.urlopen(req, timeout=4).close()
-                comfy[name] = url
-            except Exception as e:
-                comfy[name] = f"unreachable ({e})"
-        return {"cancelled": cancelled, "servers": comfy}
+        if clear_server:
+            for name in sorted(s.strip() for s in servers if s.strip()):
+                url = server_url(name)
+                if not url or url in comfy.values():
+                    continue
+                try:
+                    for path, body in (("/queue", {"clear": True}), ("/interrupt", {})):
+                        req = urllib.request.Request(url + path, data=json.dumps(body).encode(), method="POST",
+                                                     headers={"Content-Type": "application/json"})
+                        urllib.request.urlopen(req, timeout=4).close()
+                    comfy[name] = url
+                except Exception as e:
+                    comfy[name] = f"unreachable ({getattr(e, 'reason', e)})"
+        return {"cancelled": cancelled, "servers": comfy, "cleared": bool(clear_server),
+                "stopped": {"id": stopped["id"], "said": said[:300], "killed": killed,
+                            "servers": sorted(s for s in servers if s)} if stopped else None}
 
     def snapshot(self):
         with self.lock:
@@ -1264,6 +1633,9 @@ class JobQueue:
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "job.json"), "w", encoding="utf-8") as f:
             json.dump({k: v for k, v in job.items() if k != "log"}, f, indent=1)
+        if job["log"]:                               # the whole run's output, kept beside the pictures
+            with open(os.path.join(d, "log.txt"), "w", encoding="utf-8") as f:
+                f.write("\n".join(job["log"]) + "\n")
 
     def _worker(self):
         while True:
@@ -1307,31 +1679,16 @@ class JobQueue:
                 rc = -1
                 job["log"].append(f"GUI error: {e}")
             with self.lock:
-                # trust the folder over log parsing (covers moved/renamed files)
-                found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.gif"))
-                               if not os.path.basename(f).startswith(("parent.", "input", "mask."))
-                               and "_preview_" not in os.path.basename(f) and "_tiled_" not in os.path.basename(f)
-                               and "_cutmask_" not in os.path.basename(f)
-                               and not f.endswith("_texture.png"))   # kept parent / LAB input / seam checks / a model's texture aren't output
-                known = {o["file"] for o in job["outputs"]}
-                for f in found:
-                    if f not in known:
-                        m = re.search(r"_s(\d+)_", f)
-                        job["outputs"].append({"seed": int(m.group(1)) if m else None, "file": f})
-                job["outputs"] = [o for o in job["outputs"] if o["file"] in found]
-                models = sorted(os.path.basename(f) for f in glob.glob(os.path.join(d, "*.glb"))
-                                if not os.path.basename(f).startswith("input"))   # not the job's copy of its source
-                if models:                           # 🧊 3D models the job made
-                    job["models"] = models
-                dm = sorted(glob.glob(os.path.join(d, "depth", "*_depth.png")))
-                if dm:                               # --depth: the map the sampler actually got
-                    job["depth_map"] = "depth/" + os.path.basename(dm[-1])
-                for o in job["outputs"]:             # --tile: the 3x3 seam check saved beside each texture
-                    t = re.sub(r"_(sprite|art)_(\d+_\.png)$", r"_tiled_\2", o["file"])
-                    if t != o["file"] and os.path.isfile(os.path.join(d, t)):
-                        o["tiled"] = t
+                scan_outputs(d, job)                 # trust the folder over log parsing (covers moved/renamed files)
                 if job["status"] != "cancelled":
-                    job["status"] = "done" if rc == 0 and (job["outputs"] or job.get("models")) else "failed"
+                    made = bool(job["outputs"] or job.get("models"))
+                    job["status"] = "done" if made else "failed"
+                    if rc != 0:                      # pixelmon exits 1 when some renders of the job failed: keep what it made
+                        job["error"] = job_error(job["log"], rc)
+                        m = next((re.search(r"(\d+) of (\d+) (?:render|job)\(s\)", ln) for ln in reversed(job["log"])
+                                  if re.search(r"(\d+) of (\d+) (?:render|job)\(s\)", ln)), None)
+                        if made:
+                            job["failed"] = int(m.group(1)) if m else max(1, int(job.get("total") or 1) - len(job["outputs"]))
                 if job["status"] == "done" and job.get("export"):
                     try:                             # batch rows: drop a clean <path>.png where the game loads it
                         os.makedirs(os.path.dirname(job["export"]), exist_ok=True)
@@ -1718,6 +2075,7 @@ def load_setup():
     s.setdefault("editor3d", "")          # 3D models open in this; "" = Blender, found automatically
     s.setdefault("image_apps", [])        # [{name, exec, args}] — args: "{}" = the file, else appended
     s.setdefault("folder_apps", [])
+    s.setdefault("similar_folders", [])  # 🔎 Find: the folders its index covers ([] = Pictures, the gallery, the refs)
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
     s.setdefault("draw_palette", True)     # Open in DRAW also loads the image's colors as a .gpl (--palette)
     s.setdefault("server", "")            # render server (servers.json alias / host / URL); "" = servers.json "_default"
@@ -1740,6 +2098,8 @@ def save_setup(body):
         s["draw_palette"] = bool(body["draw_palette"])
     if "folder_default" in body:
         s["folder_default"] = str(body["folder_default"] or "os")[:20]
+    if isinstance(body.get("similar_folders"), list):
+        s["similar_folders"] = [str(f).strip()[:500] for f in body["similar_folders"][:40] if str(f).strip()]
     if "server" in body:
         s["server"] = re.sub(r"\s+", "", str(body["server"] or ""))[:300]
         _ADV_CACHE["v"] = None                 # model lists come from the render server
@@ -1961,18 +2321,6 @@ def image_gpl(path):
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(gpl_text(stem, colors))
     return out
-
-
-def picture_palette(path, cap=32):
-    """The colors a picture uses: all of them when it has few (pixel art), else its `cap` main colors."""
-    n, colors = image_colors(path)
-    if n != ">255" and colors and len(colors) <= 64:
-        return colors
-    from PIL import Image
-    q = Image.open(path).convert("RGB").quantize(colors=cap, method=Image.Quantize.MEDIANCUT)
-    pal = q.getpalette()[: cap * 3]
-    used = sorted({c for _, c in (q.getcolors(cap) or [])})
-    return ["#%02x%02x%02x" % tuple(pal[i * 3: i * 3 + 3]) for i in used]
 
 
 def os_opener(is_dir):
@@ -2363,39 +2711,6 @@ def export_folder(folder, gallery):
     return buf.getvalue(), safe_name(folder or "unfiled")
 
 
-_COLOR_CACHE = {}
-
-
-def image_colors(path):
-    """Colors used by an image, most-used first: (n, ['#rrggbb', …]) — or ('>255', []) when there are more.
-    Fully transparent pixels don't count. Cached per file + mtime."""
-    key = (path, os.path.getmtime(path))
-    if key not in _COLOR_CACHE:
-        try:
-            from PIL import Image
-        except ImportError:
-            return None, []
-        im = Image.open(path).convert("RGBA")
-        cols = im.getcolors(maxcolors=4096)
-        if cols is not None:
-            cols = [(c, rgba) for c, rgba in cols if rgba[3] > 0]
-        if cols is None or len(cols) > 255:
-            _COLOR_CACHE[key] = (">255", [])
-        else:
-            cols.sort(key=lambda t: -t[0])
-            _COLOR_CACHE[key] = (len(cols), ["#%02x%02x%02x" % rgba[:3] for _, rgba in cols])
-    return _COLOR_CACHE[key]
-
-
-def gpl_text(name, colors):
-    """GIMP palette (.gpl) — readable by GIMP, Aseprite, Krita, Inkscape, …"""
-    lines = ["GIMP Palette", f"Name: {name}", "Columns: 16", "#"]
-    for hx in colors:
-        r, g, b = int(hx[1:3], 16), int(hx[3:5], 16), int(hx[5:7], 16)
-        lines.append(f"{r:3d} {g:3d} {b:3d}\t{hx.upper()}")
-    return "\n".join(lines) + "\n"
-
-
 def gallery_items(gallery, limit=300):
     items = []
     for jf in sorted(glob.glob(os.path.join(gallery, "*", "job.json")), reverse=True)[:limit]:
@@ -2408,6 +2723,30 @@ def gallery_items(gallery, limit=300):
         if job["outputs"]:
             items.append(job)
     return items
+
+
+def gallery_count(gallery):
+    return len(glob.glob(os.path.join(gallery, "*", "job.json")))
+
+
+def rate(gallery, d, f, stars):
+    """★ 0..5 for one picture of a gallery job, kept in its job.json (ratings: {file: stars})."""
+    jf = os.path.join(gallery, safe_name(d, 64), "job.json")
+    job = _read_json(jf, None)
+    if not job:
+        raise ValueError("that render isn't in the gallery")
+    if f not in {o.get("file") for o in job.get("outputs") or []}:
+        raise ValueError("that picture isn't in the job")
+    stars = int(stars)
+    if not 0 <= stars <= 5:
+        raise ValueError("stars must be 0..5")
+    r = job.setdefault("ratings", {})
+    if stars:
+        r[f] = stars
+    else:
+        r.pop(f, None)
+    _write_json(jf, job)
+    return r
 
 
 # ---------------------------------------------------------------------------
@@ -2426,6 +2765,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     jobs = None
     gallery = None
     sets = None
+    similar = None
 
     def log_message(self, fmt, *args):   # keep the terminal quiet
         pass
@@ -2439,17 +2779,57 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _file(self, path, ctype):
+    def _local(self):
+        """Is the browser on this machine? Always true unless --lan opened the page to other devices."""
+        ip = self.client_address[0]
+        return not LAN or ip in ("::1", "::ffff:127.0.0.1") or ip.startswith("127.")
+
+    def _want_download(self):
+        return "download" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
+
+    def _file(self, path, ctype, download=None):
+        """Serve a file in 64 KB chunks, honouring Range (big wallpapers, .glb models, zips never sit in
+        memory whole); download=name adds Content-Disposition so the browser saves it."""
         try:
-            with open(path, "rb") as f:
-                body = f.read()
+            size = os.path.getsize(path)
+            fh = open(path, "rb")
         except OSError:
             return self._json({"error": "not found"}, 404)
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        with fh:
+            start, end = 0, size - 1
+            rng = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
+            if rng and size and (rng.group(1) or rng.group(2)):
+                if rng.group(1):
+                    start = int(rng.group(1))
+                    end = min(int(rng.group(2)), size - 1) if rng.group(2) else size - 1
+                else:
+                    start = max(0, size - int(rng.group(2)))
+                if start > end:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+            else:
+                rng = None
+            self.send_response(206 if rng else 200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1 if size else 0))
+            if rng:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            if download:
+                quoted = urllib.parse.quote(download)
+                self.send_header("Content-Disposition", f"attachment; filename=\"{safe_name(download, 120) or 'file'}\"; filename*=UTF-8''{quoted}")
+            self.end_headers()
+            fh.seek(start)
+            left = end - start + 1 if size else 0
+            while left > 0:
+                chunk = fh.read(min(1 << 16, left))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                left -= len(chunk)
 
     def _resolve_image(self, t):
         """An image the GUI shows -> its absolute path (renders, corkboard items, preset pictures, LAB inputs, refs)."""
@@ -2476,6 +2856,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return analysis_path(t["analysis"])
         if t.get("analysis_export"):
             return analysis_path(t["analysis_export"], exports=True)
+        if t.get("set_now"):                     # a set's NOW: the sprite the game has today
+            sn = t["set_now"] if isinstance(t["set_now"], dict) else {}
+            return self.sets.now_path(self.sets.load(sn.get("id")), sn.get("key"))
+        if t.get("indexed"):                     # a 🔎 Find result: only pictures in the index
+            p = str(t["indexed"])
+            if not self.similar.has(p) or not os.path.isfile(p):
+                raise ValueError("that picture isn't in the Find index")
+            return p
+        if t.get("path"):                        # any file under home (a path field, a Browse pick, an export)
+            if not self._local():
+                raise ValueError("opening paths only works on the computer running pixelmon-gui")
+            return home_path(t["path"])
         raise ValueError("nothing to open")
 
     def _resolve_folder(self, kind, arg=""):
@@ -2498,14 +2890,73 @@ class Handler(http.server.BaseHTTPRequestHandler):
             target = os.path.join(analysis_dir(), "exports") if arg == "exports" else analysis_dir()
             os.makedirs(target, exist_ok=True)
         elif kind == "dir":
+            if not self._local():
+                raise ValueError("opening folders by path only works on the computer running pixelmon-gui")
             target = home_path(arg)
+            if os.path.isfile(target):           # a file's path: its folder
+                target = os.path.dirname(target)
+        elif kind == "sets":
+            target = os.path.dirname(self.sets.path(arg)) if arg else self.sets.root
+        elif kind == "game":                     # a set's game folder
+            target = self.sets.game_dir(self.sets.load(arg)) or ""
         else:
             raise ValueError("unknown folder")
         if not os.path.isdir(target):
             raise ValueError(f"folder doesn't exist yet: {target}")
         return target
 
+    def _guard(self):
+        """Refuse what a browser tab on another site could send: a Host that isn't this GUI (DNS rebinding) and,
+        on POSTs, an Origin / Referer from another page (cross-site requests need no preflight for a text/plain
+        body). Requests with neither header (curl, scripts) are fine. Returns an error message, or None."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        hostname = re.sub(r":\d+$", "", host).strip("[]")
+        if not LAN and host and hostname not in ("127.0.0.1", "localhost", "::1"):
+            return f"this GUI only answers as 127.0.0.1 / localhost, not {host!r}"
+        if self.command == "POST":
+            src = self.headers.get("Origin") or self.headers.get("Referer")
+            if src is not None:
+                net = urllib.parse.urlparse(src).netloc.lower()
+                if not host or net != host:
+                    return "cross-site request refused (Origin doesn't match this GUI)"
+        return None
+
+    def _length(self, limit):
+        """The request's Content-Length as an int within 0..limit, or ValueError (a clean 400)."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise ValueError("bad Content-Length")
+        if not 0 <= n <= limit:
+            raise ValueError(f"body must be under {limit // (1024 * 1024) or 1} MB")
+        return n
+
+    def _body(self, n):
+        """Exactly n bytes of body, or ValueError when the client sent fewer (a truncated upload is never written)."""
+        data = self.rfile.read(n) if n else b""
+        if len(data) != n:
+            raise ValueError(f"the upload was cut short ({len(data)} of {n} bytes)")
+        return data
+
     def do_GET(self):
+        err = self._guard()
+        if err:
+            return self._json({"error": err}, 403)
+        try:
+            return self._do_GET()
+        except (ValueError, UnicodeError) as e:          # a NUL byte in a path, a bad query value…
+            return self._json({"error": f"bad request: {e}"}, 400)
+
+    def do_POST(self):
+        err = self._guard()
+        if err:
+            return self._json({"error": err}, 403)
+        try:
+            return self._do_POST()
+        except (ValueError, UnicodeError) as e:
+            return self._json({"error": f"bad request: {e}"}, 400)
+
+    def _do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path in ("/", "/index.html"):
             return self._file(os.path.join(HERE, "index.html"), "text/html; charset=utf-8")
@@ -2519,7 +2970,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "presets": load_presets(),
                                "loras": loras, "loras_live": live, "server": render_server(),
                                "adv_lists": load_adv_lists(),
-                               "server_up": server_is_up()})
+                               "server_up": server_is_up(),
+                               "known_servers": sorted(known_servers()), "default_server": default_server(),
+                               "server_locked": SERVER_ARG, "cli": cli_spec(), "home": HOME if self._local() else "",
+                               "local": self._local(), "gallery": self.gallery})
         if u.path == "/api/jobs":
             return self._json({"jobs": self.jobs.snapshot(),
                                "render": {"server": render_server(), "url": server_url(), "up": server_is_up(),
@@ -2564,7 +3018,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 full = ref_path(urllib.parse.unquote(u.path[len("/refs/"):]))
             except ValueError:
                 return self._json({"error": "not found"}, 404)
-            return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream")
+            return self._file(full, mimetypes.guess_type(full)[0] or "application/octet-stream",
+                              os.path.basename(full) if self._want_download() else None)
         if u.path == "/api/presets":
             return self._json({"presets": list_presets(), "folders": list_folders()})
         if u.path == "/api/setup":
@@ -2639,7 +3094,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 full = lab_path(urllib.parse.unquote(u.path[len("/lab/"):]))
             except ValueError:
                 return self._json({"error": "not found"}, 404)
-            return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
+            return self._file(full, mimetypes.guess_type(full)[0] or "image/png", os.path.basename(full) if self._want_download() else None)
         if u.path.startswith("/analysis/"):
             rel = urllib.parse.unquote(u.path[len("/analysis/"):])
             try:
@@ -2721,7 +3176,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": "forbidden"}, 403)
             return self._file(full, mimetypes.guess_type(full)[0] or "image/png")
         if u.path == "/api/gallery":
-            return self._json({"items": gallery_items(self.gallery)})
+            q = urllib.parse.parse_qs(u.query)
+            try:
+                limit = max(1, min(5000, int((q.get("limit") or ["300"])[0])))
+            except ValueError:
+                limit = 300
+            return self._json({"items": gallery_items(self.gallery, limit), "limit": limit, "total": gallery_count(self.gallery)})
+        if u.path == "/api/servers":
+            return self._json(servers_report())
+        if u.path == "/api/similar/status":
+            st = self.similar.status()
+            st.update(setup_folders=load_setup().get("similar_folders") or [], default_folders=self._similar_defaults())
+            return self._json(st)
+        if u.path == "/api/similar/file":               # a Find result's picture: only files in the index
+            p = urllib.parse.parse_qs(u.query).get("path", [""])[0]
+            if not self.similar.has(p) or not os.path.isfile(p):
+                return self._json({"error": "not in the index"}, 404)
+            return self._file(p, mimetypes.guess_type(p)[0] or "application/octet-stream",
+                              os.path.basename(p) if self._want_download() else None)
+        if u.path in ("/api/browse", "/api/disk/file") and not self._local():
+            return self._json({"error": "browsing this computer's files only works on the computer running pixelmon-gui"}, 403)
+        if u.path == "/api/browse":                    # the Browse dialog: one folder under home
+            q = urllib.parse.parse_qs(u.query)
+            exts = tuple(e.strip().lower() for e in (q.get("ext") or [""])[0].split(",") if e.strip()) or None
+            try:
+                return self._json(browse((q.get("path") or ["~"])[0], (q.get("kind") or ["any"])[0], exts,
+                                         (q.get("hidden") or [""])[0] == "1", self.gallery, self.sets))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if u.path == "/api/disk/file":                 # preview a picture picked in Browse (images only, under home)
+            try:
+                p = home_path(urllib.parse.parse_qs(u.query).get("path", [""])[0])
+            except ValueError as e:
+                return self._json({"error": str(e)}, 404)
+            if not os.path.isfile(p) or not p.lower().endswith(IMG_EXT):
+                return self._json({"error": "only pictures can be previewed"}, 404)
+            return self._file(p, mimetypes.guess_type(p)[0] or "application/octet-stream")
         if u.path == "/api/sets":
             return self._json({"sets": self.sets.list()})
         if u.path in ("/api/set", "/api/set/now"):
@@ -2730,9 +3220,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 s = self.sets.load(q.get("id", [""])[0])
                 if u.path == "/api/set/now":             # the sprite the game has today, for NOW
                     full = self.sets.now_path(s, q.get("key", [""])[0])
-                    return self._file(full, "image/gif" if full.endswith(".gif") else "image/png")
+                    return self._file(full, "image/gif" if full.endswith(".gif") else "image/png",
+                                      os.path.basename(full) if "download" in q or self._want_download() else None)
                 return self._json({"set": s, "takes": self.sets.takes(s["id"]), "now": self.sets.now_files(s),
-                                   "pending": self.sets.pending(s["id"], self.jobs.snapshot())})
+                                   "pending": self.sets.pending(s["id"], self.jobs.all())})
             except ValueError as e:
                 return self._json({"error": str(e)}, 404 if u.path == "/api/set/now" else 400)
         if u.path.startswith("/files/"):
@@ -2740,23 +3231,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
             full = os.path.realpath(os.path.join(self.gallery, rel))
             if not full.startswith(os.path.realpath(self.gallery) + os.sep):
                 return self._json({"error": "forbidden"}, 403)
-            ctype = "image/gif" if full.endswith(".gif") else "image/png"
-            return self._file(full, ctype)
+            ext = os.path.splitext(full)[1].lower()
+            ctype = {".glb": "model/gltf-binary", ".txt": "text/plain; charset=utf-8", ".json": "application/json"}.get(ext) \
+                or mimetypes.guess_type(full)[0] or "application/octet-stream"
+            return self._file(full, ctype, os.path.basename(full) if self._want_download() else None)
         return self._json({"error": "not found"}, 404)
 
-    def do_POST(self):
+    def _do_POST(self):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/api/presets/import":
-            n = int(self.headers.get("Content-Length") or 0)
-            if not 0 < n <= 300 * 1024 * 1024:
-                return self._json({"error": "bundle must be under 300 MB"}, 400)
+            n = self._length(300 * 1024 * 1024)
+            if not n:
+                return self._json({"error": "send a preset .zip"}, 400)
+            data = self._body(n)
             folder = urllib.parse.parse_qs(u.query).get("folder", [""])[0]
             try:
-                rec = import_bundle(self.rfile.read(n), self.gallery, folder)
+                rec = import_bundle(data, self.gallery, folder)
             except (ValueError, zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
                 return self._json({"error": f"couldn't import: {e}"}, 400)
             return self._json({"name": rec["name"], "id": rec.get("id"), "folder": rec.get("folder"),
                                "count": rec.get("count"), "snapshot": rec.get("snapshot")})
+        if u.path == "/api/similar/search-bytes":        # Find by a picture dropped from the desktop (not kept)
+            n = self._length(40 * 1024 * 1024)
+            if not n:
+                return self._json({"error": "drop a picture"}, 400)
+            try:
+                fp = similar.fingerprint(io.BytesIO(self._body(n)))
+            except ImportError:
+                return self._json({"error": "finding similar pictures needs Pillow — run pixelmon-gui with ComfyUI's venv"}, 501)
+            except (OSError, SyntaxError) as e:
+                return self._json({"error": f"that isn't a picture Pillow can read ({e})"}, 400)
+            q = urllib.parse.parse_qs(u.query)
+            return self._json({"query": (q.get("name") or ["dropped picture"])[0], "results": self._similar_hits(fp, (q.get("within") or [""])[0])})
         if u.path == "/api/lab/layered":
             return self._upload_layered(urllib.parse.parse_qs(u.query))
         if u.path == "/api/lab/upload":
@@ -2766,13 +3272,72 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
             return self._json({"error": "expected application/json"}, 415)
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(n) or b"{}")
+            body = json.loads(self._body(self._length(64 * 1024 * 1024)) or b"{}")
         except Exception:
             return self._json({"error": "bad json"}, 400)
+        if not isinstance(body, dict):
+            return self._json({"error": "the body must be a JSON object"}, 400)
         try:
             if u.path == "/api/prompt":
                 return self._json(full_prompt(body))
+            if u.path == "/api/command":                 # Copy CLI: the exact command RENDER would run
+                try:                                     # a half-set form is normal here: answer, don't fail
+                    return self._json({"command": command_preview(body, self.jobs)})
+                except ValueError as e:
+                    return self._json({"invalid": str(e)})
+            if u.path == "/api/rate":
+                return self._json({"ratings": rate(self.gallery, body.get("dir"), body.get("file"), body.get("stars", 0))})
+            if u.path == "/api/input/from-path":         # Browse picked a file on disk: copy it in, like a drop
+                return self._json(self._from_path(body))
+            if u.path == "/api/similar/index":           # (re)build the Find index over these folders
+                if not self._local():
+                    raise ValueError("choosing folders to index only works on the computer running pixelmon-gui")
+                chosen = [str(f).strip() for f in (body.get("folders") or []) if str(f).strip()][:40]
+                full = []
+                for f in chosen or self._similar_defaults():
+                    d = home_path(f)
+                    if not os.path.isdir(d):
+                        raise ValueError(f"not a folder: {f}")
+                    full.append(d)
+                save_setup({"similar_folders": chosen})           # [] = keep following the defaults
+                self.similar.start(full)
+                return self._json(self.similar.status())
+            if u.path == "/api/similar/search":          # Find by any picture the GUI shows (or a Browse pick)
+                t = body.get("target") or {}
+                src = self._resolve_image(t)
+                if not src.lower().endswith(IMG_EXT):
+                    raise ValueError("that isn't a picture")
+                try:
+                    fp = similar.fingerprint(src)
+                except ImportError:
+                    return self._json({"error": "finding similar pictures needs Pillow — run pixelmon-gui with ComfyUI's venv"}, 501)
+                return self._json({"query": os.path.basename(src), "query_path": src if self._local() else "",
+                                   "results": self._similar_hits(fp, body.get("within"), exclude=src)})
+            if u.path == "/api/similar/use":             # a Find result becomes a steering ref / LAB input / pin (a copy)
+                p = str(body.get("path") or "")
+                if not self.similar.has(p) or not os.path.isfile(p):
+                    raise ValueError("that picture isn't in the Find index")
+                return self._json(self._from_path(dict(body, path=p), indexed=True))
+            if u.path == "/api/render" and isinstance(body.get("batch"), list):
+                # several renders at once (a Set's sprites, Batch rows): every one is checked before any is queued
+                items = body["batch"][:2000]
+                if not items or not all(isinstance(p, dict) for p in items):
+                    raise ValueError("batch must be a list of render settings")
+                for p in items:
+                    try:
+                        command_preview(p, self.jobs)
+                        export_target(p)
+                        ref = p.get("set")
+                        if ref is not None and not (isinstance(ref, dict) and setsmod.key_ok(ref.get("key"))):
+                            raise ValueError("bad set reference")
+                    except ValueError as e:
+                        raise ValueError(f"{p.get('label') or str(p.get('prompt') or '')[:40]}: {e} — nothing was queued")
+                ids = []
+                for p in items:
+                    p = dict(p)
+                    group, label = p.pop("group", None), p.pop("label", None)
+                    ids.append(self.jobs.add(p, group=group, label=label)["id"])
+                return self._json({"jobs": ids})
             if u.path == "/api/render":
                 group, label = body.pop("group", None), body.pop("label", None)
                 return self._json({"jobs": [self.jobs.add(body, group=group, label=label)["id"]]})
@@ -2787,8 +3352,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if act == "export":
                     s = self.sets.load(body.get("id"))
                     if body.get("preview"):
-                        return self._json({"plan": self.sets.export_plan(s), "folder": self.sets.game_dir(s)})
-                    return self._json(self.sets.export(s, only_changed=not body.get("all")))
+                        return self._json({"plan": self.sets.export_plan(s, body.get("opts")), "folder": self.sets.game_dir(s)})
+                    return self._json(self.sets.export(s, only_changed=not body.get("all"), opts=body.get("opts")))
                 raise ValueError(f"unknown sets action {act!r}")
             if u.path == "/api/sweep":
                 # same settings + one fixed seed, varying a single field across values
@@ -2836,6 +3401,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 t = body.get("target") or {}
                 is_dir = "folder" in t
                 path = self._resolve_folder(t["folder"], t.get("arg") or "") if is_dir else self._resolve_image(t)
+                if not is_dir and t.get("reveal"):          # "Show in folder": the folder the file is in
+                    path, is_dir = os.path.dirname(path), True
+                elif not is_dir and os.path.isdir(path):    # a {path} that names a folder
+                    is_dir = True
                 cwd = None
                 if key == "draw":
                     if is_dir:
@@ -2870,7 +3439,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 launch(app, path, cwd)
                 return self._json({"opened": path, "with": app.get("name")})
             if u.path == "/api/reveal":
-                # open a folder in the desktop file manager (on the machine running this server)
+                # open a folder in the desktop file manager (on the machine running this server; "dir" = any
+                # folder under home, which needs the browser to be on that machine too)
                 target = self._resolve_folder(body.get("kind"), body.get("arg") or "")
                 launch(os_opener(True), target)
                 return self._json({"opened": target})
@@ -2971,7 +3541,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == "/api/jobs/clear":
                 return self._json(self.jobs.clear(bool(body.get("stop_running"))))
             if u.path == "/api/jobs/abort":
-                return self._json(self.jobs.abort())
+                return self._json(self.jobs.abort(clear_server=bool(body.get("clear_server"))))
             if u.path == "/api/backups/restore":
                 r = restore_backup(body.get("name"), self.gallery)
                 return self._json(r)
@@ -3189,6 +3759,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"ok": self.jobs.cancel(u.path.rsplit("/", 1)[1])})
         except ValueError as e:
             return self._json({"error": str(e)}, 400)
+        except (TypeError, AttributeError, KeyError) as e:   # a field of the wrong type ([] where {} belongs…)
+            return self._json({"error": f"bad request: {type(e).__name__}: {e}"}, 400)
         except Exception as e:                            # never drop the connection: report what went wrong
             import traceback
             traceback.print_exc()
@@ -3209,12 +3781,12 @@ def _upload(self, q, lab=False):
     board = q.get("board")
     col = safe_name((q.get("collection") or ["gui-drops"])[0]) or "gui-drops"
     fname = safe_name((q.get("filename") or ["image.png"])[0], 96)
-    n = int(self.headers.get("Content-Length") or 0)
     if not fname.lower().endswith(IMG_EXT):
         return self._json({"error": f"not an image type: {fname}"}, 400)
-    if not 0 < n <= 40 * 1024 * 1024:
-        return self._json({"error": "image must be under 40 MB"}, 400)
-    data = self.rfile.read(n)
+    n = self._length(40 * 1024 * 1024)
+    if not n:
+        return self._json({"error": "empty upload"}, 400)
+    data = self._body(n)
     magic = (data[:8] == b"\x89PNG\r\n\x1a\n" or data[:3] == b"\xff\xd8\xff" or data[:4] == b"GIF8"
              or data[:2] == b"BM" or (data[:4] == b"RIFF" and data[8:12] == b"WEBP"))
     if not magic:
@@ -3237,15 +3809,99 @@ def _upload(self, q, lab=False):
 Handler._upload = _upload
 
 
+def _from_path(self, body, indexed=False):
+    """A file picked with Browse… goes where a drop would put it: a steering collection ('refs', the depth slot
+    uses collection 'depth'), the LAB inputs ('lab'; .draw/.ora/.psd are read as layers), a corkboard ('board'),
+    or a preset / folder bundle ('bundle'). Always a copy; the original is never touched."""
+    if not indexed and not self._local():
+        raise ValueError("picking files from this computer only works on the computer running pixelmon-gui")
+    p = body["path"] if indexed else home_path(body.get("path"))
+    if not os.path.isfile(p):
+        raise ValueError("pick a file, not a folder")
+    to, name = str(body.get("to") or "refs"), os.path.basename(p)
+    size = os.path.getsize(p)
+    if to == "bundle":
+        if not name.lower().endswith(".zip") or size > 300 * 1024 * 1024:
+            raise ValueError("pick a preset .zip under 300 MB")
+        with open(p, "rb") as fh:
+            rec = import_bundle(fh.read(), self.gallery, str(body.get("folder") or ""))
+        return {"name": rec["name"], "id": rec.get("id"), "folder": rec.get("folder"), "count": rec.get("count"),
+                "snapshot": rec.get("snapshot"), "from": p}
+    if to == "lab" and name.lower().endswith((".draw", ".ora", ".psd")):
+        import layered
+        if size > 200 * 1024 * 1024:
+            raise ValueError("file must be under 200 MB")
+        with open(p, "rb") as fh:
+            art, mask, info = layered.read_layered(name, fh.read())
+        os.makedirs(LAB, exist_ok=True)
+        out = unique_path(LAB, safe_name(os.path.splitext(name)[0], 90) + ".png")
+        art.save(out)
+        res = {"file": os.path.basename(out), "size": image_size(out), "info": info, "mask": None, "from": p}
+        if mask is not None:
+            buf = io.BytesIO()
+            mask.save(buf, "PNG")
+            res["mask"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+        return res
+    if not name.lower().endswith(IMG_EXT):
+        raise ValueError(f"not a picture: {name} (png, jpg, webp, gif, bmp)")
+    if size > 40 * 1024 * 1024:
+        raise ValueError("image must be under 40 MB")
+    if to == "lab":
+        d = LAB
+    elif to == "board":
+        d = board_dir(body.get("board") or "")
+    elif to == "refs":
+        col = safe_name(body.get("collection") or "gui-drops") or "gui-drops"
+        d = os.path.join(REFS, col)
+    else:
+        raise ValueError(f"can't put a file into {to!r}")
+    os.makedirs(d, exist_ok=True)
+    out = unique_path(d, safe_name(name, 96) or "image.png")
+    shutil.copy2(p, out)
+    if to == "lab":
+        return {"file": os.path.basename(out), "size": image_size(out), "from": p}
+    if to == "board":
+        return {"board": os.path.basename(d), "file": os.path.basename(out), "from": p}
+    return {"ref": f"{os.path.basename(d)}/{os.path.basename(out)}", "from": p}
+
+
+Handler._from_path = _from_path
+
+
+def _similar_defaults(self):
+    """What 🔎 Find indexes when you haven't chosen: Pictures, the gallery, the steering refs, the corkboards."""
+    short = lambda d: "~" + d[len(HOME):] if d.startswith(HOME + os.sep) else d     # noqa: E731
+    return [short(os.path.realpath(d)) for d in (os.path.expanduser("~/Pictures"), self.gallery, REFS, BOARDS) if os.path.isdir(d)]
+
+
+def _similar_hits(self, fp, within=None, exclude=None):
+    w = None
+    if within:
+        if not self._local():
+            raise ValueError("'only inside this folder' only works on the computer running pixelmon-gui")
+        w = home_path(within)
+    hits = self.similar.search(fp, 48, w, exclude)
+    for h in hits:
+        h["url"] = "/api/similar/file?path=" + urllib.parse.quote(h["path"])
+        h["name"] = os.path.basename(h["path"])
+        h["folder"] = os.path.dirname(h["path"])
+    return hits
+
+
+Handler._similar_defaults = _similar_defaults
+Handler._similar_hits = _similar_hits
+
+
 def _upload_layered(self, q):
     """A layered file (.draw / .ora / .psd): its 'art' layer becomes the LAB input, its 'mask' layer the mask."""
     import layered
     fname = safe_name((q.get("filename") or ["art.draw"])[0], 96)
-    n = int(self.headers.get("Content-Length") or 0)
-    if not 0 < n <= 200 * 1024 * 1024:
-        return self._json({"error": "file must be under 200 MB"}, 400)
+    n = self._length(200 * 1024 * 1024)
+    if not n:
+        return self._json({"error": "empty upload"}, 400)
+    data = self._body(n)
     try:
-        art, mask, info = layered.read_layered(fname, self.rfile.read(n))
+        art, mask, info = layered.read_layered(fname, data)
     except (ValueError, KeyError, OSError, struct_error, zlib_error, zipfile.BadZipFile) as e:
         return self._json({"error": f"couldn't read {fname}: {e}"}, 400)
     os.makedirs(LAB, exist_ok=True)
@@ -3262,7 +3918,7 @@ Handler._upload_layered = _upload_layered
 
 
 def main():
-    global REFS, PRESETS, BOARDS, LAB, GALLERY_HOME, BACKUPS, SETUP_FILE, SERVER_ARG
+    global REFS, PRESETS, BOARDS, LAB, GALLERY_HOME, BACKUPS, SETUP_FILE, SERVER_ARG, LAN
     ap = argparse.ArgumentParser(prog="pixelmon-gui", description="Web GUI for pixelmon.")
     ap.add_argument("--port", type=int, default=8190)
     ap.add_argument("--server", default=os.environ.get("PIXELMON_SERVER", ""),
@@ -3285,12 +3941,18 @@ def main():
     BACKUPS = os.path.join(GALLERY_HOME, "backups")
     SETUP_FILE = os.path.join(GALLERY_HOME, "gui-setup.json")
     SERVER_ARG = re.sub(r"\s+", "", args.server or "")
+    LAN = bool(args.lan)
     threading.Thread(target=watch_server, daemon=True).start()
     os.makedirs(os.path.join(REFS, "gui-drops"), exist_ok=True)
     os.makedirs(args.gallery, exist_ok=True)
     Handler.gallery = os.path.realpath(args.gallery)
+    fixed = recover_interrupted(Handler.gallery)
+    if fixed:
+        print(f"[pixelmon-gui] {fixed} render(s) were cut off when pixelmon-gui last stopped: marked interrupted, "
+              f"their finished pictures kept", flush=True)
     Handler.jobs = JobQueue(Handler.gallery)
     Handler.sets = setsmod.Sets(os.path.join(GALLERY_HOME, "sets"), Handler.gallery, home_path)
+    Handler.similar = similar.Index(os.path.join(GALLERY_HOME, "similar", "index.json"))
     host = "0.0.0.0" if args.lan else "127.0.0.1"
     try:
         srv = QuietServer((host, args.port), Handler)

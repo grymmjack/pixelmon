@@ -18,7 +18,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { text-transform: uppercase; letter-spacing: .04em; }
 .app { display: grid; grid-template-columns: var(--form-w, 420px) minmax(0, 1fr); height: calc(100vh - 30px); }
 .app.cork-open { grid-template-columns: var(--form-w, 420px) minmax(0, 1fr) var(--cork-w, 300px); }
-@media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: 1fr; height: auto; } .form-resize, .cork-resize { display: none; } }
+@media (max-width: 900px) { .app, .app.cork-open { grid-template-columns: minmax(0, 1fr); height: auto; } .form-resize, .cork-resize { display: none; } }
 
 /* ---- corkboard ---- */
 .cork { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; position: relative; }
@@ -295,7 +295,7 @@ select.advset { border-color: var(--accent); }
 .job { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
 .job-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .badge { font: 11px var(--mono); padding: 1px 7px; border-radius: 10px; border: 1px solid; text-transform: uppercase; }
-.badge.queued { color: var(--dim); } .badge.running { color: var(--warn); } .badge.done { color: var(--ok); }
+.badge.queued { color: var(--dim); } .badge.interrupted { color: var(--warn); } .badge.running { color: var(--warn); } .badge.done { color: var(--ok); }
 .badge.failed, .badge.cancelled { color: var(--bad); }
 .job-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmd { font: 12px var(--mono); color: var(--dim); background: var(--bg); border-radius: 4px; padding: 6px 8px; margin-top: 8px; word-break: break-all; }
@@ -639,6 +639,110 @@ fieldset.closed { padding-bottom: 2px; }
 .zooms .btn.on { border-color: var(--accent); color: var(--accent); }
 .lb-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .lb-actions .btn.on { border-color: var(--accent); color: var(--accent); }
+
+/* ---- Browse dialog (pick any file / folder under home), path tools, Open in… buttons ---- */
+dialog.browse { width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; background: var(--panel); color: var(--text);
+  border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+dialog.browse::backdrop { background: rgba(0,0,0,.65); }
+dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto auto; }
+.brhead, .brbar, .brfoot { display: flex; gap: 6px; align-items: center; padding: 8px 12px; }
+.brhead h3 { margin: 0; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; } .brhead { border-bottom: 1px solid var(--line); }
+.brhead .sp, .brfoot .sp { flex: 1; } .brhead label { display: inline-flex; gap: 4px; align-items: center; margin: 0; font-size: 12px; color: var(--dim); }
+.brbar input { flex: 1; min-width: 0; font: 12px var(--mono); }
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; padding: 0 12px 6px; color: var(--dim); }
+.crumbs .crumb { text-transform: none; letter-spacing: 0; font: 12px var(--mono); padding: 1px 5px; background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; color: var(--text); }
+.crumbs .crumb:hover { border-color: var(--accent); }
+.brmain { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px; padding: 0 12px; min-height: 0; height: min(50vh, 440px); }
+.places { display: grid; align-content: start; gap: 2px; overflow-y: auto; }
+.places .place { text-align: left; text-transform: none; letter-spacing: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: none; border: 1px solid transparent; border-radius: 3px; padding: 4px 6px; cursor: pointer; }
+.places .place:hover { background: var(--panel2); } .places .place.on { border-color: var(--accent); color: var(--accent); }
+.brright { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; min-height: 0; }
+.brright input { font-size: 12px; padding: 4px 8px; }
+.brlist { overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.brow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 8px; cursor: pointer; border-bottom: 1px solid var(--panel2); }
+.brow b { font: 500 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brow:hover, .brow:focus { background: var(--panel2); outline: none; } .brow.sel { background: rgba(85,255,255,.12); box-shadow: inset 2px 0 var(--accent); }
+.brow span { font-size: 11px; color: var(--dim); } .brow .bi { width: 22px; height: 22px; object-fit: contain; image-rendering: pixelated; background: #000; }
+.brow .empty { padding: 20px 0; }
+#brPrev { display: flex; gap: 10px; align-items: center; padding: 6px 12px 0; font: 11px var(--mono); color: var(--dim); height: 70px; overflow: hidden; }
+#brPrev img { max-width: 160px; max-height: 64px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px; border: 1px solid var(--line); }
+.brfoot { border-top: 1px solid var(--line); margin-top: 8px; flex-wrap: wrap; } .brfoot .hint { font-size: 11.5px; color: var(--dim); } .brfoot .err { margin: 0; min-height: 0; }
+@media (max-width: 640px) { .brmain { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: 58vh; } .places { display: flex; flex-wrap: wrap; } }
+.ptools { display: inline-flex; gap: 4px; flex: none; align-items: center; }
+.ptools .btn { white-space: nowrap; }
+.pathrow .ptools { margin-left: 0; }
+.droptools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.oi-btn { position: absolute; bottom: 4px; right: 4px; border: 1px solid var(--line); background: rgba(0,0,0,.72); color: var(--text);
+  border-radius: 4px; padding: 0 5px; font: 13px/18px system-ui, sans-serif; cursor: pointer; opacity: .75; text-transform: none; letter-spacing: 0; z-index: 2; }
+.oi-btn:hover, .oi-btn:focus-visible { opacity: 1; border-color: var(--accent); color: var(--accent); }
+.thumb .oi-btn { bottom: auto; top: 4px; right: 36px; }
+.thumb:has(.refine-btn) .oi-btn { right: 68px; }
+.cork-item .oi-btn { bottom: 3px; right: auto; left: 3px; opacity: 0; } .cork-item:hover .oi-btn { opacity: .9; }
+.lr-item .oi-btn { bottom: 2px; right: 2px; font-size: 11px; line-height: 14px; padding: 0 3px; opacity: 0; } .lr-item:hover .oi-btn { opacity: .9; }
+.ref .oi-btn { bottom: auto; top: 4px; right: 34px; }
+
+/* ---- gallery: search, filter chips, count; ★ / ⬇ / Load / Again on every card ---- */
+.gtools { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 10px; }
+.gtools input[type=search] { flex: 1 1 220px; min-width: 0; }
+.gtools .chips { flex-wrap: wrap; } .gtools .chip { white-space: nowrap; }
+.gtools .gcount { font: 12px var(--mono); color: var(--dim); } .gtools select { width: auto; padding: 4px 8px; }
+.gacts { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; margin-top: 4px; }
+.gacts .btn { padding: 1px 6px; font-size: 11px; }
+.gacts a.btn { padding: 1px 6px; font-size: 11px; }
+.stars { display: inline-flex; gap: 0; }
+.stars button { background: none; border: 0; padding: 0 1px; font-size: 14px; line-height: 1; cursor: pointer; color: var(--line); text-transform: none; }
+.stars button.on { color: var(--warn); } .stars button:hover { color: var(--accent); }
+.gtook { font: 10.5px var(--mono); color: var(--dim); }
+.job .joberr { margin-top: 6px; padding: 5px 8px; border-left: 3px solid var(--bad); background: rgba(255,85,85,.08); color: var(--bad);
+  font: 12px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.job .joberr.partial { border-left-color: var(--warn); color: var(--warn); background: rgba(255,255,85,.06); }
+.job .elapsed { font: 11px var(--mono); color: var(--dim); white-space: nowrap; }
+
+/* ---- per-render server chips, Setup's server table ---- */
+.srvchips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--dim); }
+.srvchips .chip.down { border-style: dashed; color: var(--dim); }
+.srvtable { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0 8px; }
+.srvtable th, .srvtable td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.srvtable th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.srvtable td code { font: 11.5px var(--mono); white-space: nowrap; }
+.srvtable .up { color: var(--ok); } .srvtable .down { color: var(--bad); }
+.srvtable .needs { display: flex; flex-wrap: wrap; gap: 3px; }
+.srvtable .need { font: 10.5px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+.srvtable .need.ok { color: var(--ok); border-color: rgba(85,255,85,.35); } .srvtable .need.bad { color: var(--bad); border-color: rgba(255,85,85,.45); }
+.srvwrap { overflow-x: auto; }
+@media (max-width: 640px) {
+  .approw { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .approw .ptools { grid-column: 1 / -1; justify-content: flex-end; }
+  .srvtable thead { display: none; } .srvtable tr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; border-bottom: 1px solid var(--line); padding: 4px 0; }
+  .srvtable td { border: 0; padding: 3px 6px; } .srvtable td:nth-child(2), .srvtable td:nth-child(5) { grid-column: 1 / -1; }
+  .srvtable td:nth-child(4)::before { content: "auto-restart: "; color: var(--dim); }
+  .steer-top .rng { flex-wrap: wrap; max-width: 100%; } .steer-top .rng input { width: 90px; }
+}
+
+/* ---- Sets: note per sprite, export options ---- */
+.set-note { display: grid; gap: 4px; } .set-note textarea { font: 12px var(--mono); min-height: 44px; }
+.set-row .k small .nt { color: var(--accent); }
+.set-export { grid-template-columns: minmax(0, 1fr); } .set-export > div:last-child { justify-content: flex-end; }
+.set-xopts { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; color: var(--dim); margin-top: 6px; }
+.set-xopts select { width: auto; padding: 2px 6px; } .set-xopts label { display: inline-flex; gap: 4px; align-items: center; margin: 0; }
+.set-big .bigacts { display: flex; gap: 4px; }
+.set-big .bigacts .btn { padding: 1px 6px; font-size: 11px; }
+
+/* ---- 🔎 Find similar pictures ---- */
+.find-q { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border: 2px dashed var(--line); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 10px; color: var(--dim); }
+.find-q.over { border-color: var(--accent); color: var(--accent); }
+.find-q img { width: 64px; height: 64px; object-fit: contain; image-rendering: pixelated; background: #000; border: 1px solid var(--line); }
+.find-q span { flex: 1 1 260px; }
+.find-idx { margin-bottom: 10px; font-size: 12.5px; } .find-idx label { display: grid; gap: 4px; color: var(--dim); margin: 6px 0; }
+.find-idx textarea { font: 12px var(--mono); }
+.find-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.fres { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; display: grid; gap: 4px; min-width: 0; }
+.fres img { width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px; cursor: zoom-in; }
+.fres .sc { font: 600 12px var(--mono); color: var(--accent); } .fres .why { font: 10.5px var(--mono); color: var(--accent2); }
+.fres .nm { font: 11.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fres .fd { font: 10.5px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fres .acts { display: flex; flex-wrap: wrap; gap: 4px; } .fres .acts .btn { padding: 1px 6px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -880,6 +984,7 @@ fieldset.closed { padding-bottom: 2px; }
       <button type="button" class="btn primary" id="renderBtn">Render</button>
       <button type="button" class="btn" id="copyCmd" title="copy the equivalent pixelmon command">Copy CLI</button>
     </div>
+    <div class="srvchips hidden" id="srvChips" title="which render servers THIS render goes to (several = spread across them); none ticked = the Setup tab's choice"></div>
     <div class="err" id="err"></div>
   </form>
 
@@ -894,6 +999,7 @@ fieldset.closed { padding-bottom: 2px; }
       <div class="tab" data-tab="sets" title="a game's sprite list: several takes each, pick one, export into the game">🎚 Sets <span id="setsTabN"></span></div>
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
+      <div class="tab" data-tab="find" title="find pictures that look like one — in your Pictures, the gallery, refs, any folder">🔎 Find</div>
       <div class="tab" data-tab="analyze" title="compare images side by side — right-click any image → 🔬 Send to Analysis">🔬 Analyze <span id="anaN"></span></div>
       <div class="tab" data-tab="adv">⚙ Advanced <span id="advN"></span></div>
       <div class="tab" data-tab="setup">🛠 Setup</div>
@@ -921,7 +1027,26 @@ fieldset.closed { padding-bottom: 2px; }
         <button type="button" class="btn small" id="galleryRestore" title="put back what's missing from a backup (never overwrites)">♻ restore…</button>
         <button type="button" class="btn small" id="galleryBackups" title="open the backups folder (~/pixelmon-gallery/backups) — right-click for other programs">📂 backups</button>
         <button type="button" class="btn small" id="galleryClear" title="delete every render in the gallery (a backup is made first)">✕ clear gallery…</button></div>
-      <div id="galleryList"></div></div>
+      <div class="gtools" id="gTools">
+        <input type="search" id="gQ" placeholder="search: words, LoRA, style, size, palette, seed, file…" aria-label="search the gallery">
+        <span class="chips" id="gChips"></span>
+        <select id="gStars" aria-label="rating filter" title="only pictures rated at least this"><option value="0">★ any</option>
+          <option value="1">★ 1+</option><option value="3">★ 3+</option><option value="5">★ 5</option><option value="-1">unrated</option></select>
+        <span class="gcount" id="gCount"></span></div>
+      <div id="galleryList"></div>
+      <div style="text-align:center;margin:12px 0"><button type="button" class="btn small hidden" id="gMore">load older renders</button></div></div>
+    <div class="pane hidden" id="findPane">
+      <div class="find-q" id="findDrop"><span id="findQ">Drop a picture here — a render, a steering ref, a corkboard item or a file from your desktop —
+        or right-click any picture → <b>🔎 Find similar</b>.</span>
+        <button type="button" class="btn small" id="findBrowse" title="pick the picture to match from disk">Browse…</button></div>
+      <div class="steer-top"><input type="text" id="findWithin" class="grow" placeholder="only inside this folder (optional)">
+        <span class="dim" id="findCount"></span></div>
+      <details class="find-idx" id="findIdx"><summary>Folders searched · <span id="findIdxSum"></span></summary>
+        <label>One folder per line (inside your home folder). Empty = your Pictures, the gallery, steering refs and corkboards.
+          <textarea id="findFolders" rows="3" spellcheck="false"></textarea></label>
+        <div class="droptools"><button type="button" class="btn small" id="findAddFolder">Browse… add a folder</button>
+          <button type="button" class="btn small primary" id="findIndex" style="flex:0 0 auto">Index now</button><span id="findProg"></span></div></details>
+      <div id="findRes"></div></div>
     <div class="pane hidden" id="analyzePane"></div>
     <div class="pane hidden" id="advPane"></div>
     <div class="pane hidden" id="setupPane"></div>
@@ -1199,7 +1324,7 @@ fieldset.closed { padding-bottom: 2px; }
 
 <div class="statusbar">
   <button type="button" id="sbAbort" class="sb-abort hidden"
-    title="stop everything now: cancel every queued job, stop the render that's running, empty ComfyUI's queue and interrupt it"><i></i> CANCEL AND ABORT</button>
+    title="stop everything now: cancel every queued job and stop the render that's running (pixelmon takes its own prompts off ComfyUI's queue) · shift-click: also empty the render server's whole queue"><i></i> CANCEL AND ABORT</button>
   <label title="desktop notifications"><input type="checkbox" id="nfOn"> Notifications:</label>
   <label><input type="checkbox" id="nfDone"> when done</label>
   <label><input type="checkbox" id="nfErr"> on error</label>
@@ -1211,6 +1336,18 @@ fieldset.closed { padding-bottom: 2px; }
   <span class="sep">|</span><span id="sbStatus"></span>
 </div>
 
+<dialog id="browseDlg" class="browse" aria-labelledby="brTitle">
+  <div class="brhead"><h3 id="brTitle">Choose</h3><span class="sp"></span><label><input type="checkbox" id="brHidden"> hidden files</label>
+    <button type="button" class="btn small" id="brCancel" aria-label="close">✕</button></div>
+  <div class="brbar"><button type="button" class="btn small" id="brUp" title="up one folder">↑</button><input id="brPath" aria-label="path" spellcheck="false">
+    <button type="button" class="btn small" id="brOpenHere" title="open this folder in the file manager">📂</button></div>
+  <div id="brCrumbs" class="crumbs"></div>
+  <div class="brmain"><nav id="brPlaces" class="places" aria-label="places"></nav>
+    <div class="brright"><input id="brFilter" placeholder="filter this folder" aria-label="filter"><div id="brList" class="brlist" role="listbox"></div></div></div>
+  <div id="brPrev"></div>
+  <div class="brfoot"><span class="hint" id="brHint"></span><span class="err" id="brErr"></span><span class="sp"></span>
+    <button type="button" class="btn primary" id="brOk" style="flex:0 0 auto">Choose</button></div>
+</dialog>
 <div id="styleTip" class="hidden"></div>
 <div id="helpTip" class="hidden"></div>
 <div id="peek" class="hidden"><div class="gstage"><img id="peekImg" alt=""><canvas id="peekGrid"></canvas></div>
@@ -1260,6 +1397,7 @@ fieldset.closed { padding-bottom: 2px; }
       <button class="btn" id="lbSame">Re-run (same seed)</button>
       <button class="btn" id="lbReroll">Reroll (new seed)</button>
       <button class="btn" id="lbCopy">Copy CLI command</button>
+      <a class="btn" id="lbDownload" href="#" download title="save this picture">⬇ Download</a>
       <button class="btn" id="lbDraw" title="open this image in DRAW (set its path in 🛠 Setup)">✎ Open in DRAW</button>
       <button class="btn" id="lbOpenIn" title="open this image in another program">Open in…</button>
       <button class="btn" id="lbReveal" title="open its folder (right-click for other programs)">📂 Open its folder</button>
@@ -1345,6 +1483,7 @@ function params(f = readForm()) {
     ...depthParams(),
     ...evoParams(),
     adv: advParams(),
+    ...(RSRV.size ? { servers: [...RSRV] } : {}),      // the chips under RENDER: this render's own server(s)
     // the edited full prompt replaces everything composed above, word for word
     ...(f.exact ? { exact: true, prompt: f.exactPos.trim(), negative: f.exactNeg.trim(), styles: [] } : {}),
   };
@@ -1671,7 +1810,7 @@ function renderRefs() {
     const ref = `${STEER.col}/${f}`, on = STEER.sel.includes(ref);
     return `<div class="ref ${on ? "on" : ""} ${DEPTH.ref === ref ? "depth" : ""}" data-ref="${esc(ref)}" title="${esc(f)}">
       <img src="/refs/${encodeURIComponent(STEER.col)}/${encodeURIComponent(f)}" loading="lazy" alt="">
-      <span class="dbtn" data-depth-ref="${esc(ref)}" title="use as the depth-lock reference">🗺</span>
+      <span class="dbtn" data-depth-ref="${esc(ref)}" title="use as the depth-lock reference">🗺</span>${oiBtn(null)}
       <input type="checkbox" class="cb" ${on ? "checked" : ""} tabindex="-1"><div class="nm">${esc(f)}</div></div>`;
   }).join("") : `<div class="empty" style="grid-column:1/-1">No images in “${esc(STEER.col)}” yet — drop some above.</div>`;
 }
@@ -2526,13 +2665,15 @@ function renderSetup() {
   const card = (key, title, img, url, blurb, how) => `<div class="appcard">${img ? `<img src="/setup-img/${img}" alt="${title} screenshot" loading="lazy">` : ""}
     <div class="in"><h3>${title}</h3><p>${blurb} <a href="${url}" target="_blank" rel="noopener">${url.replace("https://", "")} ↗</a></p>
       <div class="pathrow"><input type="text" data-setup-path="${key}" value="${esc(S[key])}" placeholder="${esc(D[key] ? "found: " + D[key] : "path to the program")}">
+        <button type="button" class="btn small" data-browse-setup="${key}" title="find the program on this computer">Browse…</button>
         ${D[key] && S[key] !== D[key] ? `<button type="button" class="btn small" data-setup-use="${key}" title="use ${esc(D[key])}">use found</button>` : ""}</div>
       <span class="okmark ${S[key] || D[key] ? "ok" : "bad"}">${S[key] ? "✓ set" : D[key] ? "✓ found automatically (leave blank to keep using it)" : "✗ not found — enter its path"}</span>
       <p>${how}</p></div></div>`;
   const rows = kind => (S[kind] || []).map((a, i) => `<div class="approw" data-kind="${kind}" data-i="${i}">
       <input type="text" data-f="name" value="${esc(a.name)}" placeholder="name"><input type="text" data-f="exec" value="${esc(a.exec)}" placeholder="program">
       <input type="text" data-f="args" value="${esc(a.args)}" placeholder="{} = the path" title="arguments; {} is replaced by the path (else it's added at the end)">
-      <button type="button" class="btn small" data-app-del title="remove">✕</button></div>`).join("") || `<p class="dim" style="margin:0">None yet.</p>`;
+      <span class="ptools"><button type="button" class="btn small" data-browse-app title="find the program on this computer">Browse…</button>
+      <button type="button" class="btn small" data-app-del title="remove">✕</button></span></div>`).join("") || `<p class="dim" style="margin:0">None yet.</p>`;
   const adder = kind => { const have = new Set((S[kind] || []).map(a => a.exec + " " + a.args));
     const found = (D[kind] || []).filter(a => !have.has(a.exec + " " + a.args));
     return `<div class="addrow"><select data-add="${kind}"><option value="">➕ add program…</option>
@@ -2550,7 +2691,8 @@ function renderSetup() {
         <datalist id="setupServers">${Object.entries(SV).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</datalist>
         <button type="button" class="btn small" id="setupServerTest">test</button>
         <span id="setupServerState" class="dim"></span></div>
-      ${SETUP.server_locked ? `<p class="dim">Set by <code>--server</code> / <code>PIXELMON_SERVER</code> when pixelmon-gui started.</p>` : ""}</fieldset>`;
+      ${SETUP.server_locked ? `<p class="dim">Set by <code>--server</code> / <code>PIXELMON_SERVER</code> when pixelmon-gui started.</p>` : ""}
+      <div class="srvwrap" id="srvTable"><p class="dim" style="margin:6px 0 0">checking every server in servers.json…</p></div></fieldset>`;
   $("setupPane").innerHTML = `<p class="setup-intro">The programs pixelmon hands your images and folders to. <b>Right-click any image</b>
       (gallery, queue, lightbox, corkboard, presets, LAB, steering) or <b>any 📂 folder button</b> for <b>Open in…</b>.
       Saved in <code>~/pixelmon-gallery/gui-setup.json</code>.</p>
@@ -2579,12 +2721,12 @@ function renderSetup() {
     <fieldset class="setup-sect"><legend>Folder programs</legend>
       <p>Offered in <b>Open in…</b> for folders (right-click any 📂 button).</p>
       <div class="approws">${rows("folder_apps")}</div>${adder("folder_apps")}
-      <div class="addrow" style="margin-top:10px"><label>📂 buttons open in
+      <div class="addrow" style="margin-top:10px"><label>📂 buttons (and Show in folder) open in
         <select id="folderDefault"><option value="os" ${fd === "os" ? "selected" : ""}>the system file manager</option>
           <option value="kaleidotron" ${fd === "kaleidotron" ? "selected" : ""}>Kaleidotron</option>
           ${(S.folder_apps || []).map((a, i) => `<option value="dir:${i}" ${fd === `dir:${i}` ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
         </select></label></div></fieldset>`;
-  checkServer();
+  checkServer(); loadServerTable();
 }
 function initSetup() {
   const pane = $("setupPane");
@@ -2605,8 +2747,18 @@ function initSetup() {
     (SETUP.setup[kind] = SETUP.setup[kind] || []).push(a);
     renderSetup(); saveSetup();
   });
-  pane.addEventListener("click", e => {
-    if (e.target.id === "setupServerTest") return checkServer();
+  pane.addEventListener("click", async e => {
+    if (e.target.id === "setupServerTest") { loadServerTable(); return checkServer(); }
+    const su = e.target.closest("[data-srv-use]");
+    if (su) { SETUP.setup.server = su.dataset.srvUse; $("setupServer").value = su.dataset.srvUse; saveSetup(); setTimeout(() => { checkServer(); loadServerTable(); }, 700); return; }
+    const bs = e.target.closest("[data-browse-setup]"), ba = e.target.closest("[data-browse-app]");
+    if (bs || ba) {
+      const row = ba && ba.closest(".approw"), cur = bs ? SETUP.setup[bs.dataset.browseSetup] || "" : SETUP.setup[row.dataset.kind][+row.dataset.i].exec;
+      const p = await pickPath({ kind: "file", start: cur && cur.includes("/") ? cur : "", title: "Choose the program" }); if (!p) return;
+      if (bs) SETUP.setup[bs.dataset.browseSetup] = p;
+      else { const a = SETUP.setup[row.dataset.kind][+row.dataset.i]; a.exec = p; if (!a.name || a.name === "My program") a.name = p.split("/").pop(); }
+      renderSetup(); return saveSetup();
+    }
     const use = e.target.dataset.setupUse;
     if (use) { SETUP.setup[use] = SETUP.detected[use]; renderSetup(); return saveSetup(); }
     if (e.target.closest("[data-app-del]")) {
@@ -2626,6 +2778,7 @@ function imageTargetOf(el) {
   const ci = el.closest(".cork-item"); if (ci) return { board: CORK.board, file: ci.dataset.cork };
   const pc = el.closest(".pcard[data-pid]"); if (pc && el.tagName === "IMG") return { preset: pc.dataset.pid };
   const lr = el.closest("#labRecent img[data-labfile]"); if (lr) return { lab: lr.dataset.labfile };
+  const lri = el.closest("#labRecent .lr-item"); if (lri && lri.querySelector("img[data-labfile]")) return { lab: lri.querySelector("img").dataset.labfile };
   if (el.closest("#labDrop .cropwrap") && LABS.file) return { lab: LABS.file };
   const rf = el.closest(".ref[data-ref]"); if (rf) return { ref: rf.dataset.ref };
   if (el.id === "lbImg" && lbItem) return { src: { dir: lbItem.job.dir, file: lbItem.o.file } };
@@ -2668,6 +2821,8 @@ function openMenu(x, y, target, extras = []) {
     items.push(["os", "📂 File manager (system)"]);
     if (ktPath()) items.push(["kaleidotron", "🌀 Kaleidotron"]);
     (S.folder_apps || []).forEach((a, i) => items.push([`dir:${i}`, a.name]));
+  } else if (target.path && !isImgPath(target.path)) {      // a list, a zip, a model…: its own program
+    items.push(["os", "System default"]);
   } else {
     if (drawPath()) items.push(["draw", "✎ DRAW"]);
     if (ktPath()) items.push(["kaleidotron", "🌀 Kaleidotron"]);
@@ -2675,11 +2830,15 @@ function openMenu(x, y, target, extras = []) {
     items.push(["os", "System default"]);
   }
   const m = document.createElement("div"); m.id = "openMenu"; m.setAttribute("role", "menu");
-  const sendable = target && !isDir && !target.analysis && !target.analysis_export;
-  m.innerHTML = (sendable ? `<button type="button" role="menuitem" data-send-analysis>🔬 Send to Analysis</button><hr>` : "") + (extras.length ? `<div class="om-h">Arrange</div>` + extras.map(([label], i) =>
+  const sendable = target && !isDir && !target.analysis && !target.analysis_export && !target.path && !target.set_now;
+  const what = isDir ? "Open folder in" : target && target.path && !isImgPath(target.path) ? "Open file in" : "Open image in";
+  const findable = target && !isDir && !target.analysis_export && (!target.path || isImgPath(target.path));
+  m.innerHTML = (sendable ? `<button type="button" role="menuitem" data-send-analysis>🔬 Send to Analysis</button>` : "")
+    + (findable ? `<button type="button" role="menuitem" data-find-similar>🔎 Find similar</button>` : "") + (sendable || findable ? "<hr>" : "") + (extras.length ? `<div class="om-h">Arrange</div>` + extras.map(([label], i) =>
         `<button type="button" role="menuitem" data-extra="${i}">${esc(label)}</button>`).join("") + (target ? "<hr>" : "") : "")
-    + (target ? `<div class="om-h">${isDir ? "Open folder in" : "Open image in"}</div>`
+    + (target ? `<div class="om-h">${what}</div>`
       + items.map(([k, n]) => `<button type="button" role="menuitem" data-open-app="${esc(k)}">${esc(n)}</button>`).join("")
+      + (isDir ? "" : `<hr><button type="button" role="menuitem" data-open-reveal title="open the folder it's in">📂 Show in folder</button>`)
       + `<hr><button type="button" data-open-setup>🛠 Set up programs…</button>` : "");
   document.body.appendChild(m);
   m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
@@ -2700,8 +2859,10 @@ function openMenu(x, y, target, extras = []) {
       closeOpenMenu(); return act();
     }
     if (e.target.closest("[data-send-analysis]")) { closeOpenMenu(); return sendToAnalysis(target); }
+    if (e.target.closest("[data-find-similar]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("find"); return findSearch({ target }); }
     const b = e.target.closest("[data-open-app]");
     if (b) { closeOpenMenu(); openWith(b.dataset.openApp, target); }
+    if (e.target.closest("[data-open-reveal]")) { closeOpenMenu(); openWith((SETUP && SETUP.setup && SETUP.setup.folder_default) || "os", { ...target, reveal: true }); }
     if (e.target.closest("[data-open-setup]")) { closeOpenMenu(); if (!$("lb").classList.contains("hidden")) closeLb(); switchTab("setup"); }
   });
   m.querySelector("button").focus();
@@ -2727,6 +2888,404 @@ function initOpenWith() {
   $("peekOpenIn").onclick = e => { e.stopPropagation(); const t = peekTarget(); if (t) openMenu(...at(e.currentTarget), t); };
 }
 
+// ---------------- browse & open: pick any file or folder from disk, open anything in its program ----------------
+// Every place the GUI takes or shows a file or folder gets the same tools: Browse… (this dialog, served by the
+// machine running pixelmon-gui and confined to your home folder) and ↗ Open in… (DRAW, Kaleidotron, the programs
+// in 🛠 Setup or the system default; folders in the file manager). soundmon-gui has the same dialog and buttons.
+const EXT = { img: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"], text: [".txt", ".tsv", ".csv", ".md"],
+              zip: [".zip"], layered: [".draw", ".ora", ".psd"] };
+let lastDir = store.get("browseDir", "~");
+const isImgPath = p => EXT.img.some(x => String(p).toLowerCase().endsWith(x));
+const fmtBytes = n => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB";
+const tilde = p => { const h = META && META.home; return !h ? p : p === h ? "~" : p.startsWith(h + "/") ? "~" + p.slice(h.length) : p; };
+const fmtT = s => { s = Math.max(0, Math.round(s)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${Math.floor(s / 3600)}h ${String(Math.floor(s / 60) % 60).padStart(2, "0")}m`; };
+
+function pickPath({ kind = "file", ext = null, start = "", title = "" } = {}) {
+  const dlg = $("browseDlg");
+  if (META && META.local === false) { showErr("Browsing files only works on the computer running pixelmon-gui."); return Promise.resolve(null); }
+  return new Promise(resolve => {
+    let cur = null, sel = null, done = false;
+    const finish = v => { if (done) return; done = true; if (dlg.open) dlg.close(); if (v && cur) { lastDir = cur.path; store.set("browseDir", lastDir); } resolve(v || null); };
+    $("brTitle").textContent = title || (kind === "dir" ? "Choose a folder" : "Choose a file");
+    $("brOk").textContent = kind === "dir" ? "Use this folder" : "Use this file";
+    $("brHint").textContent = kind === "dir" ? "Open a folder, then press Use this folder." : (ext ? "Showing " + ext.join(" ") + " · " : "") + "double-click picks";
+    $("brFilter").value = ""; $("brErr").textContent = "";
+    const go = async (path, fallback) => {
+      try { cur = await api("/api/browse?" + new URLSearchParams({ path: path || "~", kind, ext: (ext || []).join(","), hidden: $("brHidden").checked ? "1" : "" })); }
+      catch (e) { $("brErr").textContent = e.message; if (!cur && fallback !== false) go(fallback || "~", fallback ? "~" : false); return; }
+      sel = null; $("brErr").textContent = ""; $("brPath").value = cur.path; draw(); $("brList").scrollTop = 0;
+    };
+    const draw = () => {
+      $("brCrumbs").innerHTML = cur.crumbs.map((c, i) => `${i ? "<span>/</span>" : ""}<button type="button" class="crumb" data-go="${esc(c.path)}">${esc(c.name)}</button>`).join("");
+      $("brPlaces").innerHTML = cur.places.map(p => `<button type="button" class="place ${p.path === cur.path ? "on" : ""}" data-go="${esc(p.path)}" title="${esc(p.path)}">${esc(p.name)}</button>`).join("");
+      const q = $("brFilter").value.trim().toLowerCase(), hit = n => !q || n.toLowerCase().includes(q), rows = [];
+      if (cur.parent) rows.push(`<div class="brow dir" tabindex="0" data-go="${esc(cur.parent)}"><span>↰</span><b>..</b><span></span></div>`);
+      for (const d of cur.dirs) if (hit(d)) rows.push(`<div class="brow dir" tabindex="0" data-go="${esc(cur.path + cur.sep + d)}" title="open ${esc(d)}"><span>📁</span><b>${esc(d)}</b><span></span></div>`);
+      for (const f of cur.files) if (hit(f.name)) {
+        const full = cur.path + cur.sep + f.name;
+        rows.push(`<div class="brow file ${sel === full ? "sel" : ""}" tabindex="0" role="option" data-file="${esc(full)}">${isImgPath(f.name)
+          ? `<img class="bi" loading="lazy" src="/api/disk/file?path=${encodeURIComponent(full)}" alt="">` : "<span>·</span>"}<b>${esc(f.name)}</b><span>${fmtBytes(f.size)}</span></div>`);
+      }
+      if (rows.length <= (cur.parent ? 1 : 0)) rows.push(`<div class="empty">${kind === "dir" ? "No sub-folders here." : "Nothing here matches."}</div>`);
+      if (cur.more) rows.push(`<div class="empty" style="padding:8px">…and ${cur.more} more; type to filter.</div>`);
+      $("brList").innerHTML = rows.join("");
+      showSel();
+    };
+    const showSel = () => {                       // selecting a file only restyles the list (a re-render would eat the double-click)
+      $("brList").querySelectorAll(".brow.file").forEach(r => r.classList.toggle("sel", r.dataset.file === sel));
+      $("brOk").disabled = kind !== "dir" && !sel;
+      $("brPrev").innerHTML = sel && isImgPath(sel) ? `<img src="/api/disk/file?path=${encodeURIComponent(sel)}" alt=""><span>${esc(sel.split(cur.sep).pop())}</span>` : sel ? `<span>${esc(sel)}</span>` : "";
+      const im = $("brPrev").querySelector("img");
+      if (im) im.onload = () => { const sp = $("brPrev").querySelector("span"); if (sp) sp.textContent += `  ·  ${im.naturalWidth}×${im.naturalHeight}`; };
+    };
+    const pickRow = r => { if (r.dataset.go) return go(r.dataset.go); sel = r.dataset.file; $("brPath").value = sel; showSel(); };
+    $("brList").onclick = e => { const r = e.target.closest("[data-go], [data-file]"); if (!r) return;
+      if (e.detail >= 2 && r.dataset.file) return finish(r.dataset.file); pickRow(r); };
+    $("brList").ondblclick = e => { const f = e.target.closest("[data-file]"); if (f) finish(f.dataset.file); };
+    $("brList").onkeydown = e => { const r = e.target.closest("[data-go], [data-file]"); if (r && e.key === "Enter") { e.preventDefault(); r.dataset.file && sel === r.dataset.file ? finish(sel) : pickRow(r); } };
+    $("brCrumbs").onclick = $("brPlaces").onclick = e => { const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go); };
+    $("brFilter").oninput = () => cur && draw();
+    $("brHidden").onchange = () => go(cur ? cur.path : start);
+    $("brPath").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); go($("brPath").value.trim()); } };
+    $("brUp").onclick = () => cur && cur.parent && go(cur.parent);
+    $("brOpenHere").onclick = () => cur && reveal("dir", cur.path);
+    $("brOk").onclick = () => finish(kind === "dir" ? cur && cur.path : sel);
+    $("brCancel").onclick = () => finish(null);
+    dlg.onclose = () => finish(null);
+    dlg.showModal();
+    go(start || lastDir, start ? lastDir : "~");
+  });
+}
+// the Open in… menu under a button (the same menu right-click shows)
+function openAt(target, anchor) {
+  const r = anchor.getBoundingClientRect();
+  hidePeek(); openMenu(r.left, r.bottom + 4, target);
+}
+// Browse… + Open beside a typed path. kind "dir" | "file"; onPick(path) runs after a pick (the input is filled first).
+function addPathTools(input, { kind = "dir", ext = null, title = "", onPick = null } = {}) {
+  if (!input || input.dataset.ptools) return;
+  input.dataset.ptools = "1";
+  const box = document.createElement("span"); box.className = "ptools";
+  box.innerHTML = `<button type="button" class="btn small" data-pt-browse title="${kind === "dir" ? "pick a folder on this computer" : "pick a file on this computer"}">Browse…</button>`
+    + `<button type="button" class="btn small" data-pt-open title="${kind === "dir" ? "open this folder (file manager, Kaleidotron, your programs)" : "open this file in…"}">↗</button>`;
+  box.querySelector("[data-pt-browse]").onclick = async () => {
+    const p = await pickPath({ kind, ext, start: input.value.trim(), title });
+    if (!p) return;
+    input.value = tilde(p);
+    input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true }));
+    if (onPick) onPick(p);
+  };
+  box.querySelector("[data-pt-open]").onclick = e => {
+    const v = input.value.trim(); if (!v) return showErr("Type or Browse… to a path first.");
+    openAt(kind === "dir" ? { folder: "dir", arg: v } : { path: v }, e.currentTarget);
+  };
+  if (input.parentElement && input.parentElement.tagName === "LABEL") {        // a label stacks its input: keep the row together
+    const row = document.createElement("div"); row.className = "pathrow";
+    input.replaceWith(row); row.append(input, box);
+  } else input.after(box);
+}
+// a picked file goes where a drop would put it (to: refs | lab | board | bundle); the server copies it
+async function fromPath(path, body) { return api("/api/input/from-path", { path, ...body }); }
+async function browseRef() {
+  const p = await pickPath({ kind: "file", ext: EXT.img, title: `Add a steering image to “${STEER.col}”` }); if (!p) return;
+  try { const r = await fromPath(p, { to: "refs", collection: STEER.col }); STEER.sel.push(r.ref); STEER.use = true; $("useSteer").checked = true;
+    await loadRefs(); ok(`added ${r.ref} (a copy of ${tilde(r.from)})`); } catch (e) { showErr(e); }
+}
+async function browseDepth() {
+  const p = await pickPath({ kind: "file", ext: EXT.img, title: "Depth-lock reference" }); if (!p) return;
+  try { await setDepthRef((await fromPath(p, { to: "refs", collection: "depth" })).ref); } catch (e) { showErr(e); }
+}
+async function browseLab() {
+  const p = await pickPath({ kind: "file", ext: [...EXT.img, ...EXT.layered], title: "LAB input image (or a layered .draw / .ora / .psd)" }); if (!p) return;
+  try { const r = await fromPath(p, { to: "lab" }); r.info ? await labApplyLayered(r, p.split("/").pop()) : await labSet(r); } catch (e) { showErr(e); }
+}
+async function browseBoard() {
+  const p = await pickPath({ kind: "file", ext: EXT.img, title: `Pin a picture to “${CORK.board}”` }); if (!p) return;
+  try { await fromPath(p, { to: "board", board: CORK.board }); await loadBoards(); } catch (e) { showErr(e); }
+}
+async function browseBundle() {
+  const p = await pickPath({ kind: "file", ext: EXT.zip, title: "Import a preset or folder .zip" }); if (!p) return;
+  try { importDone(await fromPath(p, { to: "bundle", folder: saveFolder() })); } catch (e) { showErr(e); }
+}
+async function browseList(title) {           // a manifest .txt from disk: its text (Batch / the Sets editor)
+  const p = await pickPath({ kind: "file", ext: EXT.text, title }); if (!p) return null;
+  return api("/api/batch/read", { path: p });
+}
+function initBrowse() {
+  // every typed path: Browse… + ↗
+  addPathTools($("batchPath"), { kind: "file", ext: EXT.text, title: "Batch list (art-prompts.txt)", onPick: () => $("batchLoad").click() });
+  addPathTools($("batchExport"), { kind: "dir", title: "Export the batch into…" });
+  addPathTools($("batchFitDir"), { kind: "dir", title: "Old sprites folder" });
+  addPathTools($("setEdFolder"), { kind: "dir", title: "The game's art folder" });
+  addPathTools($("setEdFitDir"), { kind: "dir", title: "Old sprites folder" });
+  const man = $("setEdManifest");
+  man.insertAdjacentHTML("afterend", `<div class="droptools"><button type="button" class="btn small" id="setEdBrowse" title="load a sprite list (.txt) from this computer">Browse… a list</button><span id="setEdFrom"></span></div>`);
+  $("setEdBrowse").onclick = async () => { try { const r = await browseList("Sprite list for this set"); if (!r) return; man.value = r.text; $("setEdFrom").textContent = "from " + tilde(r.path);
+    if (!$("setEdName").value.trim()) $("setEdName").value = r.path.split("/").pop().replace(/\.\w+$/, ""); } catch (e) { showErr(e); } };
+  // drop zones: a Browse… beside every "drop or click"
+  $("drop").insertAdjacentHTML("beforeend", ` <button type="button" class="btn small" id="dropBrowse" title="pick a picture anywhere in your home folder (copied into this collection)">Browse…</button>`);
+  $("dropBrowse").onclick = e => { e.stopPropagation(); browseRef(); };
+  $("depthPreview").insertAdjacentHTML("beforebegin", `<button type="button" class="btn small" id="depthBrowse" title="pick the depth reference from disk">Browse…</button>
+    <button type="button" class="btn small" id="depthOpen" title="open the depth reference in…">↗</button>`);
+  $("depthBrowse").onclick = browseDepth;
+  $("depthOpen").onclick = e => DEPTH.ref ? openAt({ ref: DEPTH.ref }, e.currentTarget) : showErr("No depth reference yet.");
+  $("labDrop").insertAdjacentHTML("afterend", `<div class="droptools"><button type="button" class="btn small" id="labBrowse" title="pick the input from disk (pictures, or DRAW / Krita / GIMP layers)">Browse…</button>
+    <button type="button" class="btn small" id="labOpenIn" title="open the input in DRAW / Kaleidotron / your programs">↗ open in…</button>
+    <button type="button" class="btn small" id="labRevealDir" title="open the LAB inputs folder">📂</button></div>`);
+  $("labBrowse").onclick = browseLab;
+  $("labOpenIn").onclick = e => LABS.file ? openAt({ lab: LABS.file }, e.currentTarget) : showErr("No LAB input yet.");
+  $("labRevealDir").onclick = () => reveal("lab");
+  $("boardReveal").insertAdjacentHTML("beforebegin", `<button class="btn small" id="boardBrowse" title="pin a picture from anywhere in your home folder">Browse…</button>`);
+  $("boardBrowse").onclick = browseBoard;
+  // ↗ on every listed picture: the same Open in… menu as right-click (capture: before the item's own click)
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-openin]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    let t = b.dataset.openin ? JSON.parse(b.dataset.openin) : imageTargetOf(b);
+    if (!t) { const pc = b.closest(".pcard[data-pid]"); if (pc) t = { preset: pc.dataset.pid }; }
+    if (t) openAt(t, b);
+  }, true);
+}
+const oiBtn = (target, title = "open in… (DRAW, Kaleidotron, your programs) — or right-click") =>
+  `<button type="button" class="oi-btn" data-openin="${target ? esc(JSON.stringify(target)) : ""}" title="${esc(title)}" aria-label="open in">↗</button>`;
+
+const oiBtnInline = (target, title = "open in…") =>
+  `<button type="button" class="btn small" data-openin="${esc(JSON.stringify(target))}" title="${esc(title)}" aria-label="open in">↗</button>`;
+
+// ---------------- gallery: search, filter chips, ★ ratings, ⬇ / Load / Again on every card ----------------
+const GAL = { q: "", chip: store.get("galChip", "all"), stars: +store.get("galStars", 0), limit: 300, total: 0 };
+function galTags(j) {
+  const p = j.params || {}, t = [];
+  t.push(p.art ? "art" : p.raw ? "raw" : "pixel");
+  if ((j.models && j.models.length) || p.turnaround) t.push("3d");
+  if (p.control || p.inpaint || p.lab_init) t.push("lab");
+  if (p.set) t.push("set");
+  if (p.parent) t.push("evolve");
+  if ((j.group || "").startsWith("sweep-") || p.post_sweep) t.push("sweep");
+  if (p.steer && p.steer.length) t.push("steered");
+  t.push("lora:" + (p.lora || "default").replace(".safetensors", ""));
+  return t;
+}
+const GAL_KINDS = [["pixel", "pixel art"], ["art", "art"], ["raw", "raw"], ["lab", "⚗ LAB / edits"], ["3d", "🧊 3D"], ["set", "🎚 sets"],
+                   ["evolve", "🧬 evolved"], ["sweep", "sweeps"], ["steered", "🧭 steered"]];
+function galText(j, o) {
+  const p = j.params || {}, f = p.form || {};
+  return [p.prompt, f.subject, p.lora, (p.styles || []).join(" "), p.out, p.palette, p.dither, o.seed, "s" + o.seed, o.file, j.dir,
+          j.label, o.label, p.set && p.set.key].filter(x => x != null && x !== "").join(" ").toLowerCase();
+}
+async function loadGallery(more) {
+  if (more) GAL.limit += 300;
+  try { const r = await api("/api/gallery?limit=" + GAL.limit); GALLERY = r.items; GAL.total = r.total; } catch { return; }
+  for (const j of GALLERY) JOBS[j.id] = JOBS[j.id] || j;
+  drawGallery();
+}
+function drawGallery() {
+  const words = GAL.q.trim().toLowerCase().split(/\s+/).filter(Boolean), cells = [], counts = {};
+  let all = 0;
+  for (const j of GALLERY) {
+    const tags = galTags(j);
+    for (const t of tags) counts[t] = (counts[t] || 0) + j.outputs.length;
+    for (const o of j.outputs) {
+      all++;
+      const r = (j.ratings || {})[o.file] || 0;
+      if (GAL.chip !== "all" && !tags.includes(GAL.chip)) continue;
+      if (GAL.stars > 0 ? r < GAL.stars : GAL.stars < 0 ? r > 0 : false) continue;
+      if (words.length) { const txt = galText(j, o); if (!words.every(w => txt.includes(w))) continue; }
+      cells.push(thumbHtml(j, o, 0, o.label ? esc(o.label) : `${esc((j.params.lora || "").replace(".safetensors", ""))} · s${o.seed ?? "?"}`, { gallery: true }));
+    }
+  }
+  const loras = Object.keys(counts).filter(k => k.startsWith("lora:")).sort((a, b) => counts[b] - counts[a]).slice(0, 8);
+  const chip = (k, l) => `<span class="chip ${GAL.chip === k ? "on" : ""}" data-galchip="${esc(k)}">${esc(l)} <span style="color:var(--dim)">${k === "all" ? all : counts[k] || 0}</span></span>`;
+  $("gChips").innerHTML = chip("all", "All") + GAL_KINDS.filter(([k]) => counts[k]).map(([k, l]) => chip(k, l)).join("")
+    + (loras.length > 1 ? loras.map(k => chip(k, k.slice(5) || "default")).join("") : "");
+  const readAll = GALLERY.length < GAL.limit || GAL.total <= GAL.limit;
+  $("gCount").textContent = `${cells.length} of ${all} picture${all === 1 ? "" : "s"}` + (readAll ? "" : ` · newest ${GAL.limit} of ${GAL.total} renders`);
+  $("gMore").classList.toggle("hidden", readAll);
+  $("galleryList").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>`
+    : `<div class="empty">${all ? "Nothing matches — clear the search or pick another chip." : "No renders in the gallery yet."}</div>`;
+  fillPalettes($("galleryPane"));
+}
+const starsHtml = (dir, file, r) => `<span class="stars" data-rdir="${esc(dir)}" data-rfile="${esc(file)}" title="rate it (click the same star again to clear)">${[1, 2, 3, 4, 5].map(n =>
+  `<button type="button" class="${n <= r ? "on" : ""}" data-stars="${n}" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}</span>`;
+function galleryActs(job, o) {
+  return `<div class="gacts">${starsHtml(job.dir, o.file, (job.ratings || {})[o.file] || 0)}
+    <a class="btn small" href="${fileUrl(job, o)}?download" download="${esc(o.file)}" title="download ${esc(o.file)}">⬇</a>
+    <button type="button" class="btn small" data-gload="${esc(job.id)}" data-gfile="${esc(o.file)}" title="load these settings (and this seed) into the form">Load</button>
+    <button type="button" class="btn small" data-gagain="${esc(job.id)}" data-gfile="${esc(o.file)}" title="render these settings again with a new seed">Again</button>
+    ${job.started && job.finished ? `<span class="gtook" title="how long the render took">${fmtT(job.finished - job.started)}</span>` : ""}</div>`;
+}
+function initGallery() {
+  $("gQ").oninput = e => { GAL.q = e.target.value; drawGallery(); };
+  $("gStars").value = String(GAL.stars);
+  $("gStars").onchange = e => { GAL.stars = +e.target.value; store.set("galStars", GAL.stars); drawGallery(); };
+  $("gChips").onclick = e => { const c = e.target.closest("[data-galchip]"); if (!c) return; GAL.chip = c.dataset.galchip; store.set("galChip", GAL.chip); drawGallery(); };
+  $("gMore").onclick = () => loadGallery(true);
+  // card actions run before the card's own click (which opens the lightbox)
+  document.addEventListener("click", async e => {
+    const acts = e.target.closest(".gacts"); if (!acts) return;
+    e.stopPropagation();
+    if (e.target.closest("a[download]")) return;                    // the browser downloads it
+    e.preventDefault();
+    const st = e.target.closest("[data-stars]");
+    if (st) {
+      const box = st.closest(".stars"), job = GALLERY.find(j => j.dir === box.dataset.rdir), cur = job && (job.ratings || {})[box.dataset.rfile] || 0;
+      const n = +st.dataset.stars === cur ? 0 : +st.dataset.stars;
+      try { const r = await api("/api/rate", { dir: box.dataset.rdir, file: box.dataset.rfile, stars: n });
+        if (job) job.ratings = r.ratings;
+        box.querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.stars <= n));
+        if (GAL.stars) drawGallery();
+      } catch (err) { showErr(err); }
+      return;
+    }
+    const ld = e.target.closest("[data-gload]"), ag = e.target.closest("[data-gagain]"), b = ld || ag; if (!b) return;
+    const job = JOBS[b.dataset.gload || b.dataset.gagain] || GALLERY.find(j => j.id === (b.dataset.gload || b.dataset.gagain));
+    const o = job && job.outputs.find(x => x.file === b.dataset.gfile); if (!o) return;
+    if (ld) { loadJobSettings(job, o.seed); ok(`loaded the settings of ${o.file}`); }
+    else render({ ...job.params, seed: -1 });
+  }, true);
+}
+// live elapsed time on running queue cards
+function tickElapsed() {
+  const now = Date.now() / 1000;
+  document.querySelectorAll(".elapsed[data-started]").forEach(s => { if (!s.dataset.finished) s.textContent = "⏱ " + fmtT(now - +s.dataset.started); });
+}
+
+// ---------------- tooltips from pixelmon's own --help (S4): every form control names its CLI flag ----------------
+// The help text comes from the add_argument(help=…) calls in pixelmon.py (/api/meta "cli"), so it can't drift
+// from the CLI; it's added under any hand-written title, and the ⓘ HELP popups stay as they are.
+const CLI_FLAGS = { lora: "--lora", lora_strength: "--lora-strength", negative: "--negative", seed: "--seed", n: "--number",
+  name: "--name", steps: "--steps", cfg: "--cfg", outPreset: "--out", outW: "--out", outH: "--out", snap_pixels: "--snap-pixels",
+  snap_method: "--snap-method", transparent: "--transparent", cutout: "--cutout", cutout_key: "--cutout-key", fit_subject: "--fit-subject",
+  fast: "--fast", art: "--art", raw: "--raw", no_sprite_suffix: "--no-sprite-suffix", tile: "--tile", tile_axes: "--tile",
+  pixel_size: "--pixel-size", palette: "--palette", color_match: "--color-match", palette_strength: "--palette-strength",
+  ditherChips: "--dither", dither_amount: "--dither-amount", despeckle: "--despeckle", thin_lines: "--thin-lines",
+  pixel_angles: "--pixel-angles", gridChips: "--angle-grid", styles: "--style", exact: "--exact-prompt",
+  steerStrength: "--steer-strength", steerWeight: "--steer-weight-type", steerCombine: "--steer-combine", steerStart: "--steer-start",
+  steerEnd: "--steer-end", useSteer: "--steer", useDepth: "--depth", depthStrength: "--depth-strength", depthStart: "--depth-start",
+  depthEnd: "--depth-end", depthRaw: "--depth-raw", depthMaskBg: "--depth-mask-bg", labMode: "--control-mode",
+  labStrength: "--control-strength", labDenoise: "--denoise", evoDenoise: "--denoise", batchFit: "--fit-to", setEdFit: "--fit-to" };
+function initCliTips() {
+  const cli = (META && META.cli) || {};
+  for (const [id, flag] of Object.entries(CLI_FLAGS)) {
+    const el = $(id), h = cli[flag] && cli[flag].help; if (!el || !h) continue;
+    const tip = `${flag}: ${h.replace(/\s+/g, " ").trim()}`;
+    el.dataset.flag = flag;
+    for (const t of [el, el.type === "checkbox" ? el.closest("label") : null]) if (t && !(t.title || "").includes(flag)) t.title = (t.title ? t.title + "\n\n" : "") + tip;
+  }
+}
+
+// ---------------- per-render server chips (S13) + Setup's table of every render server (S12) ----------------
+let RSRV = new Set(store.get("renderServers", []));
+function renderSrvChips() {
+  const names = (META && META.known_servers) || [];
+  RSRV = new Set([...RSRV].filter(n => names.includes(n)));
+  const box = $("srvChips");
+  box.classList.toggle("hidden", names.length < 2);
+  if (names.length < 2) return;
+  const def = (META.server || "").split(",");
+  box.innerHTML = `<span>render on</span>` + names.map(n => `<span class="chip ${RSRV.has(n) ? "on" : ""}" data-rsrv="${esc(n)}"
+      title="${RSRV.has(n) ? "this render goes here" : "tick to send this render here"}${def.includes(n) ? " · the Setup tab's choice" : ""}">${esc(n)}${def.includes(n) && !RSRV.size ? " ✓" : ""}</span>`).join("")
+    + `<span>${RSRV.size ? (RSRV.size > 1 ? "· spread across them" : "") : "· (Setup's choice)"}</span>`;
+}
+function initSrvChips() {
+  $("srvChips").onclick = e => { const c = e.target.closest("[data-rsrv]"); if (!c) return;
+    RSRV.has(c.dataset.rsrv) ? RSRV.delete(c.dataset.rsrv) : RSRV.add(c.dataset.rsrv); store.set("renderServers", [...RSRV]); renderSrvChips(); };
+  renderSrvChips();
+}
+async function loadServerTable() {
+  const box = $("srvTable"); if (!box) return;
+  let r; try { r = await api("/api/servers"); } catch (e) { box.textContent = e.message; return; }
+  if (!$("srvTable")) return;
+  box.innerHTML = `<table class="srvtable"><thead><tr><th>server</th><th>address</th><th>state</th><th>auto-restart</th><th>what it can do (models pixelmon needs)</th><th></th></tr></thead><tbody>${r.servers.map(s => `<tr>
+      <td><b>${esc(s.name)}</b>${s.default ? ' <span class="dim">default</span>' : ""}${s.selected ? ' <span style="color:var(--accent)">● renders here</span>' : ""}</td>
+      <td><code>${esc(s.url || "?")}</code></td>
+      <td class="${s.up ? "up" : "down"}">${s.up ? "✓ up" : "✗ down"}</td>
+      <td>${s.restart ? "yes" : '<span class="dim">no</span>'}</td>
+      <td>${s.models ? `<div class="needs">${s.models.map(m => `<span class="need ${m.ok ? "ok" : "bad"}" title="${esc(m.ok ? m.need : m.why)}">${m.ok ? "✓" : "✗"} ${esc(m.feature)}</span>`).join("")}</div>` : `<span class="dim">${s.up ? "couldn't read its models" : "—"}</span>`}</td>
+      <td>${r.locked || s.selected ? "" : `<button type="button" class="btn small" data-srv-use="${esc(s.name)}" title="render here from now on (Setup's choice)">use</button>`}</td></tr>`).join("")}</tbody></table>`
+    + `<p class="dim" style="margin:0;font-size:12px">Hover a ✗ to see which model or custom node is missing. Pick boxes for a single render with the chips under RENDER.</p>`;
+}
+
+
+// ---------------- 🔎 Find similar pictures (gui/similar.py): shape + colours + proportions, no GPU ----------------
+const FIND = { q: null, timer: null };
+async function findStatus() {
+  let r; try { r = await api("/api/similar/status"); } catch (e) { return showErr(e); }
+  const j = r.job || {};
+  if (!$("findFolders").value.trim() && document.activeElement !== $("findFolders")) $("findFolders").value = (r.setup_folders || []).join("\n");
+  $("findIdxSum").textContent = (r.folders && r.folders.length ? r.folders.map(tilde) : (r.default_folders || []).map(tilde)).join(", ") || "—";
+  $("findCount").textContent = j.running ? `indexing… ${j.done} of ${j.total || "?"}` : r.count ? `${r.count} pictures indexed${r.updated ? " · " + new Date(r.updated * 1000).toLocaleString() : ""}` : "nothing indexed yet — open “Folders searched” and press Index now";
+  $("findProg").textContent = j.running ? `${j.done} / ${j.total || "…"} (${j.added} new)` : j.error ? "⚠ " + j.error : j.finished ? `done: ${r.count} pictures` : "";
+  $("findIndex").disabled = !!j.running;
+  if (!r.count && !j.running) $("findIdx").open = true;
+  clearTimeout(FIND.timer); FIND.timer = null;
+  if (j.running) { FIND.wasRunning = true; if (!$("findPane").classList.contains("hidden")) FIND.timer = setTimeout(findStatus, 1000); }
+  else if (FIND.wasRunning) { FIND.wasRunning = false; if (FIND.q) findSearch(FIND.q); }    // the index changed: search again
+}
+async function findSearch(q) {
+  FIND.q = q;
+  const within = $("findWithin").value.trim();
+  $("findRes").innerHTML = `<div class="empty" style="padding:30px 0">searching…</div>`;
+  let r;
+  try {
+    if (q.file) {
+      const res = await fetch(`/api/similar/search-bytes?name=${encodeURIComponent(q.file.name)}&within=${encodeURIComponent(within)}`, { method: "POST", body: q.file });
+      r = await res.json(); if (!res.ok) throw new Error(r.error);
+    } else r = await api("/api/similar/search", { target: q.target, within });
+  } catch (e) { $("findRes").innerHTML = ""; return showErr(e); }
+  const t = q.target || {}, qurl = t.src ? `/files/${encodeURIComponent(t.src.dir)}/${encodeURIComponent(t.src.file)}` : t.ref ? `/refs/${t.ref.split("/").map(encodeURIComponent).join("/")}`
+    : t.lab ? `/lab/${encodeURIComponent(t.lab)}` : t.board ? `/boards/${encodeURIComponent(t.board)}/${encodeURIComponent(t.file)}` : t.indexed ? `/api/similar/file?path=${encodeURIComponent(t.indexed)}`
+    : t.path ? `/api/disk/file?path=${encodeURIComponent(t.path)}` : q.file ? URL.createObjectURL(q.file) : "";
+  $("findQ").innerHTML = `${qurl ? `<img src="${qurl}" alt="">` : ""} pictures like <b>${esc(r.query)}</b>${within ? ` inside <code>${esc(within)}</code>` : ""} — drop another to search again`;
+  const qi = $("findQ").querySelector("img"); if (qi) $("findQ").prepend(qi);
+  $("findRes").innerHTML = r.results.length ? `<div class="find-grid">${r.results.map(h => `<div class="fres" data-fpath="${esc(h.path)}">
+      <img src="${h.url}" loading="lazy" alt="" data-fopen="1" title="open it in…">
+      <div><span class="sc">${Math.round(h.score * 100)}%</span> <span class="why">${esc(h.why.join(" · "))}</span></div>
+      <div class="nm" title="${esc(h.path)}">${esc(h.name)}</div><div class="fd" title="${esc(h.folder)}">${esc(tilde(h.folder))}</div>
+      <div class="fd">${h.w}×${h.h}${h.size ? " · " + fmtBytes(h.size) : ""}</div>
+      <div class="acts">${oiBtnInline({ indexed: h.path }, "open it in… (or show its folder)")}
+        <button type="button" class="btn small" data-fuse="refs" title="copy it into the steering collection “${esc(STEER.col)}” and select it">🧭 steer</button>
+        <button type="button" class="btn small" data-fuse="lab" title="make it the LAB input (a copy)">⚗ LAB</button>
+        <button type="button" class="btn small" data-fagain title="find pictures like this one">🔎</button>
+        <button type="button" class="btn small" data-fcopy title="copy its path">Copy path</button></div></div>`).join("")}</div>`
+    : `<div class="empty">${r.results.length === 0 ? "Nothing indexed matches yet — index some folders above." : ""}</div>`;
+}
+function initFind() {
+  const drop = $("findDrop");
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault(); drop.classList.remove("over");
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (raw) return findSearch({ target: JSON.parse(raw) });
+    const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) findSearch({ file: f });
+  });
+  $("findBrowse").onclick = async () => { const p = await pickPath({ kind: "file", ext: EXT.img, title: "Find pictures like…" }); if (p) findSearch({ target: { path: p } }); };
+  addPathTools($("findWithin"), { kind: "dir", title: "Only find pictures inside…", onPick: () => FIND.q && findSearch(FIND.q) });
+  $("findWithin").addEventListener("change", () => FIND.q && findSearch(FIND.q));
+  $("findAddFolder").onclick = async () => {
+    const lines = $("findFolders").value.split("\n").map(x => x.trim()).filter(Boolean);
+    const p = await pickPath({ kind: "dir", start: lines[lines.length - 1] || "", title: "Add a folder to search" }); if (!p) return;
+    $("findFolders").value = [...lines, tilde(p)].join("\n");
+  };
+  $("findIndex").onclick = async () => {
+    try { await api("/api/similar/index", { folders: $("findFolders").value.split("\n").map(x => x.trim()).filter(Boolean) }); } catch (e) { return showErr(e); }
+    findStatus();
+  };
+  $("findRes").addEventListener("click", async e => {
+    const card = e.target.closest(".fres"); if (!card) return;
+    const path = card.dataset.fpath;
+    if (e.target.closest("[data-fopen]")) return openAt({ indexed: path }, e.target);
+    if (e.target.closest("[data-fagain]")) return findSearch({ target: { indexed: path } });
+    if (e.target.closest("[data-fcopy]")) return copyText(path, e.target.closest("button"));
+    const u = e.target.closest("[data-fuse]"); if (!u) return;
+    try {
+      const r = await api("/api/similar/use", { path, to: u.dataset.fuse, collection: STEER.col });
+      if (u.dataset.fuse === "lab") { await labSet(r); switchTab("lab"); }
+      else { STEER.sel.push(r.ref); STEER.use = true; $("useSteer").checked = true; await loadRefs(); ok(`steering with ${r.ref} (a copy of ${tilde(path)})`); }
+    } catch (err) { showErr(err); }
+  });
+}
 
 // ---------------- 🔬 Analyze: images sent from anywhere (right-click → Send to Analysis), compared side by side ----------------
 const ANA = { items: [], sel: new Set(store.get("anaSel", [])), ref: store.get("anaRef", ""),
@@ -2806,7 +3365,7 @@ function renderAnalyze() {
       <div class="ana-card ${ANA.sel.has(i.file) ? "on" : ""} ${i.file === (t[0] && t[0].file) ? "ref" : ""}" data-anafile="${esc(i.file)}" title="${esc(i.label)}">
         <label><input type="checkbox" ${ANA.sel.has(i.file) ? "checked" : ""}> <img src="${anaUrl(i.file)}" alt="" loading="lazy" data-anafile="${esc(i.file)}"></label>
         <div class="ac-cap">${i.file === (t[0] && t[0].file) ? "<b>★ reference</b> · " : ""}${esc(i.label)}</div>
-        <div class="ac-sub">${i.w}×${i.h} ${ANA.sel.has(i.file) && i.file !== (t[0] && t[0].file) ? `<button type="button" class="btn small" data-ana-ref="${esc(i.file)}" title="compare everything against this one">★ make reference</button>` : ""}</div>
+        <div class="ac-sub">${i.w}×${i.h} ${oiBtnInline({ analysis: i.file }, "open this copy in…")} ${ANA.sel.has(i.file) && i.file !== (t[0] && t[0].file) ? `<button type="button" class="btn small" data-ana-ref="${esc(i.file)}" title="compare everything against this one">★ make reference</button>` : ""}</div>
       </div>`).join("") : `<div class="empty">Right-click any image — gallery, queue, lightbox, corkboard, presets, LAB, steering —
         and pick <b>🔬 Send to Analysis</b>. Tick two or more here to compare them.</div>`}</div>
     <div id="anaCompare">${t.length ? `<div class="empty">measuring…</div>` : ""}</div>`;
@@ -3532,6 +4091,7 @@ function renderPresetsPane() {
       ${concrete && count(PFOLDER) ? `<a class="btn small" href="/api/presets/folder/export?folder=${encodeURIComponent(PFOLDER)}" download
         title="every preset in this folder as one .zip (import it to recreate the folder)">⬇ zip folder</a>` : ""}</span></div>`;
   const importZone = `<div class="pimport" id="pImport">⬆ IMPORT a preset or folder .zip into “${esc(saveFolder())}” — drop it here or click
+    <button type="button" class="btn small" id="pImportBrowse" title="pick a .zip anywhere in your home folder">Browse…</button>
     <label class="inline" style="margin:0;color:var(--text)"><input type="checkbox" id="pImportLoad" ${store.get("importLoad", true) ? "checked" : ""}> load it now</label>
     <input type="file" id="pImportFile" accept=".zip,application/zip" hidden></div>`;
   const shown = PRESETS.filter(p => PFOLDER === "*" || p.folder === PFOLDER);
@@ -3550,6 +4110,7 @@ function renderPresetsPane() {
           <button class="btn small go" data-prender="${esc(p.id)}" title="load this preset and render it" aria-label="load and render">▶</button>
           <a class="btn small" href="/api/presets/export?id=${encodeURIComponent(p.id)}" download
              title="download this preset + all its images as a .zip" aria-label="download zip">⬇</a>
+          ${p.image ? `<button class="btn small" data-openin title="open its picture in DRAW / Kaleidotron / your programs" aria-label="open in">↗</button>` : ""}
           <button class="btn small del" data-pdel="${esc(p.id)}" title="delete this preset" aria-label="delete">🗑</button></div></div></div>`;
   }).join("")}</div>` : `<div class="empty">${PRESETS.length ? "No presets in this folder yet — drag some onto its chip, or save one." : "No presets yet — set things up and hit “Save…”, or save one from any image's lightbox."}</div>`)
     + `<div style="margin-top:12px"><button class="btn small" id="revealPresets">📂 presets folder</button></div>`;
@@ -3700,8 +4261,9 @@ function renderBatch() {
   $("batchBody").innerHTML = vis.length ? vis.map(i => {
     const r = BATCH.rows[i], ex = BATCH.exists.includes(r.path), j = byLabel[r.path];
     const o = j && j.outputs[0];
-    const res = o ? `<img src="${fileUrl(j, o)}" data-job="${j.id}" data-file="${esc(o.file)}" class="bthumb" alt="">`
-              : j ? `<span class="badge ${j.status}">${j.status}</span>` : r.err ? esc(r.err) : ex && skip ? "exists — skipped" : "";
+    const res = o ? `<img src="${fileUrl(j, o)}" data-job="${j.id}" data-file="${esc(o.file)}" class="bthumb" alt=""> ${oiBtnInline({ src: { dir: j.dir, file: o.file } })}`
+        + (j.exported ? ` ${oiBtnInline({ path: j.exported }, "open the exported file (" + j.exported + ") in…").replace(">↗<", ">↗ exported<")}` : "")
+              : j ? `<span class="badge ${j.status}" title="${esc(j.error || "")}">${j.status}</span>` : r.err ? esc(r.err) : ex && skip ? "exists — skipped" : "";
     return `<tr class="${r.err ? "bad" : ""} ${ex && skip ? "skip" : ""}"><td><input type="checkbox" data-bi="${i}" ${BATCH.sel.includes(i) ? "checked" : ""} ${r.err ? "disabled" : ""}></td>
       <td class="pth">${esc(r.path)}</td><td>${esc(r.style || "—")}</td><td>${esc(r.size || "—")}</td><td class="pr">${esc(r.prompt)}</td><td>${res}</td></tr>`;
   }).join("") : `<tr><td colspan="6" class="empty">${BATCH.rows.length ? "No rows match the filter." : "Load a manifest file or paste rows above."}</td></tr>`;
@@ -3721,7 +4283,7 @@ async function queueBatch() {
   const f = readForm(), base = { ...params(f), form: f };
   delete base.parent; delete base.evolve_init; delete base.evolve_steer; delete base.gen;   // batches don't breed
   BATCH.group = `batch-${Date.now()}`;
-  const mode = $("batchStyleMode").value, sizeMode = $("batchSizeMode").value, gen = abortGen;
+  const mode = $("batchStyleMode").value, sizeMode = $("batchSizeMode").value, gen = abortGen, batch = [];
   for (const i of todo) {
     const r = BATCH.rows[i], rowStyles = r.style ? r.style.split(",") : [];
     const styles = mode === "row" ? rowStyles : mode === "form" ? f.styles : [...new Set([...rowStyles, ...f.styles])];
@@ -3731,8 +4293,10 @@ async function queueBatch() {
                 form: { ...f, subject: r.prompt, styles } };
     if (dir) p.export = { dir, path: r.path };
     if (fitDir) p.fit = { dir: fitDir, path: r.path, scale: +$("batchFitScale").value || (f.art || f.raw ? 4 : 1) };
-    try { if (!(await sendJob(p, gen))) break; } catch (e) { showErr(`${r.path}: ${e.message}`); break; }
+    batch.push(p);
   }
+  // one request: every row is checked before any is queued, so a bad row never leaves half a batch behind
+  try { await sendJob({ batch }, gen); } catch (e) { BATCH.group = null; showErr(e); }
   poll(); renderBatch();
 }
 // ---------------- Sets: a game's sprite list → several takes each → pick one → export (gui/sets.py) ----------------
@@ -3783,7 +4347,7 @@ function drawSet() {
   host.innerHTML = `<div class="set-pills"><span class="set-pill"><b>${n}</b> sprites</span><span class="set-pill"><b>${nTakes}</b> takes</span>
       <span class="set-pill pk"><b>${picked}</b> picked</span><span class="set-pill wn"><b>${n - picked - missing}</b> to pick</span><span class="set-pill bd"><b>${missing}</b> without takes</span>
       ${busy ? `<span class="set-pill"><b>${busy}</b> rendering</span>` : ""}${Object.keys(S.flags).length ? `<span class="set-pill bd"><b>${Object.keys(S.flags).length}</b> flagged</span>` : ""}</div>
-    <div class="set-theme"><div><span>Takes per sprite</span><code>${T.takes}</code></div><div><span>Game folder</span><code>${esc(T.game_folder || "— none (set one to export)")}</code></div>
+    <div class="set-theme"><div><span>Takes per sprite</span><code>${T.takes}</code></div><div><span>Game folder</span><code>${esc(T.game_folder || "— none (set one to export)")}</code>${T.game_folder ? ` <button class="btn small" id="setGameOpen" title="open the game folder (right-click / ↗ for other programs)">📂</button><button class="btn small" id="setGameOi" title="open the game folder in…">↗</button>` : ""}</div>
       <div><span>Styles · size</span><code>${{ both: "row + theme", row: "row", form: "theme" }[T.style_mode]} · ${T.size_mode === "row" ? "row size" : "theme size"}</code></div>
       <div><span>Fit</span><code>${T.fit.on ? "✂ into " + esc(T.fit.dir || "the game folder") : "off"}</code></div>
       <div style="grid-column:1/-1"><span>Theme prompt (with a row's words)</span><code>${esc(composedPrompt({ ...T.base.form, subject: "‹sprite›" }))}</code></div></div>
@@ -3795,6 +4359,7 @@ function drawSet() {
     <div class="set-export" id="setExport"></div>`;
   host.querySelectorAll("[data-setfilt]").forEach(c => c.onclick = () => { SETS.filt = c.dataset.setfilt; drawSet(); });
   $("setQ").oninput = e => { SETS.q = e.target.value; drawSetRows(); };
+  if ($("setGameOpen")) { $("setGameOpen").onclick = () => reveal("game", SETS.id); $("setGameOi").onclick = e => openAt({ folder: "game", arg: SETS.id }, e.currentTarget); }
   $("setRenderMissing").onclick = () => renderSetKeys(S.rows.filter(r => !(tk[r.key] || []).length && !pend[r.key]).map(r => r.key));
   drawSetRows(); drawSetExport();
 }
@@ -3816,11 +4381,18 @@ function drawSetRows() {
   host.querySelectorAll("[data-setprompt]").forEach(b => b.onclick = async () => {
     const k = b.dataset.setprompt, v = host.querySelector(`[data-setpin="${CSS.escape(k)}"]`).value;
     try { SETS.data.set = (await api("/api/sets/update", { id: SETS.id, row: { key: k, prompt: v } })).set; drawSetRows(); showErr(""); } catch (e) { showErr(e); } });
+  host.querySelectorAll("[data-setnotesave]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.setnotesave, v = host.querySelector(`[data-setnote="${CSS.escape(k)}"]`).value.trim();
+    try { SETS.data.set = (await api("/api/sets/mark", { id: SETS.id, key: k, action: "note", note: v })).set; drawSetRows();
+      const m = host.querySelector(`[data-setnotemsg="${CSS.escape(k)}"]`); if (m) { m.textContent = v ? "saved ✓" : "note cleared"; setTimeout(() => m.textContent = "", 2000); }
+    } catch (e) { showErr(e); } });
+  host.querySelectorAll("[data-reveal-game]").forEach(b => b.onclick = () => reveal("game", SETS.id));
   host.querySelectorAll("[data-setcopy]").forEach(b => b.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(b.dataset.setcopy).catch(() => {}); b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy CLI", 1200); });
 }
 function setRowHtml(r) {
   const S = SETS.data.set, k = r.key, takes = SETS.data.takes[k] || [], pick = S.picks[k], h = SETS.heard[k], flags = new Set(S.flags[k] || []);
   const nowF = SETS.data.now[k] || [], pend = SETS.data.pending[k] || 0, sel = k === SETS.sel;
+  const note = (S.notes || {})[k] || "";
   const sub = [r.style, r.size, nowF.length ? "" : "new", flags.size ? "flagged" : ""].filter(Boolean).join(" · ");
   const tiles = (nowF.length ? `<button class="set-tk now ${pick === "now" ? "chosen" : h === "now" ? "heard" : ""}" data-setnow="${esc(k)}" title="the sprite the game has today" style="background-image:url('${setNowUrl(k)}')"><i>NOW</i></button>` : "")
     + takes.map((t, i) => `<button class="set-tk ${pick === t.take ? "chosen" : h === t.take ? "heard" : ""} ${flags.has(t.take) ? "flag" : ""}" data-setkey="${esc(k)}" data-settake="${i}" title="take ${i + 1} · seed ${t.seed ?? "?"}" style="background-image:url('${setUrl(t)}')"><i>${i + 1}</i></button>`).join("")
@@ -3832,16 +4404,25 @@ function setRowHtml(r) {
     const cur = h && h !== "now" ? h : pick && pick !== "now" ? pick : takes[0] && takes[0].take, i = takes.findIndex(t => t.take === cur), t = takes[i];
     const fl = t && flags.has(t.take);
     detail = `<div class="set-detail">
-      ${t ? `<div class="set-big"><img src="${setUrl(t)}" data-setbig="1" data-job="${esc(t.job)}" data-file="${esc(t.file)}" alt="take ${i + 1}">take ${i + 1}</div>` : ""}
-      ${nowF.length ? `<div class="set-big"><img src="${setNowUrl(k)}" data-setbig="1" alt="the game's sprite">now · ${esc(nowF[0])}</div>` : ""}
+      ${t ? `<div class="set-big"><img src="${setUrl(t)}" data-setbig="1" data-job="${esc(t.job)}" data-file="${esc(t.file)}" alt="take ${i + 1}">take ${i + 1}
+        <span class="bigacts">${oiBtnInline({ src: { dir: t.job, file: t.file } }, "open this take in…")}
+          <button type="button" class="btn small" data-reveal-job="${esc(t.job)}" title="open this take's job folder">📂</button>
+          <a class="btn small" href="${setUrl(t)}?download" download="${esc(t.file)}" title="download this take">⬇</a></span></div>` : ""}
+      ${nowF.length ? `<div class="set-big"><img src="${setNowUrl(k)}" data-setbig="1" alt="the game's sprite">now · ${esc(nowF[0])}
+        <span class="bigacts">${oiBtnInline({ set_now: { id: SETS.id, key: k } }, "open the game's sprite in…")}
+          <button type="button" class="btn small" data-reveal-game="1" title="open the game folder">📂</button>
+          <a class="btn small" href="${setNowUrl(k)}&download" download="${esc(nowF[0].split("/").pop())}" title="download the game's sprite">⬇</a></span></div>` : ""}
       <div class="set-recipe">${t ? `<div><b>${esc(k)}</b> · take ${i + 1} · seed <b>${esc(t.seed ?? "?")}</b></div><div>${esc(t.command || "")}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small" data-setagain="${esc(k)}" data-seed="${t.seed}" ${t.seed == null ? "disabled" : ""} title="render this exact take again">Again</button>
           <button class="btn small" data-setflag="${esc(k)}" data-take="${esc(t.take)}" ${fl ? 'data-on="1"' : ""}>${fl ? "Unflag" : "Flag"}</button>
           <button class="btn small" data-setcopy="${esc((t.command || "") + (t.seed != null && !/--seed/.test(t.command || "") ? " --seed " + t.seed : ""))}">Copy CLI</button></div>` : ""}
-        <div style="display:flex;gap:4px"><input type="text" class="grow" data-setpin="${esc(k)}" value="${esc(r.prompt)}" aria-label="prompt for ${esc(k)}"><button class="btn small" data-setprompt="${esc(k)}" title="change this sprite's prompt (new takes use it)">Save</button></div></div></div>`;
+        <div style="display:flex;gap:4px"><input type="text" class="grow" data-setpin="${esc(k)}" value="${esc(r.prompt)}" aria-label="prompt for ${esc(k)}"><button class="btn small" data-setprompt="${esc(k)}" title="change this sprite's prompt (new takes use it)">Save</button></div>
+        <label class="set-note">note — for you, kept with the set (what's wrong, what to try)
+          <textarea data-setnote="${esc(k)}" rows="2" maxlength="500" placeholder="e.g. wings too small; try take 3 with a darker palette">${esc(note)}</textarea></label>
+        <div><button class="btn small" data-setnotesave="${esc(k)}">Save note</button> <span class="dim" data-setnotemsg="${esc(k)}"></span></div></div></div>`;
   }
   return `<div class="set-row ${sel ? "sel" : ""} ${pick ? "picked" : ""}">
-    <div class="k" data-setsel="${esc(k)}">${esc(k)}<small>${esc(sub)}</small></div>
+    <div class="k" data-setsel="${esc(k)}">${esc(k)}<small>${esc(sub)}${note ? `${sub ? " · " : ""}<span class="nt" title="${esc(note)}">📝 ${esc(note.length > 40 ? note.slice(0, 40) + "…" : note)}</span>` : ""}</small></div>
     <div style="min-width:0"><div class="p" data-setsel="${esc(k)}" title="${esc(r.prompt)}">${esc(r.prompt)}</div><div class="set-takes">${tiles}</div></div>
     <div class="set-act"><button class="btn small pick ${pick && (!h || h === pick) ? "done" : ""}" data-setpick="${esc(k)}" ${!h && !pick ? "disabled" : ""}>${pickLabel}</button>
       <button class="btn small" data-setold="${esc(k)}" ${!nowF.length || pick === "now" ? "disabled" : ""} title="keep the sprite the game has today">Keep old</button>
@@ -3855,7 +4436,7 @@ async function setMark(k, action, take) {
 }
 async function renderSetKeys(keys, seed) {
   if (!keys.length) return showErr("Every sprite already has takes.");
-  const S = SETS.data.set, T = S.theme, base = T.base, f = base.form, gen = abortGen;
+  const S = SETS.data.set, T = S.theme, base = T.base, f = base.form, gen = abortGen, batch = [];
   for (const k of keys) {
     const r = S.rows.find(x => x.key === k); if (!r) continue;
     const rowStyles = r.style ? r.style.split(",") : [];
@@ -3865,8 +4446,10 @@ async function renderSetKeys(keys, seed) {
                 n: seed != null ? 1 : T.takes, seed: seed != null ? seed : -1, name: k.split("/").pop(), group: "set:" + S.id, label: k,
                 set: { id: S.id, key: k }, form: { ...f, subject: r.prompt, styles } };
     if (T.fit.on) p.fit = { dir: T.fit.dir || T.game_folder, path: k, scale: T.fit.scale || (f.art || f.raw ? 4 : 1) };
-    try { if (!(await sendJob(p, gen))) break; } catch (e) { showErr(`${k}: ${e.message}`); break; }
+    batch.push(p);
   }
+  // one request: the server checks every sprite against the theme first, so a bad row queues nothing
+  if (batch.length) try { await sendJob({ batch }, gen); switchTab("sets"); } catch (e) { showErr(e); }
   poll(); setTimeout(() => loadSet(true).catch(showErr), 500);
 }
 function drawSetExport() {
@@ -3875,22 +4458,34 @@ function drawSetExport() {
   $("setExport").innerHTML = `<div>${T.game_folder ? `Export <b>${n} pick${n === 1 ? "" : "s"}</b> → <code>${esc(T.game_folder)}</code> as <code>&lt;path&gt;.png</code> · anything replaced is copied to <code>.pixelmon-backup/</code> first`
       + (two.length ? `<div class="w">⚠ ${two.length} sprite(s) exist as both .png and .gif in the game folder (${esc(two.slice(0, 4).join(", "))}); the game may load the other one.</div>` : "")
       : "Set a <b>game folder</b> with ✎ Edit set to export picks into the game."}<div id="setPlan"></div></div>
-    <div style="display:flex;gap:6px"><button class="btn small" id="setPreview" ${T.game_folder && n ? "" : "disabled"}>Preview</button><button class="btn small go" id="setExportGo" ${T.game_folder && n ? "" : "disabled"}>Export picks</button></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="set-xopts" title="how a pick is written into the game folder">
+        as <select id="setXFmt"><option value="same">rendered (.png)</option><option value="png">.png</option><option value="gif">.gif</option><option value="webp">.webp (lossless)</option></select>
+        <select id="setXScale" title="whole-number upscale (nearest neighbour: pixels stay square)">${[1, 2, 3, 4, 6, 8].map(x => `<option value="${x}">×${x}</option>`).join("")}</select>
+        <label title="a palette-indexed PNG: exactly its own colours when there are 256 or fewer"><input type="checkbox" id="setXIdx"> indexed</label></span>
+      <button class="btn small" id="setPreview" ${T.game_folder && n ? "" : "disabled"}>Preview</button><button class="btn small go" id="setExportGo" ${T.game_folder && n ? "" : "disabled"}>Export picks</button></div>`;
+  const xk = "setX:" + SETS.id, xo = Object.assign({ format: "same", scale: 1, indexed: false }, store.get(xk, {}));
+  $("setXFmt").value = xo.format; $("setXScale").value = String(xo.scale); $("setXIdx").checked = !!xo.indexed;
+  const xopts = () => ({ format: $("setXFmt").value, scale: +$("setXScale").value, indexed: $("setXIdx").checked });
+  for (const id of ["setXFmt", "setXScale", "setXIdx"]) $(id).onchange = () => { store.set(xk, xopts()); $("setPlan").innerHTML = ""; };
   $("setPreview").onclick = async () => {
-    try { const r = await api("/api/sets/export", { id: SETS.id, preview: true });
+    try { const r = await api("/api/sets/export", { id: SETS.id, preview: true, opts: xopts() });
       $("setPlan").innerHTML = `<table class="btable" style="margin-top:8px"><thead><tr><th>sprite</th><th>becomes</th><th>change</th></tr></thead><tbody>${r.plan.map(p =>
-        `<tr><td>${esc(p.key)}</td><td>${esc(p.to)}</td><td>${p.unchanged ? "already exported" : p.replaces ? "replaces (backed up)" : "new file"}${p.other_formats.length ? " · also " + esc(p.other_formats.join(", ")) : ""}</td></tr>`).join("")}</tbody></table>`;
+        `<tr><td>${esc(p.key)}</td><td>${esc(p.to)}</td><td>${p.unchanged ? "already exported" : p.replaces ? "replaces (backed up)" : "new file"}${p.convert ? " · " + esc(p.convert) : ""}${p.other_formats.length ? " · also " + esc(p.other_formats.join(", ")) : ""}</td></tr>`).join("")}</tbody></table>`;
     } catch (e) { showErr(e); } };
   $("setExportGo").onclick = async () => {
-    try { const r = await api("/api/sets/export", { id: SETS.id });
-      showErr(`Exported ${r.exported.length}` + (r.skipped ? `, ${r.skipped} unchanged` : "") + (r.backup ? ` · old files in ${r.backup}` : "") + (r.errors.length ? ` · ${r.errors.length} failed: ${r.errors[0].key}: ${r.errors[0].error}` : ""));
-      loadSet(true);
+    try { const r = await api("/api/sets/export", { id: SETS.id, opts: xopts() });
+      const msg = `Exported ${r.exported.length}` + (r.skipped ? `, ${r.skipped} unchanged` : "") + (r.backup ? ` · old files in ${tilde(r.backup)}` : "") + (r.errors.length ? ` · ${r.errors.length} failed: ${r.errors[0].key}: ${r.errors[0].error}` : "");
+      r.errors.length ? showErr(msg) : ok(msg);
+      await loadSet(true);
+      if (r.backup) $("setPlan").innerHTML = `<div style="margin-top:6px">old files kept in <code>${esc(tilde(r.backup))}</code>
+        <button class="btn small" id="setBackupOpen" title="open the backup folder">📂</button></div>`;
+      if ($("setBackupOpen")) $("setBackupOpen").onclick = () => reveal("dir", r.backup);
     } catch (e) { showErr(e); } };
 }
 // ---- new / edit set ----
 function setThemeFromForm() {
   const f = readForm(), base = { ...params(f), form: f };
-  for (const k of ["parent", "evolve_init", "evolve_steer", "gen", "prompt", "seed", "n", "name"]) delete base[k];
+  for (const k of ["parent", "evolve_init", "evolve_steer", "gen", "prompt", "seed", "n", "name", "servers"]) delete base[k];
   return base;
 }
 function showSetTheme() { $("setEdTheme").textContent = SETS.ed ? composedPrompt({ ...SETS.ed.form, subject: "‹sprite›" }) + (SETS.ed.lora ? `  · LoRA ${SETS.ed.lora}` : "") : "—"; }
@@ -4199,7 +4794,7 @@ function initPeek() {
     if (!$("lb").classList.contains("hidden")) return;
     if (e.target.closest("#peek")) { clearTimeout(PEEK.hideTimer); return; }
     const th = e.target.closest(PEEK_SEL);
-    if (!th || e.target.closest(".evo-btn, [data-cork-x], [data-cork-rs]")) return;   // (🎯 is an .evo-btn too)
+    if (!th || e.target.closest(".evo-btn, .oi-btn, .gacts, [data-cork-x], [data-cork-rs]")) return;   // (🎯 is an .evo-btn too)
     clearTimeout(PEEK.hideTimer);
     // the same image again (e.g. the queue re-rendered it under the pointer): keep the open preview as it is
     if (!$("peek").classList.contains("hidden") && peekKey(th) === PEEK.key) { PEEK.el = th; return; }
@@ -4279,7 +4874,7 @@ function renderCork() {
   const cols = CORK.cols || 2, span = f => { const [w, h] = (b.sizes || {})[f] || [1, 1]; return [Math.min(w, cols), h]; };
   $("corkBody").innerHTML = (b.items.length ? `<div class="cork-grid">${b.items.map(f =>
       `<div class="cork-item" data-cork="${esc(f)}" style="grid-column:span ${span(f)[0]};grid-row:span ${span(f)[1]}"><span class="rs" data-cork-rs title="drag to resize"></span><img src="/boards/${encodeURIComponent(b.name)}/${encodeURIComponent(f)}" loading="lazy" alt="">
-        <button class="x" data-cork-x="${esc(f)}" title="remove from board (deletes only the board's copy)">×</button></div>`).join("")}</div>` : "")
+        <button class="x" data-cork-x="${esc(f)}" title="remove from board (deletes only the board's copy)">×</button>${oiBtn(null)}</div>`).join("")}</div>` : "")
     + `<div class="cork-hint" style="margin-top:${b.items.length ? 10 : 0}px">Drag images here — renders, gallery, steering refs, the lightbox, or files from your desktop.</div>`;
   store.set("corkOpen", CORK.open); store.set("corkBoard", CORK.board);
   requestAnimationFrame(corkSyncGrid);
@@ -4474,7 +5069,7 @@ function statusUpdate(jobs) {
     for (const j of jobs) {
       const was = prevStatus[j.id];
       if (!was || was === j.status || !["done", "failed"].includes(j.status) || j.params.preview) continue;
-      if (j.status === "failed" && NF.err) notify("pixelmon: render failed", `${nm(j)} — ${(j.log.slice(-1)[0] || "").slice(0, 120)}`, true);
+      if (j.status === "failed" && NF.err) notify("pixelmon: render failed", `${nm(j)} — ${(j.error || j.log.slice(-1)[0] || "").slice(0, 160)}`, true);
       if (j.status === "done" && NF.done) {
         if (j.group) {
           const g = jobs.filter(x => x.group === j.group);
@@ -4657,7 +5252,7 @@ async function loadLab() {
   let r; try { r = await api("/api/lab/inputs"); } catch { return; }
   $("labRecent").innerHTML = r.inputs.map(x => `<span class="lr-item"><img src="/lab/${encodeURIComponent(x.file)}" data-labfile="${esc(x.file)}"
       data-w="${x.size[0]}" data-h="${x.size[1]}" class="${x.file === LABS.file ? "on" : ""}" alt="">
-      <button type="button" class="lr-x" data-lab-remove="${esc(x.file)}" title="remove from recents">×</button></span>`).join("")
+      <button type="button" class="lr-x" data-lab-remove="${esc(x.file)}" title="remove from recents">×</button>${oiBtn(null)}</span>`).join("")
     + (r.inputs.length > 1 ? `<button type="button" class="btn small lr-clear" id="labRecentClear" title="remove every recent input except the one in use">✕ clear recents</button>` : "");
   if (LABS.file && !r.inputs.some(x => x.file === LABS.file)) LABS.file = null;
   renderLab();
@@ -5634,6 +6229,10 @@ async function labLayered(f) {
     const res = await fetch(`/api/lab/layered?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
     r = await res.json(); if (!res.ok) throw new Error(r.error);
   } catch (e) { return showErr(e); }
+  await labApplyLayered(r, f.name);
+}
+async function labApplyLayered(r, name) {
+  const f = { name };
   await labSet(r);
   const I = r.info || {};
   if (r.mask) {
@@ -5769,6 +6368,11 @@ async function importBundle(file) {
   try {
     const r = await fetch(`/api/presets/import?folder=${encodeURIComponent(saveFolder())}`, { method: "POST", body: file });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    await importDone(j);
+  } catch (e) { showErr(e); }
+}
+async function importDone(j) {
+  try {
     PFOLDER = j.count ? j.folder : saveFolder();
     await loadPresets(j.id);
     if (store.get("importLoad", true) && j.snapshot) { applySnapshot(j.snapshot); $("presetSel").value = j.id; }
@@ -5790,7 +6394,9 @@ async function snapshotZip() {
 function initBundles() {
   $("snapZip").onclick = snapshotZip;
   const pane = $("presetsPane");
-  pane.addEventListener("click", e => { if (e.target.closest("#pImport") && !e.target.closest("label")) $("pImportFile").click(); });
+  pane.addEventListener("click", e => {
+    if (e.target.closest("#pImportBrowse")) return browseBundle();
+    if (e.target.closest("#pImport") && !e.target.closest("label")) $("pImportFile").click(); });
   pane.addEventListener("change", e => {
     if (e.target.id === "pImportFile" && e.target.files[0]) { importBundle(e.target.files[0]); e.target.value = ""; }
     if (e.target.id === "pImportLoad") store.set("importLoad", e.target.checked);
@@ -5829,13 +6435,21 @@ function abortShow(jobs) {
   const busy = (jobs || Object.values(JOBS)).some(j => j.status === "queued" || j.status === "running");
   $("sbAbort").classList.toggle("hidden", !(busy || sending > 0));
 }
-async function abortAll() {
+async function abortAll(ev) {
   abortGen++;
   const b = $("sbAbort"); b.disabled = true; b.lastChild.textContent = " ABORTING…";
   try {
-    const r = await api("/api/jobs/abort", {});
-    const bad = Object.entries(r.servers || {}).filter(([, v]) => !/^https?:/.test(v));
-    showErr(bad.length ? `Stopped pixelmon, but couldn't reach ComfyUI on ${bad.map(([k, v]) => `${k}: ${v}`).join("; ")}` : "");
+    // shift-click = also empty every render server's WHOLE queue (other tools' prompts too) — for a stuck box
+    const clear = !!(ev && ev.shiftKey) && confirm("Also empty the render server's whole ComfyUI queue and interrupt it?\n\n"
+      + "That removes OTHER tools' prompts on a shared box too. Without it, pixelmon only takes its own prompts off.");
+    const r = await api("/api/jobs/abort", { clear_server: clear });
+    const bad = Object.entries(r.servers || {}).filter(([, v]) => !/^https?:/.test(v)), good = Object.keys(r.servers || {}).filter(k => !bad.some(([b]) => b === k));
+    const st = r.stopped, parts = [`⛔ Stopped ${r.cancelled} job${r.cancelled === 1 ? "" : "s"}`];
+    if (st) parts.push(st.killed ? "pixelmon didn't exit in time and was killed — its prompt may still be on " + st.servers.join(", ")
+                                 : `pixelmon cleaned up on ${st.servers.join(", ")}${st.said ? ` (“${st.said}”)` : ""}`);
+    if (good.length) parts.push(`emptied ComfyUI's queue on ${good.join(", ")}`);
+    if (bad.length) showErr(parts.join(" · ") + ` · ⛔ couldn't reach ${bad.map(([k, v]) => `${k}: ${v}`).join("; ")}`);
+    else ok(parts.join(" · "));
   } catch (e) { showErr(e); }
   b.disabled = false; b.lastChild.textContent = " CANCEL AND ABORT";
   lastJobsJSON = ""; poll();
@@ -6037,9 +6651,9 @@ async function sweep() {
 
 // ---------------- queue & gallery ----------------
 const fileUrl = (job, o) => `/files/${encodeURIComponent(job.dir)}/${encodeURIComponent(o.file)}`;
-function thumbHtml(job, o, scale, caption) {
+function thumbHtml(job, o, scale, caption, opt = {}) {
   return `<div class="thumb" data-job="${job.id}" data-file="${o.file}">
-    <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">
+    <img src="${fileUrl(job, o)}" loading="lazy" onload="fitThumb(this)" alt="">${oiBtn(null)}
     <button class="evo-btn" data-evo-job="${job.id}" data-evo-file="${esc(o.file)}" title="evolve: breed children from this">🧬</button>
     <button class="evo-btn t3-btn" data-t3-job="${job.id}" data-t3-file="${esc(o.file)}" title="🧊 3D: a model of this, or rotation sprites from it">🧊</button>
     ${job.params && (job.params.inpaint || job.params.control) ? `<button class="evo-btn refine-btn" data-refine-job="${job.id}" data-refine-file="${esc(o.file)}"
@@ -6047,7 +6661,7 @@ function thumbHtml(job, o, scale, caption) {
     <div class="cap">${caption}</div><div class="pal" data-pdir="${esc(job.dir)}" data-pfile="${esc(o.file)}"></div>
     ${job.params && (job.params.inpaint || job.params.control) && !job.params.preview ? `<label class="thumbpick" title="SAVE LAB PRESET uses this picture as the preset's thumbnail">
       <input type="checkbox" data-thumbpick-dir="${esc(job.dir)}" data-thumbpick-file="${esc(o.file)}"
-        ${LABS.thumb && LABS.thumb.dir === job.dir && LABS.thumb.file === o.file ? "checked" : ""}> use as thumbnail</label>` : ""}</div>`;
+        ${LABS.thumb && LABS.thumb.dir === job.dir && LABS.thumb.file === o.file ? "checked" : ""}> use as thumbnail</label>` : ""}${opt.gallery ? galleryActs(job, o) : ""}</div>`;
 }
 // placeholder tile size = what fitThumb will make the finished image (from the requested --out size)
 function tileSize(job) {
@@ -6091,10 +6705,18 @@ function jobCard(jobs) {
       ${running && done < want ? `<div class="cur" style="left:${100 * done / want}%;width:${100 / want}%"></div>` : ""}</div>
     <span>${running ? `rendering ${Math.min(done + 1, want)}/${want}` : "queued"} · ${done} done · ${want - done} remaining</span></div>` : "";
   const log = group ? "" : `<div class="log">${esc(j.log.slice(-8).join("\n"))}</div>`;
+  // the reason a render failed, in the node's / pixelmon's own words (the full output is in the job folder's log.txt)
+  const errs = jobs.filter(x => x.error && x.status !== "cancelled");     // failed, interrupted, or done with some renders failed
+  const errHtml = errs.slice(0, 4).map(x => `<div class="joberr ${x.status === "done" ? "partial" : ""}">⚠ ${group && x.label ? esc(x.label) + ": " : ""}${x.status === "done" && x.failed ? `${x.failed} failed — ` : ""}${esc(x.error)}</div>`).join("")
+    + (errs.length > 4 ? `<div class="joberr">…and ${errs.length - 4} more failed</div>` : "");
+  const st = jobs.map(x => x.started).filter(Boolean), fin = jobs.map(x => x.finished).filter(Boolean);
+  const t0 = st.length ? Math.min(...st) : 0, t1 = !active && fin.length ? Math.max(...fin) : 0;
+  const elapsed = t0 ? `<span class="elapsed" data-started="${t0}" data-finished="${t1 || ""}" title="${t1 ? "how long it took" : "running for"}">⏱ ${fmtT((t1 || Date.now() / 1000) - t0)}</span>` : "";
   return `<div class="job"><div class="job-head">
-      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : j.group.startsWith("set:") ? "set · " : j.group.startsWith("lab-") ? "lab · " : "sweep · ") : ""}${status}${progress}</span>
-      <span class="job-title" title="${title}">${title}</span>
-      ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}">Cancel</button>` : ""}
+      <span class="badge ${status}">${group ? (j.group.startsWith("evo-") ? "evolve · " : j.group.startsWith("batch-") ? "batch · " : j.group.startsWith("set:") ? "set · " : j.group.startsWith("lab-") ? "lab · " : "sweep · ") : ""}${status}${progress}${status === "done" && jobs.some(x => x.failed) ? ` · ${jobs.reduce((n, x) => n + (x.failed || 0), 0)} failed` : ""}</span>
+      <span class="job-title" title="${title}">${title}</span>${elapsed}
+      ${canCancel ? `<button class="btn small" data-cancel="${jobs.map(x => x.id).join(",")}" title="stop it: pixelmon takes its prompts off the render server's queue">Cancel</button>` : ""}
+      ${j.params.form ? `<button class="btn small" data-load-job="${j.id}" title="load these settings into the form">Load</button>` : ""}
       ${j.outputs.length ? `<button class="btn small" data-save-job="${j.id}" title="save this card's setup as a preset (first image = its picture)">💾</button>` : ""}
       ${group ? "" : `<button class="btn small" data-reveal-job="${esc(j.dir)}" title="open this job's folder">📂</button>`}
     </div>${bar}
@@ -6103,7 +6725,7 @@ function jobCard(jobs) {
       ${modelLinks(j)}
       ${j.depth_map ? `<a class="btn small" href="/files/${encodeURIComponent(j.dir).replace(/%2F/g, "/")}/${j.depth_map.split("/").map(encodeURIComponent).join("/")}" target="_blank" title="the depth map the sampler got">🗺 depth map</a>` : ""}</div>
     ${$("showFull").checked && j.full_prompt && j.full_prompt.positive ? `<div class="full">${fullHtml(j.full_prompt)}</div>` : ""}
-    ${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
+    ${errHtml}${log}<div class="thumbs">${thumbs}${pending}</div></div>`;
 }
 function renderQueue(jobs) {
   JOBS = Object.fromEntries(jobs.map(j => [j.id, j]));
@@ -6122,14 +6744,6 @@ function renderQueue(jobs) {
   for (const g of groups) g.sort((a, b) => a.created - b.created);
   $("queueList").innerHTML = groups.map(jobCard).join("");
   fillPalettes($("queuePane"));
-}
-async function loadGallery() {
-  try { GALLERY = (await api("/api/gallery")).items; } catch { return; }
-  for (const j of GALLERY) JOBS[j.id] = JOBS[j.id] || j;
-  const cells = GALLERY.flatMap(j => j.outputs.map(o => thumbHtml(j, o, 0,
-    o.label ? esc(o.label) : `${esc((j.params.lora || "").replace(".safetensors", ""))} · s${o.seed ?? "?"}`)));
-  $("galleryList").innerHTML = cells.length ? `<div class="grid">${cells.join("")}</div>` : `<div class="empty">No renders in the gallery yet.</div>`;
-  fillPalettes($("galleryPane"));
 }
 // ---- render server watch: /api/jobs carries the server's state; a dead server blacks out the center pane ----
 const SRV = { up: null, since: 0, hidden: false, stuck: null, restart: null, auto: false };
@@ -6223,6 +6837,7 @@ function openLb(jobId, file, stack) {
   const many = lbStack.length > 1;
   $("lbPrev").classList.toggle("hidden", !many); $("lbNext").classList.toggle("hidden", !many);
   $("lbImg").src = fileUrl(job, o);
+  $("lbDownload").href = fileUrl(job, o) + "?download"; $("lbDownload").setAttribute("download", o.file);
   $("lbTiled").classList.toggle("hidden", !o.tiled); $("lbTiled").classList.remove("on");
   palFill($("lbPal"), job.dir, o.file, 256);
   $("lbTitle").textContent = (job.label || `seed ${o.seed ?? "?"}`) + (many ? `   ·   ${lbIdx + 1} / ${lbStack.length}` : "");
@@ -6233,6 +6848,8 @@ function openLb(jobId, file, stack) {
     ["steering", p.steer && p.steer.length ? `${p.steer.length} refs @ ${p.steer_strength} · ${p.steer_weight_type}`
       + (p.steer_start > 0 || p.steer_end < 1 ? ` · steps ${p.steer_start}→${p.steer_end}` : "") : "—"],
     ["seed", o.seed], ["file", `${job.dir}/${o.file}`],
+    ...(job.started && job.finished ? [["took", fmtT(job.finished - job.started)]] : []),
+    ...((job.ratings || {})[o.file] ? [["rating", "★".repeat(job.ratings[o.file])]] : []),
   ].map(([k, v]) => `<div class="kv">${k}: <b>${esc(v ?? "")}</b></div>`).join("")
     + (job.full_prompt && job.full_prompt.positive ? `<div class="full">${fullHtml(job.full_prompt)}</div>` : "")
     + (p.parent ? `<div class="kv lineage">generation <b>${p.gen || 1}</b> · evolved from
@@ -6283,6 +6900,8 @@ function switchTab(t) {
   $("labPane").classList.toggle("hidden", t !== "lab");
   $("advPane").classList.toggle("hidden", t !== "adv");
   $("analyzePane").classList.toggle("hidden", t !== "analyze");
+  $("findPane").classList.toggle("hidden", t !== "find");
+  if (t === "find") findStatus();
   if (t === "analyze") loadAnalysis();
   $("setupPane").classList.toggle("hidden", t !== "setup");
   if (t === "setup") loadSetup(true);
@@ -6292,7 +6911,9 @@ function switchTab(t) {
   if (t === "steer") loadRefs();
   if (t === "gallery") loadGallery();
   store.set("tab", t);
+  if (location.hash.slice(1) !== t) history.replaceState(null, "", "#" + t);   // the address shows the tab (bookmarkable)
 }
+const TAB_IDS = () => [...document.querySelectorAll(".main .tabs .tab[data-tab]")].map(x => x.dataset.tab);
 async function init() {
   META = await api("/api/meta");
   showServer();
@@ -6333,6 +6954,12 @@ async function init() {
   initOpenWith();
   initDragScroll();
   initMoodBoard();
+  initBrowse();
+  initGallery();
+  initFind();
+  initSrvChips();
+  initCliTips();
+  setInterval(tickElapsed, 1000);
   $("openGallery").onclick = () => reveal("gallery");
 
   const saved = store.get("form", null);
@@ -6386,10 +7013,16 @@ async function init() {
     if (e.target.closest("[data-fixall]")) fixAll();
   });
   $("sweepBtn").onclick = sweep; initSweepPick(); initCombo();
-  $("copyCmd").onclick = e => copyText(cliFor(params()), e.currentTarget);
-  document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
-  // open a tab by URL hash (#presets, #lab, #steer, #batch, #gallery, #queue, #adv)
-  if (["presets", "lab", "steer", "batch", "gallery", "queue", "analyze", "adv", "setup"].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
+  // Copy CLI: the server builds it with the same build_argv a render runs (cliFor is only the offline fallback)
+  $("copyCmd").onclick = async e => {
+    const b = e.currentTarget, p = params(); let cmd;
+    try { const r = await api("/api/command", p); if (r.invalid) return showErr(r.invalid); cmd = r.command; } catch { cmd = cliFor(p); }
+    copyText(cmd, b);
+  };
+  // tabs are in the address (#gallery, #sets…): clicking one adds a history step, so Back / Forward move between tabs
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    if (location.hash.slice(1) !== t.dataset.tab) location.hash = t.dataset.tab; else switchTab(t.dataset.tab); });
+  addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TAB_IDS().includes(h)) switchTab(h); });
   document.addEventListener("click", e => {
     const rf = e.target.closest("[data-refine-job]");
     if (rf) {
@@ -6428,7 +7061,17 @@ async function init() {
       savePreset(snapshotOfJob(job, o), `${((job.params.form && job.params.form.subject) || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); return; }
     const cp = e.target.closest("[data-copy-job]");
     if (cp) { copyText(JOBS[cp.dataset.copyJob].command, cp); return; }
-    const c = e.target.closest("[data-cancel]"); if (c) { c.dataset.cancel.split(",").forEach(id => api("/api/cancel/" + id, {})); poll(); }
+    const lj = e.target.closest("[data-load-job]");
+    if (lj) { const job = JOBS[lj.dataset.loadJob]; if (job) { loadJobSettings(job, job.outputs.length === 1 ? job.outputs[0].seed : null); ok("loaded that card's settings into the form"); } return; }
+    const c = e.target.closest("[data-cancel]");
+    if (c) {
+      const ids = c.dataset.cancel.split(","), running = ids.some(id => JOBS[id] && JOBS[id].status === "running");
+      c.disabled = true; c.textContent = "Cancelling…";
+      Promise.all(ids.map(id => api("/api/cancel/" + id, {}).catch(() => null))).then(() => {
+        ok(running ? "Cancelling — pixelmon is taking its prompts off the render server's queue (a few seconds)…" : `Cancelled ${ids.length > 1 ? ids.length + " jobs" : "it"}.`);
+        poll(); });
+      return;
+    }
     const z = e.target.closest("[data-zoom]"); if (z) setZoom(z.dataset.zoom === "fit" ? "fit" : +z.dataset.zoom);
   });
   $("lbClose").onclick = closeLb;
@@ -6476,7 +7119,7 @@ async function init() {
   $("lbCopy").onclick = e => copyText($("lbCmd").textContent, e.currentTarget);
 
   const hashTab = location.hash.slice(1);   // /#batch, /#presets, … open straight to a tab
-  switchTab(["queue", "gallery", "steer", "presets", "batch", "lab", "analyze"].includes(hashTab) ? hashTab : store.get("tab", "queue"));
+  switchTab(TAB_IDS().includes(hashTab) ? hashTab : TAB_IDS().includes(store.get("tab", "queue")) ? store.get("tab", "queue") : "queue");
   initAnalyze(); loadAnalysis(false);
   poll(); loadGallery();
 }
