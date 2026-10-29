@@ -159,11 +159,68 @@ HOME = os.path.realpath(os.path.expanduser("~"))
 LAN = False              # --lan: the page is open to other devices; browsing / opening paths stays on this machine
 
 
+# Every path the GUI touches is confined to your home folder, plus up to MAX_EXTRA folders outside it that
+# you add in Setup (picture libraries on another disk). Never the system's own folders, and never a drive's root.
+MAX_EXTRA = 20
+SYSTEM_DIRS = ("/etc", "/root", "/proc", "/sys", "/dev", "/boot", "/run", "/usr", "/bin", "/sbin", "/lib", "/lib32",
+               "/lib64", "/libx32", "/var", "/srv", "/opt", "/snap", "/System", "/Library", "/private", "/Applications")
+_ROOTS = {"sig": None, "roots": []}
+
+
+def _under(full, root):
+    return full == root or full.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def clean_extra_folders(folders):
+    """Setup's folders outside home: up to MAX_EXTRA, each a real folder that isn't a system folder or a
+    drive's root. Raises ValueError naming the first bad one, so a bad list never sticks."""
+    out = []
+    for f in folders:
+        f = str(f or "").strip()[:500]
+        if not f or f in out:
+            continue
+        full = os.path.realpath(os.path.expanduser(f))
+        if not os.path.isabs(os.path.expanduser(f)) and not f.startswith("~"):
+            raise ValueError(f"give the whole path: {f}")
+        if os.path.dirname(full) == full:
+            raise ValueError(f"not a whole drive: {f} (pick a folder on it)")
+        if any(_under(full, d) or _under(d, full) for d in SYSTEM_DIRS) and not _under(full, HOME):
+            raise ValueError(f"not a system folder: {f}")
+        if not os.path.isdir(full):
+            raise ValueError(f"not a folder: {f}")
+        out.append(f)
+    if len(out) > MAX_EXTRA:
+        raise ValueError(f"at most {MAX_EXTRA} folders outside home ({len(out)} given)")
+    return out
+
+
+def allowed_roots():
+    """Home, then Setup's folders outside it (real paths), re-read only when the setup file changes."""
+    try:
+        sig = os.stat(SETUP_FILE).st_mtime_ns
+    except OSError:
+        sig = 0
+    if _ROOTS["sig"] != sig:
+        roots = [HOME]
+        for f in load_setup().get("extra_folders", [])[:MAX_EXTRA]:
+            r = os.path.realpath(os.path.expanduser(str(f)))
+            if os.path.isabs(r) and os.path.dirname(r) != r and r not in roots:
+                roots.append(r)
+        _ROOTS.update(sig=sig, roots=roots)
+    return _ROOTS["roots"]
+
+
+def root_of(full):
+    """The allowed folder a path is inside (the deepest one), or None."""
+    hits = [r for r in allowed_roots() if _under(full, r)]
+    return max(hits, key=len) if hits else None
+
+
 def home_path(path, must_exist=True):
-    """Expand ~ and confine to the user's home dir (batch files, export dirs)."""
+    """Expand ~ and confine to the user's home dir or a folder added in Setup (Folders outside home)."""
     full = os.path.realpath(os.path.expanduser(str(path or "")))
-    if full != HOME and not full.startswith(HOME + os.sep):
-        raise ValueError("path must be inside your home folder")
+    if not root_of(full):
+        raise ValueError("path must be inside your home folder, or a folder added in Setup → Folders outside home")
     if must_exist and not os.path.exists(full):
         raise ValueError(f"not found: {path}")
     return full
@@ -193,13 +250,17 @@ def browse(path, kind="any", exts=None, hidden=False, gallery=None, sets=None):
         raise ValueError(f"can't read {full}: {e.strerror or e}")
     dirs.sort(key=str.lower)
     files.sort(key=lambda f: f["name"].lower())
+    top = root_of(full) or HOME
     crumbs, p = [], full
     while True:
-        crumbs.append({"name": "~" if p == HOME else os.path.basename(p), "path": p})
-        if p == HOME or os.path.dirname(p) == p:
+        crumbs.append({"name": "~" if p == HOME else (p if p == top else os.path.basename(p)), "path": p})
+        if p == top or os.path.dirname(p) == p:
             break
         p = os.path.dirname(p)
     places = [{"name": "Home", "path": HOME}]
+    for r in allowed_roots()[1:]:
+        if os.path.isdir(r):
+            places.append({"name": "⇱ " + (os.path.basename(r) or r), "path": r})
     for label, d in (("Gallery", gallery), ("Steering refs", REFS), ("LAB inputs", LAB), ("Corkboards", BOARDS),
                      ("Presets", PRESETS), ("Pictures", "~/Pictures"), ("Downloads", "~/Downloads"),
                      ("Desktop", "~/Desktop"), ("Documents", "~/Documents"), ("git", "~/git")):
@@ -221,7 +282,7 @@ def browse(path, kind="any", exts=None, hidden=False, gallery=None, sets=None):
         if d and os.path.isdir(d) and all(x["path"] != d for x in places):
             places.append({"name": name, "path": d})
     cap = 3000
-    return {"path": full, "home": HOME, "parent": None if full == HOME else os.path.dirname(full), "crumbs": crumbs[::-1],
+    return {"path": full, "home": HOME, "parent": None if full == top else os.path.dirname(full), "crumbs": crumbs[::-1],
             "dirs": dirs[:cap], "files": files[:cap], "more": max(0, len(dirs) + len(files) - 2 * cap), "places": places,
             "sep": os.sep}
 
@@ -2079,6 +2140,7 @@ def load_setup():
     s.setdefault("folder_default", "os")  # what a 📂 click opens: "os" | "kaleidotron" | "dir:<i>"
     s.setdefault("draw_palette", True)     # Open in DRAW also loads the image's colors as a .gpl (--palette)
     s.setdefault("server", "")            # render server (servers.json alias / host / URL); "" = servers.json "_default"
+    s.setdefault("extra_folders", [])     # folders outside home the GUI may use too (Setup; this machine only)
     return s
 
 
@@ -2086,7 +2148,7 @@ def _clean_app(a):
     return {"name": str(a.get("name") or "")[:60], "exec": str(a.get("exec") or "")[:500], "args": str(a.get("args") or "{}")[:300]}
 
 
-def save_setup(body):
+def save_setup(body, local=True):
     s = load_setup()
     for k in ("draw", "kaleidotron", "editor3d"):
         if k in body:
@@ -2103,8 +2165,13 @@ def save_setup(body):
     if "server" in body:
         s["server"] = re.sub(r"\s+", "", str(body["server"] or ""))[:300]
         _ADV_CACHE["v"] = None                 # model lists come from the render server
+    if isinstance(body.get("extra_folders"), list) and body["extra_folders"] != s["extra_folders"]:
+        if not local:
+            raise ValueError("folders outside home can only be changed on the computer running pixelmon-gui")
+        s["extra_folders"] = clean_extra_folders(body["extra_folders"])
     os.makedirs(os.path.dirname(SETUP_FILE), exist_ok=True)
     _write_json(SETUP_FILE, s)
+    _ROOTS["sig"] = None
     return s
 
 
@@ -3391,7 +3458,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                          if os.path.isfile(export_target({"export": {"dir": base, "path": r}}) or "")]
                 return self._json({"exists": found})
             if u.path == "/api/setup":
-                s = save_setup(body)
+                s = save_setup(body, self._local())
                 ed = editor3d(s)
                 return self._json({"setup": s, "editor3d": {"name": ed[1], "blender": ed[2]} if ed else None})
             if u.path == "/api/open":

@@ -714,6 +714,11 @@ empties the render servers' whole queues. A job's own **Cancel** stops its GPU w
   (the same menu as right-click): open it in DRAW, Kaleidotron, a program from Setup or the
   system default, or **📂 Show in folder**. With `--lan`, browsing and opening only work from
   the machine running the GUI.
+- **Folders outside home.** The GUI only touches files in your home folder, plus up to 20
+  folders you list in Setup → **Folders outside home** (a picture library on another disk):
+  Browse… shows each as a ⇱ shortcut, and Find, Batch, Sets, LAB and steering can use them.
+  Not a whole drive or a system folder (/etc, /usr…); the list is only changed from the machine
+  running the GUI. (A symlink in home to another disk doesn't count — its real place is checked.)
 - **Gallery:** search (every word must match), filter chips with counts (pixel / art / raw / LAB /
   3D / sets / sweeps / steered, LoRAs), ★ ratings, ⬇ downloads, **Load** / **Again** on each
   card and the render time. The tab is kept in the address, so Back/Forward move between tabs.

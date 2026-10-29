@@ -1042,7 +1042,7 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
       <div class="steer-top"><input type="text" id="findWithin" class="grow" placeholder="only inside this folder (optional)">
         <span class="dim" id="findCount"></span></div>
       <details class="find-idx" id="findIdx"><summary>Folders searched · <span id="findIdxSum"></span></summary>
-        <label>One folder per line (inside your home folder). Empty = your Pictures, the gallery, steering refs and corkboards.
+        <label>One folder per line (inside your home folder, or one added in Setup). Empty = your Pictures, the gallery, steering refs and corkboards.
           <textarea id="findFolders" rows="3" spellcheck="false"></textarea></label>
         <div class="droptools"><button type="button" class="btn small" id="findAddFolder">Browse… add a folder</button>
           <button type="button" class="btn small primary" id="findIndex" style="flex:0 0 auto">Index now</button><span id="findProg"></span></div></details>
@@ -1242,7 +1242,7 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
       <div class="set-editor hidden" id="setEditor">
         <div class="steer-top" style="margin:0;padding:0;background:none;border:0"><b id="setEdTitle">New set</b><span style="flex:1"></span><button class="btn small" id="setEdCancel">Cancel</button></div>
         <label>Name<input type="text" id="setEdName" maxlength="80" placeholder="neon-caster monsters"></label>
-        <label>Game folder — where picks are exported as <code>&lt;path&gt;.png</code>, and where NOW is read from (inside your home folder)
+        <label>Game folder — where picks are exported as <code>&lt;path&gt;.png</code>, and where NOW is read from (inside your home folder, or one added in Setup)
           <input type="text" id="setEdFolder" placeholder="~/git/qb64-dungeon/assets/pixel-art/default"></label>
         <label>The sprite list — Batch's formats: <code>path | style | size | prompt</code>, <code>folder | name | style | size | prompt</code>, <code>path | prompt</code> or a prompt per line; <code>[Group]</code> lines group rows, <code>#</code> lines are skipped
           <textarea id="setEdManifest" rows="9" placeholder="[Monsters]&#10;monsters/bat | | 64 | a vampire bat, wings spread&#10;monsters/skeleton | | 64 | a skeleton warrior with a rusty sword&#10;[Items]&#10;items/potion-red | | 32 | a small red healing potion"></textarea></label>
@@ -2725,11 +2725,22 @@ function renderSetup() {
         <select id="folderDefault"><option value="os" ${fd === "os" ? "selected" : ""}>the system file manager</option>
           <option value="kaleidotron" ${fd === "kaleidotron" ? "selected" : ""}>Kaleidotron</option>
           ${(S.folder_apps || []).map((a, i) => `<option value="dir:${i}" ${fd === `dir:${i}` ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
-        </select></label></div></fieldset>`;
+        </select></label></div></fieldset>
+    <fieldset class="setup-sect"><legend>Folders outside home <span class="dim" id="extraCount">· ${(S.extra_folders || []).length} of 20</span></legend>
+      <p>The GUI only touches your home folder, plus these: Browse…, Find, Batch files, Sets' game folders, LAB and steering pictures. One whole path a line, up to 20 — a picture library on another disk. Not a whole drive or a system folder (/etc, /usr…). Saved when you leave the box; only changed from this computer.</p>
+      <textarea id="extraFolders" rows="5" wrap="off" spellcheck="false" style="width:100%;font-family:var(--mono, monospace)" placeholder="/mnt/btrfs/art&#10;/media/grymmjack/PICTURES">${esc((S.extra_folders || []).join("\n"))}</textarea>
+      <div class="dim" id="extraMsg"></div></fieldset>`;
   checkServer(); loadServerTable();
 }
 function initSetup() {
   const pane = $("setupPane");
+  pane.addEventListener("change", async e => {
+    if (e.target.id !== "extraFolders") return;
+    const list = e.target.value.split("\n").map(x => x.trim()).filter(Boolean), msg = $("extraMsg");
+    try { const r = await api("/api/setup", { extra_folders: list }); SETUP.setup = r.setup; msg.textContent = "saved ✓"; msg.style.color = "";
+      $("extraCount").textContent = `· ${r.setup.extra_folders.length} of 20`; setTimeout(() => msg.textContent = "", 2500);
+    } catch (err) { msg.textContent = "⛔ " + err.message; msg.style.color = "var(--bad, #f55)"; }
+  });
   pane.addEventListener("input", e => {
     const pth = e.target.dataset.setupPath;
     if (pth) { SETUP.setup[pth] = e.target.value.trim(); return saveSetup(); }
