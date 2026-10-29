@@ -12,9 +12,6 @@ pixelmon "a goblin" -n 8 --fast                # 8 quick variations
 pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 ```
 
-# GUI
-<img width="3840" height="1978" alt="image" src="https://github.com/user-attachments/assets/d9030441-db14-4a07-8872-fac22e25568b" />
-
 <p>
   <img src="examples/knight.png" width="180" alt="knight sprite">
   <img src="examples/wizard-endesga.png" width="180" alt="wizard sprite, ENDESGA-32 palette">
@@ -24,6 +21,76 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 
 *(`pixelmon "a knight in armor"` · `--palette ENDESGA-32` · `--style dosrpg` (Ultima/Wasteland portrait) · `"a spider"`)*
 
+## Features
+
+**Making pictures**
+- **Pixel art that's really pixel art**: SDXL + the Pixel Art XL LoRA (or any LoRA you pick), then a
+  true downscale to the size you ask for (`--size`, `--out` up to 4096), palette-locked and cleaned up.
+- **55 bundled palettes** (PICO-8, NES, ENDESGA-32, DawnBringer, EGA, C64, Game Boy…), a custom hex
+  palette, or **an old sprite's own colours** (`--palette-from`). Perceptual (OKLab) colour matching.
+- **13 dithers** (Bayer 2–16, clustered, Floyd-Steinberg, Jarvis, Stucki, Atkinson, Sierra…) with an
+  amount; **despeckle**, **1-px outlines**, **pixel-art angles** on DRAW's grids (pixel, square,
+  diagonal, isometric, hex, triangle), and **grid snapping** for extra-crisp edges (`--snap-pixels`).
+- **Style guides** (`--style`): 38 tested looks, from hardware (8bit, Game Boy, EGA, Wasteland) to
+  game styles (Dead Cells, Stardew, Zelda, Undertale, Darkest Dungeon…), combined freely.
+- **Art mode** (`--art`): full-resolution paintings and wallpapers (up to 4K), optionally tinted and
+  dithered to a palette. **Raw** mode keeps the LoRA's own picture.
+- **Transparent sprites** and **cut-outs** (BiRefNet) that **fit an old sprite's footprint**, so a
+  game's sprites can be remade at exactly the same size and ground line (`--cutout`, `--fit-to`).
+- **Seamless tiles** (`--tile`, either or both axes), **fill frame** for tiny sprites, `--fast` LCM
+  previews, locked seeds, steps / CFG / sampler / scheduler / checkpoint.
+
+**Steering and editing**
+- **Image steering** (IPAdapter) toward reference pictures, with strength, weight type and a start/end window.
+- **Depth lock** (`--depth`): keep a reference's camera angle and geometry, the prompt sets the rest.
+- **img2img** (`--init`, `--denoise`), and **⚗ Lab**: turn any picture into pixel art with ControlNet,
+  adjust it first (brightness, contrast, posterize, crop…), and **inpaint** part of it — paint the mask
+  or rough in colours, select / move / transform, layered `.draw` / `.ora` / `.psd` input.
+- **🧬 Evolve** variations of any result; **sweeps** of one setting side by side at the same seed;
+  a **combo sweep** that renders once and applies every grid × dither × amount.
+- **Animation** (experimental): looping portrait-gesture GIFs, Wasteland style — only a masked part
+  (found by words: "the cigar") moves.
+
+**3D**
+- **Models from a picture** (`--mesh`, Hunyuan3D 2) as `.glb`, or built straight from its outline
+  (`--shape extrude` / `lathe`) for clean low-poly props; **textured** models with a UV map
+  (`--texture`), **low-poly** versions (`--lowpoly`), Blender previews.
+- **Turnarounds** (`--turnaround`): rotation sprites from a picture or a model, each view painted to match.
+
+**Lists, games and the farm**
+- **Batches** (`--batch`, `--batch-file`): a game's whole sprite list (`key | style | size | prompt`),
+  each file named by key, resumable (`--skip-existing`).
+- **Render farm**: fan jobs across several GPUs (`--server gpubox,local`), NVIDIA, AMD (ROCm),
+  Apple Silicon or CPU; setup auto-detects the GPU. `--list-servers` shows who's up and able.
+- `--dry-run`, `--print-graph` and `--show-prompt` show exactly what would be sent.
+
+**The GUI (`pixelmon-gui`)**
+- **The whole tool in a browser**: every setting on one form, with the exact `pixelmon …` command
+  under RENDER (COPY CLI), a **setup check** that catches settings that fight each other, hover help
+  from `--help`, and the [settings atlas](docs/settings-atlas.html) and [3D guide](docs/3d-guide.html).
+- **Presets** in folders, each with a sample picture: 65 factory ones (scenes, sprites, CGA, Tandy,
+  C64, ZX, Game Boy, Apple II, a demo of every style), import/export as `.zip`.
+- **Gallery** with search, filter chips, ★ ratings, **Load** / **Again**, and backups;
+  **Queue** with live progress, logs and real cancelling on the GPU.
+- **🎚 Sets**: N takes per sprite beside the one the game has now — pick, flag, re-roll, then
+  **export picks** into the game folder (replaced files are backed up first).
+- **🔎 Find** pictures that look like one you drop; **🔬 Analyze** compares pictures against a
+  reference (difference mask, shared loupe, histograms, unique colours) and exports them as layers
+  of a PSD, XCF, DRAW or ORA file.
+- **📌 Corkboard**: mood boards of images collected from anywhere, sent to steering in one click.
+- **Open in** DRAW, Kaleidotron, GIMP, Aseprite, Krita, Blender, your file manager… from any image
+  or folder; **Browse…** on every path; folders outside home when you allow them.
+- Shares ComfyUI, the render farm and its conventions with [soundmon](https://github.com/grymmjack/soundmon),
+  the same tool for sound.
+
+## Screenshots
+
+| | |
+|:-:|:-:|
+| ![Presets: 208 presets in folders, each with a sample picture](docs/screenshots/pixelmon-presets.png) | ![Gallery: searched for "village", filter chips, palettes and actions on each card](docs/screenshots/pixelmon-gallery.png) |
+| **Presets** — the form on the left, presets with sample pictures on the right | **Gallery** — search, filter chips, each render's palette, Load / Again |
+| ![Analyze: two dwarf portraits compared against a reference with a difference mask and loupe](docs/screenshots/pixelmon-analyze.png) | ![Gallery with the corkboard open beside it](docs/screenshots/pixelmon-corkboard.png) |
+| **🔬 Analyze** — compare takes against a reference, export them as layers | **📌 Corkboard** — boards of images collected from anywhere |
 ---
 
 ## Platform setup guides
