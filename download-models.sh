@@ -9,7 +9,7 @@
 #   ./download-models.sh --3d         + 3D models / turnarounds (--mesh, --turnaround): Hunyuan3D 2  (~4.9 GB)
 #                                      (they also need --steer, --depth, and Blender on the machine running pixelmon)
 #   ./download-models.sh --juggernaut + Juggernaut XL v9, an optional alternative checkpoint (~6.6 GB)
-#   ./download-models.sh --upscale    + JPEG repair / upscale models for --upscale (OpenModelDB)  (~380 MB)
+#   ./download-models.sh --upscale    + JPEG repair / upscale / pixel-art models (OpenModelDB)   (~410 MB)
 #   ./download-models.sh --all        everything above                                     (~30 GB)
 #   ./download-models.sh --list       show what's installed and what's missing, download nothing
 #   ./download-models.sh --openmodeldb ID[,ID…]   any model on https://openmodeldb.info by its ID

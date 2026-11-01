@@ -594,8 +594,9 @@ file into `models/upscale_models/`).
 In **pixelmon-gui**: the lightbox's **🔍 Upscale** row works on any picture in the gallery, and the
 ⚗ **Lab**'s **🔍 Upscale / JPEG repair** box on any picture from disk (Browse…, or drop it in;
 inputs up to 400 MB), as cropped and adjusted there. Pick **repair JPEG**, **model** and **size**, or tick
-**pixel art** for `--pixel-art` (its own model and size choices; **🔍 clean pixels**). The result lands
-in the Queue and gallery (filter **🔍 upscaled**).
+**pixel art** for `--pixel-art` (its own repair, model, size and **palette** choices; **🔍 clean pixels**).
+**then** chains a second model, and **size › custom…** takes any `--upscale-to` value, so every CLI
+option of this feature is there. The result lands in the Queue and gallery (filter **🔍 upscaled**).
 
 ### 3D models, turnarounds and low-poly (`--mesh`, `--turnaround`, `--lowpoly`)
 

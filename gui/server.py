@@ -1022,24 +1022,46 @@ UPSCALE_MODEL = re.compile(r"[\w.+()\[\] -]{1,160}")
 
 
 def upscale_argv(u, src, server):
-    """🔍 {model, repair, to, pixel} -> pixelmon --upscale SRC … (model names as the render server lists them)."""
+    """🔍 {model, repair, to, pixel, palette, custom_hex, palette_from, palette_max} -> pixelmon --upscale SRC …
+    (model names as the render server lists them; model may be a chain "a,b")."""
     if not src:
         raise ValueError("upscale: no picture")
     argv = [PIXELMON, "--upscale", src, "--server", server, "--no-open"]
     model, repair, to = str(u.get("model") or "").strip(), str(u.get("repair") or "").strip(), str(u.get("to") or "").strip()
-    for v in (model, repair):
-        if v and v != "none" and not UPSCALE_MODEL.fullmatch(v):
+    chain = [m.strip() for m in model.split(",") if m.strip()] if model != "none" else []
+    for v in chain + ([repair] if repair else []):
+        if not UPSCALE_MODEL.fullmatch(v):
             raise ValueError(f"bad upscale model name {v!r}")
     if repair:
         argv += ["--repair", repair]
     if model:
-        argv += ["--upscale-model", model]
+        argv += ["--upscale-model", "none" if model == "none" else ",".join(chain)]
     if to:
         if not re.fullmatch(r"\d+(\.\d+)?x|\d{2,5}|\d{2,5}x\d{2,5}", to.lower()):
             raise ValueError(f"bad upscale size {to!r}: 2x, 2048 or WxH")
         argv += ["--upscale-to", to.lower()]
     if u.get("pixel"):
         argv.append("--pixel-art")             # flat palette colours again, same size unless `to`
+        pal = str(u.get("palette") or "").strip()
+        if pal == "Custom":
+            cols = re.findall(r"#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b", str(u.get("custom_hex") or ""))
+            if not cols or len(cols) > 256:
+                raise ValueError("pixel art: custom colours must be 1..256 hex codes like #ff9966")
+            argv += ["--palette", "Custom", "--custom-hex", " ".join(c if c.startswith("#") else "#" + c for c in cols)]
+        elif pal == "from":
+            path = home_path(u.get("palette_from"))
+            if not os.path.isfile(path) or not path.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                raise ValueError("pixel art: the palette picture must be a png / jpg / webp / gif / bmp")
+            argv += ["--palette-from", path]
+            mx = str(u.get("palette_max") or "").strip()
+            if mx:
+                if not mx.isdigit() or not 1 <= int(mx) <= 256:
+                    raise ValueError("pixel art: most colours must be 1..256")
+                argv += ["--palette-max", mx]
+        elif pal:
+            if pal not in load_palettes():
+                raise ValueError(f"unknown palette {pal!r}")
+            argv += ["--palette", pal]
     elif model == "none" and not repair:
         raise ValueError("pick a model to enlarge with, or a JPEG repair model")
     return argv

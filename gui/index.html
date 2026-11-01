@@ -2020,7 +2020,12 @@ const HELP = {
     <b>pixel art</b> — a JPEG of sprites comes back at its own size in flat colours of its palette (found from its flat
     areas, and fitted to a bundled palette such as WEB-SAFE when one matches), ringing and colour smear gone. It goes
     through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it (crisper; model <b>none</b> = no server at all);
-    <b>size</b> 2x / 4x enlarges it with hard pixel edges.
+    <b>size</b> 2x / 4x enlarges it with hard pixel edges. Each sprite goes onto its own art-pixel grid (Atari-style
+    4×2 wide pixels, 5×3 …) with one colour per cell, and the specks left are cleared. <b>palette</b>: found by itself,
+    or a bundled one, your own hex codes, or the colours of another picture (<b>most</b> = how many to take).
+    Everywhere: <b>then</b> runs a second model on the first one's result (a chain), and <b>size › custom…</b> takes
+    any size — 3x, a long side like 3000, or WxH to fit inside. The CLI's options, all here: --repair,
+    --upscale-model A,B, --upscale-to, --pixel-art, --palette / --custom-hex / --palette-from / --palette-max.
     The result is a new picture beside the old one; a see-through picture keeps its alpha. Models: run
     <code>./download-models.sh --upscale</code> on the render box, or <code>--openmodeldb ID</code> for any other.`,
   threed: `<span class="tipk">🧊 3D</span>: <b>make 3D model</b> turns the picture's subject into a 3D model (.glb) with
@@ -2367,7 +2372,9 @@ async function turnFrom(job, o, mode) {
   try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
 }
 // 🔍 upscale / JPEG repair (pixelmon --upscale): the lightbox's row and the LAB's box share these settings
-const UP = Object.assign({ model: "", repair: "", to: "", pixel: false, pmodel: "", pto: "" }, store.get("up", {}));
+const UP_KEYS = ["model", "then", "repair", "to", "tocustom", "pixel", "pmodel", "pthen", "prepair", "pto", "ptocustom",
+  "pal", "phex", "pfrom", "pmax"];
+const UP = Object.assign(Object.fromEntries(UP_KEYS.map(k => [k, k === "pixel" ? false : ""])), store.get("up", {}));
 const UP_PIXEL = "2x-AnimeSharpV4-Fast-RCAN-PU";
 const UP_NOTES = {
   "4x-realesrgan-x4plus": "photos + art, fast", "2x-realesrgan-x2plus": "2x, photos + art", "4x-realesrgan-x4plus-anime-6b": "drawings, flat colour",
@@ -2378,49 +2385,88 @@ const UP_NOTES = {
 const upStem = m => String(m).replace(/\.(pth|safetensors|ckpt|bin)$/i, "");
 const upScale = m => { const x = /^(\d+)x/i.exec(String(m).split("/").pop()) || /[^a-z0-9]x(\d+)/i.exec(String(m)); return x ? +x[1] : 4; };
 function upLabel(m) { const n = UP_NOTES[upStem(m)]; return esc(upStem(m)) + (n ? ` — ${esc(n)}` : ""); }
+const upAll = () => (META && META.adv_lists && META.adv_lists.upscalers) || [];
+const UP_SIZE_RE = /^(\d+(\.\d+)?x|\d{2,5}|\d{2,5}x\d{2,5})$/i;
+// what the controls ask for -> the request's {model, repair, to, pixel, palette …}; a string = what's missing
+function upRequest() {
+  const all = upAll(), P = UP.pixel;
+  const size = (sel, custom) => sel === "custom" ? custom.trim() : sel;
+  const to = P ? size(UP.pto, UP.ptocustom) : size(UP.to, UP.tocustom);
+  if ((P ? UP.pto : UP.to) === "custom" && !UP_SIZE_RE.test(to)) return "Type a size: 3x, a long side like 2048, or WxH like 1920x1080.";
+  const first = P ? (UP.pmodel || (all.some(m => upStem(m) === UP_PIXEL) ? "" : "none")) : UP.model;
+  const then = P ? UP.pthen : UP.then;
+  const model = first !== "none" && then ? [first || (P ? all.find(m => upStem(m) === UP_PIXEL) : all.find(m => upStem(m) === "4x-realesrgan-x4plus")) || "", then].filter(Boolean).join(",") : first;
+  const u = { model, repair: P ? UP.prepair : UP.repair, to };
+  if (!P) return model === "none" && !u.repair ? "Pick a JPEG repair model, or a model to enlarge with." : u;
+  u.pixel = true;
+  if (UP.pal === "Custom") {
+    if (!/#?[0-9a-f]{3,6}/i.test(UP.phex)) return "Type the palette's colours as hex codes: #000 #fff #ff9966 …";
+    Object.assign(u, { palette: "Custom", custom_hex: UP.phex });
+  } else if (UP.pal === "from") {
+    if (!UP.pfrom.trim()) return "Browse… to the picture whose colours to use.";
+    Object.assign(u, { palette: "from", palette_from: UP.pfrom.trim(), palette_max: UP.pmax });
+  } else if (UP.pal) u.palette = UP.pal;
+  return u;
+}
 function renderUp() {
-  const all = (META && META.adv_lists && META.adv_lists.upscalers) || [];
+  const all = upAll();
   const big = all.filter(m => upScale(m) > 1), fix = all.filter(m => upScale(m) === 1);
   const def = all.find(m => upStem(m) === "4x-realesrgan-x4plus") || big[0] || "";
   const pdef = all.find(m => upStem(m) === UP_PIXEL) || "";
-  if (UP.model && UP.model !== "none" && !all.includes(UP.model)) UP.model = "";
-  if (UP.pmodel && UP.pmodel !== "none" && !all.includes(UP.pmodel)) UP.pmodel = "";
-  if (UP.repair && !all.includes(UP.repair)) UP.repair = "";
+  for (const k of ["model", "pmodel"]) if (UP[k] && UP[k] !== "none" && !all.includes(UP[k])) UP[k] = "";
+  for (const k of ["then", "pthen", "repair", "prepair"]) if (UP[k] && !all.includes(UP[k])) UP[k] = "";
+  if (UP.pal && !["Custom", "from"].includes(UP.pal) && !(META && META.palettes && META.palettes[UP.pal])) UP.pal = "";
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${label}</option>`;
-  const pixel = `<label title="the picture is pixel art (e.g. a JPEG of sprites): every pixel goes back to one flat colour of its palette, at its own size — the palette is found (fitted to a bundled one like WEB-SAFE when it matches)"><input type="checkbox" data-up="pixel"${UP.pixel ? " checked" : ""}> pixel art</label>`;
+  const P = UP.pixel, K = k => P ? "p" + k : k;          // the pixel-art settings are kept apart from the others
+  const pixel = `<label title="the picture is pixel art (e.g. a JPEG of sprites): every pixel goes back to one flat colour of its palette, at its own size; each sprite onto its own art-pixel grid, specks cleared"><input type="checkbox" data-up="pixel"${P ? " checked" : ""}> pixel art</label>`;
+  const repair = `<label title="a 1x model that removes JPEG damage first: blocks, ringing round edges, colour smear">repair JPEG
+      <select data-up="${K("repair")}">${opt("", "off", UP[K("repair")])}${fix.map(m => opt(m, upLabel(m), UP[K("repair")])).join("")}</select></label>`;
+  const then = `<label title="a second model run on the first one's result (a chain), e.g. a 2x after a 4x">then
+      <select data-up="${K("then")}">${opt("", "—", UP[K("then")])}${all.map(m => opt(m, upLabel(m), UP[K("then")])).join("")}</select></label>`;
+  const sizes = P ? [["", "same size"], ["2x", "2x blocky"], ["3x", "3x blocky"], ["4x", "4x blocky"], ["custom", "custom…"]]
+    : [["", "what the model makes"], ["1x", "same size (restore)"], ["2x", "2x"], ["2048", "long side 2048"], ["4096", "long side 4096"],
+       ["8192", "long side 8192"], ["custom", "custom…"]];
+  const size = `<label title="${P ? "the finished size: its own, or bigger with hard pixel edges" : "the finished size; same size with a 4x model = the picture goes in smaller and comes back rebuilt (a restore)"}">size
+      <select data-up="${K("to")}">${sizes.map(([v, l]) => opt(v, l, UP[K("to")])).join("")}</select></label>`
+    + (UP[K("to")] === "custom" ? `<label title="3x, a long side like 2048, or WxH like 1920x1080 to fit inside">custom size
+      <input type="text" size="9" data-up="${K("tocustom")}" value="${esc(UP[K("tocustom")])}" placeholder="3x · 2048 · WxH"></label>` : "");
   let html;
-  if (UP.pixel) {
+  if (P) {
+    const pals = Object.entries((META && META.palettes) || {});
+    const palette = `<label title="the colours every pixel snaps to: found from the picture's flat areas (fitted to a bundled palette when one matches), a bundled one, your own hex codes, or another picture's colours">palette
+        <select data-up="pal">${opt("", "find it (auto)", UP.pal)}${pals.map(([k, v]) => opt(k, `${esc(k)} (${v.length})`, UP.pal)).join("")}
+          ${opt("Custom", "custom colours…", UP.pal)}${opt("from", "from a picture…", UP.pal)}</select></label>`
+      + (UP.pal === "Custom" ? `<label title="hex codes, e.g. #000 #fff #ff9966">colours
+        <input type="text" size="22" data-up="phex" value="${esc(UP.phex)}" placeholder="#000 #fff #ff9966 …"></label>` : "")
+      + (UP.pal === "from" ? `<label title="a picture whose colours become the palette: all of them when it has few (pixel art), else its main ones">picture
+        <input type="text" size="18" data-up="pfrom" value="${esc(UP.pfrom)}" placeholder="~/art/sprite.png"></label>
+        <button type="button" class="btn small" data-up-browse title="pick the picture on this computer">Browse…</button>
+        <label title="the most colours to take from it (blank: all up to 64, else 32)">most
+        <input type="number" min="1" max="256" style="width:4.5em" data-up="pmax" value="${esc(UP.pmax)}" placeholder="auto"></label>` : "");
     const usable = UP.pmodel || pdef ? "" : `<span class="dim">no ${UP_PIXEL} on the server (<code>./download-models.sh --upscale</code>): cleaned without it, a little rounder</span>`;
-    html = `${pixel}
+    html = `${pixel}${all.length ? repair : ""}
       <label title="a model that redraws the edges sharp first (it's sized back down after); none = the clean alone, no server">model
         <select data-up="pmodel">${opt("", pdef ? `${esc(upStem(pdef))} (default)` : "none (no pixel model on the server)", UP.pmodel)}${all.filter(m => m !== pdef).map(m => opt(m, upLabel(m), UP.pmodel)).join("")}
           ${pdef ? opt("none", "none — the clean alone", UP.pmodel) : ""}</select></label>
-      <label title="the finished size: its own, or bigger with hard pixel edges">size
-        <select data-up="pto">${[["", "same size"], ["2x", "2x blocky"], ["3x", "3x blocky"], ["4x", "4x blocky"]].map(([v, l]) => opt(v, l, UP.pto)).join("")}</select></label>${usable}`;
+      ${UP.pmodel === "none" || !all.length ? "" : then}${size}${palette}${usable}`;
   } else html = !all.length ? `${pixel} <span class="dim">no upscale models on the render server — run <code>./download-models.sh --upscale</code> there</span>`
-    : `${pixel}<label title="a 1x model that removes JPEG damage first: blocks, ringing round edges, colour smear">repair JPEG
-        <select data-up="repair">${opt("", "off", UP.repair)}${fix.map(m => opt(m, upLabel(m), UP.repair)).join("")}</select></label>
+    : `${pixel}${repair}
       <label title="the model that enlarges it, or none to only repair">model
         <select data-up="model">${opt("", `${esc(upStem(def))} (default)`, UP.model)}${big.filter(m => m !== def).map(m => opt(m, upLabel(m), UP.model)).join("")}
           ${opt("none", "none — repair only, same size", UP.model)}</select></label>
-      <label title="the finished size; same size with a 4x model = the picture goes in smaller and comes back rebuilt (a restore)">size
-        <select data-up="to">${[["", "what the model makes"], ["1x", "same size (restore)"], ["2x", "2x"], ["2048", "long side 2048"],
-          ["4096", "long side 4096"], ["8192", "long side 8192"]].map(([v, l]) => opt(v, l, UP.to)).join("")}</select></label>`;
+      ${UP.model === "none" ? "" : then}${size}`;
   document.querySelectorAll(".up-ctl").forEach(el => { el.innerHTML = html; });
-  const word = UP.pixel ? "🔍 clean pixels" : UP.model === "none" ? "🔍 repair" : UP.to === "1x" ? "🔍 restore" : "🔍 upscale";
-  for (const id of ["lbUpGo", "labUpGo"]) { const b = $(id); if (b) { b.textContent = word; b.disabled = !UP.pixel && (!all.length || (UP.model === "none" && !UP.repair)); } }
+  const word = P ? "🔍 clean pixels" : UP.model === "none" ? "🔍 repair" : UP.to === "1x" ? "🔍 restore" : "🔍 upscale";
+  for (const id of ["lbUpGo", "labUpGo"]) { const b = $(id); if (b) { b.textContent = word; b.disabled = !P && (!all.length || (UP.model === "none" && !UP.repair)); } }
 }
 async function upscaleFrom(target, label, group) {
-  let u;
-  if (UP.pixel) {
-    const all = (META && META.adv_lists && META.adv_lists.upscalers) || [];
-    const model = UP.pmodel || (all.some(m => upStem(m) === UP_PIXEL) ? "" : "none");
-    u = { pixel: true, model, repair: "", to: UP.pto };
-    label = label || ("🔍 clean pixels" + (model === "none" ? "" : " · " + upStem(model || UP_PIXEL)) + (UP.pto ? " · " + UP.pto : ""));
-  } else {
-    if (UP.model === "none" && !UP.repair) return showErr("Pick a JPEG repair model, or a model to enlarge with.");
-    u = { model: UP.model, repair: UP.repair, to: UP.to };
-    label = label || ("🔍 " + [UP.repair && "repair", UP.model !== "none" && upStem(UP.model || "4x-realesrgan-x4plus"), UP.to].filter(Boolean).join(" · "));
+  const u = upRequest();
+  if (typeof u === "string") return showErr(u);
+  if (!label) {
+    const models = u.model === "none" ? [] : (u.model || (u.pixel ? UP_PIXEL : "4x-realesrgan-x4plus")).split(",").map(upStem);
+    label = u.pixel
+      ? "🔍 clean pixels" + [u.repair && "repair", ...models, u.to, u.palette && (u.palette === "from" ? "palette from " + u.palette_from.split("/").pop() : "palette " + u.palette)].filter(Boolean).map(x => " · " + x).join("")
+      : "🔍 " + [u.repair && "repair", ...models, u.to].filter(Boolean).join(" · ");
   }
   const p = { upscale: { ...target, ...u }, label };
   if (target.lab && typeof adjTouched === "function" && adjTouched()) p.lab_adjust = labAdj();
@@ -2429,13 +2475,21 @@ async function upscaleFrom(target, label, group) {
   try { return await api("/api/render", p); } catch (e) { showErr(e); return null; }
 }
 function initUp() {
+  const save = () => store.set("up", Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])));
   document.addEventListener("change", e => {
     const k = e.target.dataset && e.target.dataset.up; if (!k) return;
     UP[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    store.set("up", { model: UP.model, repair: UP.repair, to: UP.to, pixel: UP.pixel, pmodel: UP.pmodel, pto: UP.pto }); renderUp();
+    save(); renderUp();
+  });
+  document.addEventListener("click", async e => {
+    if (!e.target.closest("[data-up-browse]")) return;
+    const p = await pickPath({ kind: "file", ext: EXT.img, start: UP.pfrom, title: "The picture whose colours are the palette" });
+    if (p) { UP.pfrom = tilde(p); save(); renderUp(); }
   });
   $("lbUpGo").onclick = async () => {
-    const { job, o } = lbItem; closeLb();
+    const { job, o } = lbItem;
+    if (typeof upRequest() === "string") return showErr(upRequest());
+    closeLb();
     if (await upscaleFrom({ src: { dir: job.dir, file: o.file } })) { switchTab("queue"); poll(); }
   };
   $("labUpGo").onclick = async () => {
