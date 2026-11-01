@@ -16,9 +16,11 @@ venv/
 /ComfyUI/
 
 # pixel-snapper: Rust source + build (cloned & built by install.sh into tools/pixel-snapper, see
-# --snap-pixels). Everything else in tools/ stays ignored too, except the offline self-check.
+# --snap-pixels). Everything else in tools/ stays ignored too, except the offline self-check and the
+# OpenModelDB lookup download-models.sh --openmodeldb uses.
 /tools/*
 !/tools/selfcheck.py
+!/tools/openmodeldb.py
 
 # Generated images / scratch
 output/

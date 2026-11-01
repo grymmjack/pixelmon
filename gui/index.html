@@ -1124,6 +1124,11 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
               <button type="button" class="btn small" id="adjUndo" title="undo the last apply">↶</button>
               <button type="button" class="btn small" id="adjRedo" title="redo">↷</button>
             </div>
+          </details>
+          <details class="adj" id="upBox"><summary>🔍 Upscale / JPEG repair<i class="help" data-help="upscale">i</i></summary>
+            <div class="up-ctl" data-up-where="lab"></div>
+            <button type="button" class="btn" id="labUpGo" style="width:100%;margin-top:8px"
+              title="repair JPEG damage and / or enlarge this input (as cropped and adjusted above) with an upscale model on the render server">🔍 upscale</button>
           </details></div>
         <div class="lab-col"><h3>2 · Steering</h3>
           <label>What is it? <span style="color:var(--dim)">(helps the model keep the subject)</span><i class="help" data-help="labsubject">i</i></label>
@@ -1388,6 +1393,9 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
         title="extrude:DEPTH (times its width), plus ,SHARE:DEPTH to make the top SHARE of it thinner (a monitor on a desk: extrude:0.55,0.42:0.18); or lathe, lathe:24 (segments round)">
       <i class="help" data-help="threed">i</i><a class="t3-guide" href="https://claude.ai/artifact/XpPiZXs79wUHHXJ2zTq8ou" target="_blank" rel="noopener"
         title="3D field guide for 2D artists">new to 3D? ↗</a><span id="lb3dModels"></span></div>
+    <div class="lb-3d" id="lbUp"><b>🔍 Upscale</b><span class="up-ctl" data-up-where="lb"></span>
+      <button class="btn" id="lbUpGo" title="repair JPEG damage and / or enlarge this picture with an upscale model on the render server — a new picture, this one stays">🔍 upscale</button>
+      <i class="help" data-help="upscale">i</i></div>
     <div class="lb-actions">
       <button class="btn hidden" id="lbTiled" title="show this texture repeated 3×3 to check the seams">▦ 3×3 seam check</button>
       <button class="btn" id="lbEvolve">🧬 Evolve from this</button>
@@ -2002,6 +2010,19 @@ const HELP = {
     around it. This crops to the subject first (the background is found from the edges, like transparent bg), then
     shrinks — so the subject fills your canvas instead of sitting small in the middle. A must for 16×16 and 32×32
     sprites and icons. For single subjects on a plain background; not for scenes or seamless tiles.`,
+  upscale: `<span class="tipk">🔍 Upscale</span> runs the picture through upscale models from
+    <a href="https://openmodeldb.info/?t=jpeg" target="_blank" rel="noopener">OpenModelDB</a> on the render server (pixelmon --upscale).
+    <b>repair JPEG</b> first runs a 1x model that removes JPEG damage — 8×8 blocks, ringing round edges, colour smear — at the
+    same size. <b>model</b> then enlarges it (2x / 4x), or <b>none</b> to only repair. <b>size</b> sets the finished size:
+    <b>same size</b> with a 4x model sends the picture in at a quarter and has the model rebuild it — a restore, good for big
+    scans. Pictures: realesrgan-x4plus is fast and clean but smooths faces; UltraSharpV2 keeps texture and grain (slower,
+    non-commercial licence); anime-6b suits drawings and flat colour. These blur pixel art: for that tick
+    <b>pixel art</b> — a JPEG of sprites comes back at its own size in flat colours of its palette (found from its flat
+    areas, and fitted to a bundled palette such as WEB-SAFE when one matches), ringing and colour smear gone. It goes
+    through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it (crisper; model <b>none</b> = no server at all);
+    <b>size</b> 2x / 4x enlarges it with hard pixel edges.
+    The result is a new picture beside the old one; a see-through picture keeps its alpha. Models: run
+    <code>./download-models.sh --upscale</code> on the render box, or <code>--openmodeldb ID</code> for any other.`,
   threed: `<span class="tipk">🧊 3D</span>: <b>make 3D model</b> turns the picture's subject into a 3D model (.glb) with
     Hunyuan3D 2 on the render server, cut out first if it isn't already, plus a 4-view preview rendered by Blender on this
     computer. <b>turnaround</b> goes on: Blender renders the model from every angle, and each view is painted to match the
@@ -2344,6 +2365,85 @@ async function turnFrom(job, o, mode) {
     + (tex ? " + textured" : "") + (shape ? ` · 📐 ${shape}` : "");
   showErr();
   try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { showErr(e); }
+}
+// 🔍 upscale / JPEG repair (pixelmon --upscale): the lightbox's row and the LAB's box share these settings
+const UP = Object.assign({ model: "", repair: "", to: "", pixel: false, pmodel: "", pto: "" }, store.get("up", {}));
+const UP_PIXEL = "2x-AnimeSharpV4-Fast-RCAN-PU";
+const UP_NOTES = {
+  "4x-realesrgan-x4plus": "photos + art, fast", "2x-realesrgan-x2plus": "2x, photos + art", "4x-realesrgan-x4plus-anime-6b": "drawings, flat colour",
+  "4x-realesr-general-x4v3": "small + fast", "4x-Nomos2-otf-esrgan": "photos: JPEG, noise, blur", "4x-UltraSharpV2": "sharpest, keeps texture (non-commercial)",
+  "1x-DeJPG-realplksr-otf": "photos, painterly art", "1x-NMKD-Jaywreck3-Lite": "crisper, stronger colour",
+  "2x-AnimeSharpV4-Fast-RCAN-PU": "crisp edges, no ringing (non-commercial)"
+};
+const upStem = m => String(m).replace(/\.(pth|safetensors|ckpt|bin)$/i, "");
+const upScale = m => { const x = /^(\d+)x/i.exec(String(m).split("/").pop()) || /[^a-z0-9]x(\d+)/i.exec(String(m)); return x ? +x[1] : 4; };
+function upLabel(m) { const n = UP_NOTES[upStem(m)]; return esc(upStem(m)) + (n ? ` — ${esc(n)}` : ""); }
+function renderUp() {
+  const all = (META && META.adv_lists && META.adv_lists.upscalers) || [];
+  const big = all.filter(m => upScale(m) > 1), fix = all.filter(m => upScale(m) === 1);
+  const def = all.find(m => upStem(m) === "4x-realesrgan-x4plus") || big[0] || "";
+  const pdef = all.find(m => upStem(m) === UP_PIXEL) || "";
+  if (UP.model && UP.model !== "none" && !all.includes(UP.model)) UP.model = "";
+  if (UP.pmodel && UP.pmodel !== "none" && !all.includes(UP.pmodel)) UP.pmodel = "";
+  if (UP.repair && !all.includes(UP.repair)) UP.repair = "";
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${label}</option>`;
+  const pixel = `<label title="the picture is pixel art (e.g. a JPEG of sprites): every pixel goes back to one flat colour of its palette, at its own size — the palette is found (fitted to a bundled one like WEB-SAFE when it matches)"><input type="checkbox" data-up="pixel"${UP.pixel ? " checked" : ""}> pixel art</label>`;
+  let html;
+  if (UP.pixel) {
+    const usable = UP.pmodel || pdef ? "" : `<span class="dim">no ${UP_PIXEL} on the server (<code>./download-models.sh --upscale</code>): cleaned without it, a little rounder</span>`;
+    html = `${pixel}
+      <label title="a model that redraws the edges sharp first (it's sized back down after); none = the clean alone, no server">model
+        <select data-up="pmodel">${opt("", pdef ? `${esc(upStem(pdef))} (default)` : "none (no pixel model on the server)", UP.pmodel)}${all.filter(m => m !== pdef).map(m => opt(m, upLabel(m), UP.pmodel)).join("")}
+          ${pdef ? opt("none", "none — the clean alone", UP.pmodel) : ""}</select></label>
+      <label title="the finished size: its own, or bigger with hard pixel edges">size
+        <select data-up="pto">${[["", "same size"], ["2x", "2x blocky"], ["3x", "3x blocky"], ["4x", "4x blocky"]].map(([v, l]) => opt(v, l, UP.pto)).join("")}</select></label>${usable}`;
+  } else html = !all.length ? `${pixel} <span class="dim">no upscale models on the render server — run <code>./download-models.sh --upscale</code> there</span>`
+    : `${pixel}<label title="a 1x model that removes JPEG damage first: blocks, ringing round edges, colour smear">repair JPEG
+        <select data-up="repair">${opt("", "off", UP.repair)}${fix.map(m => opt(m, upLabel(m), UP.repair)).join("")}</select></label>
+      <label title="the model that enlarges it, or none to only repair">model
+        <select data-up="model">${opt("", `${esc(upStem(def))} (default)`, UP.model)}${big.filter(m => m !== def).map(m => opt(m, upLabel(m), UP.model)).join("")}
+          ${opt("none", "none — repair only, same size", UP.model)}</select></label>
+      <label title="the finished size; same size with a 4x model = the picture goes in smaller and comes back rebuilt (a restore)">size
+        <select data-up="to">${[["", "what the model makes"], ["1x", "same size (restore)"], ["2x", "2x"], ["2048", "long side 2048"],
+          ["4096", "long side 4096"], ["8192", "long side 8192"]].map(([v, l]) => opt(v, l, UP.to)).join("")}</select></label>`;
+  document.querySelectorAll(".up-ctl").forEach(el => { el.innerHTML = html; });
+  const word = UP.pixel ? "🔍 clean pixels" : UP.model === "none" ? "🔍 repair" : UP.to === "1x" ? "🔍 restore" : "🔍 upscale";
+  for (const id of ["lbUpGo", "labUpGo"]) { const b = $(id); if (b) { b.textContent = word; b.disabled = !UP.pixel && (!all.length || (UP.model === "none" && !UP.repair)); } }
+}
+async function upscaleFrom(target, label, group) {
+  let u;
+  if (UP.pixel) {
+    const all = (META && META.adv_lists && META.adv_lists.upscalers) || [];
+    const model = UP.pmodel || (all.some(m => upStem(m) === UP_PIXEL) ? "" : "none");
+    u = { pixel: true, model, repair: "", to: UP.pto };
+    label = label || ("🔍 clean pixels" + (model === "none" ? "" : " · " + upStem(model || UP_PIXEL)) + (UP.pto ? " · " + UP.pto : ""));
+  } else {
+    if (UP.model === "none" && !UP.repair) return showErr("Pick a JPEG repair model, or a model to enlarge with.");
+    u = { model: UP.model, repair: UP.repair, to: UP.to };
+    label = label || ("🔍 " + [UP.repair && "repair", UP.model !== "none" && upStem(UP.model || "4x-realesrgan-x4plus"), UP.to].filter(Boolean).join(" · "));
+  }
+  const p = { upscale: { ...target, ...u }, label };
+  if (target.lab && typeof adjTouched === "function" && adjTouched()) p.lab_adjust = labAdj();
+  if (group) p.group = group;
+  showErr();
+  try { return await api("/api/render", p); } catch (e) { showErr(e); return null; }
+}
+function initUp() {
+  document.addEventListener("change", e => {
+    const k = e.target.dataset && e.target.dataset.up; if (!k) return;
+    UP[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    store.set("up", { model: UP.model, repair: UP.repair, to: UP.to, pixel: UP.pixel, pmodel: UP.pmodel, pto: UP.pto }); renderUp();
+  });
+  $("lbUpGo").onclick = async () => {
+    const { job, o } = lbItem; closeLb();
+    if (await upscaleFrom({ src: { dir: job.dir, file: o.file } })) { switchTab("queue"); poll(); }
+  };
+  $("labUpGo").onclick = async () => {
+    if (!LABS.file) return showErr("Pick an input image first.");
+    const group = `lab-${Date.now()}`;
+    if (await upscaleFrom({ lab: LABS.file }, null, group)) { LABS.group = group; poll(); renderLab(); }
+  };
+  renderUp();
 }
 function evolveFrom(job, o) {
   if (job.params.form) loadJobSettings(job, null);   // breed with the settings that made it
@@ -3067,7 +3167,7 @@ const oiBtnInline = (target, title = "open in…") =>
 const GAL = { q: "", chip: store.get("galChip", "all"), stars: +store.get("galStars", 0), limit: 300, total: 0 };
 function galTags(j) {
   const p = j.params || {}, t = [];
-  t.push(p.art ? "art" : p.raw ? "raw" : "pixel");
+  t.push(p.upscale ? "upscale" : p.art ? "art" : p.raw ? "raw" : "pixel");
   if ((j.models && j.models.length) || p.turnaround) t.push("3d");
   if (p.control || p.inpaint || p.lab_init) t.push("lab");
   if (p.set) t.push("set");
@@ -3078,10 +3178,10 @@ function galTags(j) {
   return t;
 }
 const GAL_KINDS = [["pixel", "pixel art"], ["art", "art"], ["raw", "raw"], ["lab", "⚗ LAB / edits"], ["3d", "🧊 3D"], ["set", "🎚 sets"],
-                   ["evolve", "🧬 evolved"], ["sweep", "sweeps"], ["steered", "🧭 steered"]];
+                   ["evolve", "🧬 evolved"], ["sweep", "sweeps"], ["steered", "🧭 steered"], ["upscale", "🔍 upscaled"]];
 function galText(j, o) {
   const p = j.params || {}, f = p.form || {};
-  return [p.prompt, f.subject, p.lora, (p.styles || []).join(" "), p.out, p.palette, p.dither, o.seed, "s" + o.seed, o.file, j.dir,
+  return [p.prompt, f.subject, p.upscale && "upscale " + [p.upscale.repair, p.upscale.model].join(" "), p.lora, (p.styles || []).join(" "), p.out, p.palette, p.dither, o.seed, "s" + o.seed, o.file, j.dir,
           j.label, o.label, p.set && p.set.key].filter(x => x != null && x !== "").join(" ").toLowerCase();
 }
 async function loadGallery(more) {
@@ -6786,6 +6886,7 @@ async function srvRefreshLists() {            // model menus that came back empt
     META.adv_lists = m.adv_lists; META.server_up = m.server_up;
     syncAdvMirrors(); if (!$("advPane").classList.contains("hidden")) renderAdv();
     if (LABS.edit) editUses(LABS.edit);
+    renderUp();
     sweepAllLabels();
   } catch {}
 }
@@ -6951,6 +7052,7 @@ async function init() {
   initSteer();
   initDepth();
   initEvo();
+  initUp();
   initPresets();
   initBatch();
   initSets();

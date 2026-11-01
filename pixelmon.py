@@ -133,6 +133,8 @@ def print_help():
         ex("pixelmon --batch-file sprites.txt -n 4", "a game's sprite list: 'key | prompt' rows"),
         ex('pixelmon "a slime" --palette-from old.png', "use an old sprite's colours"),
         ex('pixelmon "a bandit" --animate "smoke from cigar"', "looping animated GIF"),
+        ex("pixelmon --upscale photo.jpg --repair", "fix JPEG damage, then 4x bigger"),
+        ex("pixelmon --fix-jpeg sprites.jpg --pixel-art", "a JPEG of pixel art -> clean flat pixels, same size"),
         "",
         f"{c['b']}{c['cyan']}OPTIONS{c['rst']}",
         opt("prompt", "what to draw (in quotes)"),
@@ -168,6 +170,13 @@ def print_help():
         opt("--texture-elev DEG", "--texture: how high the picture was seen from  [guessed: 0/30/55]"),
         opt("--blender CMD", "Blender for 3D", "blender / org.blender.Blender flatpak"),
         opt("--mesh-model FILE", "Hunyuan3D 2 checkpoint (models/checkpoints/)", "hunyuan3d-dit-v2_fp16"),
+        opt("--upscale IMG|DIR", "repair / enlarge a picture (or a folder) with an upscale model, e.g. a JPEG"),
+        opt("--upscale-model M", "--upscale: model(s) in models/upscale_models/, M,N = a chain; none = no enlarging", "4x-realesrgan-x4plus"),
+        opt("--repair [M]", "--upscale: a JPEG-repair pass first (blocks, ringing, noise)", "1x-DeJPG-realplksr-otf"),
+        opt("--upscale-to SIZE", "--upscale: finished size: 2x, a long side (2048) or WxH; 1x + --repair = same size", "the model's"),
+        opt("--fix-jpeg IMG|DIR", "clean JPEG damage, same size (--upscale + --upscale-to 1x + --repair)"),
+        opt("--pixel-art", "--upscale / --fix-jpeg: pixel art -> flat palette colours again (--palette to pick)"),
+        opt("--list-upscalers", "the upscale models each render server has"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
         opt("", "  jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson", "floyd-steinberg"),
@@ -782,7 +791,7 @@ def submit(graph, server=None):
 CHECKS_OFF = False          # --no-check
 _OBJ_INFO = {}              # (server, class) -> its object_info entry, or None when the server has no such node
 MODEL_INPUTS = {"ckpt_name", "lora_name", "control_net_name", "ipadapter_file", "clip_name", "unet_name",
-                "bg_removal_name"}
+                "bg_removal_name", "model_name"}
 UPLOAD_NODES = {"LoadImage", "LoadImageMask"}     # their file list is what this run uploads
 
 
@@ -843,7 +852,7 @@ def _model_groups():
     so the hint can't drift from it."""
     groups, flag = {}, ""
     flags = {"WANT_LAB": "--lab", "WANT_STEER": "--steer", "WANT_DEPTH": "--depth", "WANT_3D": "--3d",
-             "WANT_JUGG": "--juggernaut"}
+             "WANT_JUGG": "--juggernaut", "WANT_UPSCALE": "--upscale"}
     try:
         with open(os.path.join(_SCRIPT_DIR, "download-models.sh"), encoding="utf-8") as f:
             for line in f:
@@ -1954,6 +1963,31 @@ def main():
     p.add_argument("--mesh-steps", dest="mesh_steps", type=int, default=20, help=argparse.SUPPRESS)
     p.add_argument("--mesh-cfg", dest="mesh_cfg", type=float, default=5.5, help=argparse.SUPPRESS)
     p.add_argument("--mesh-octree", dest="mesh_octree", type=int, default=256, help=argparse.SUPPRESS)
+    p.add_argument("--upscale", action="extend", nargs="+", default=None, metavar="IMG|DIR",
+                   help="repair and/or enlarge finished pictures (a folder: every picture in it; several are fine) "
+                        "with an upscale model on the render server (OpenModelDB: ./download-models.sh --upscale). "
+                        "saves NAME_x4.png / NAME_repaired.png, a see-through picture keeps its alpha")
+    p.add_argument("--upscale-model", dest="upscale_model", default=None, metavar="MODEL[,MODEL]",
+                   help="--upscale: the model(s) in the server's models/upscale_models/, run in order (a 1x model "
+                        "only repairs, 2x / 4x also enlarge); the extension and case may be left off. none = no "
+                        "enlarging (with --repair). default 4x-realesrgan-x4plus.pth")
+    p.add_argument("--repair", nargs="?", const="1x-DeJPG-realplksr-otf.safetensors", default=None, metavar="MODEL",
+                   help="--upscale: run a JPEG-repair model first: blocks, ringing, mosquito noise, colour smear "
+                        "(default 1x-DeJPG-realplksr-otf). with --upscale-to 1x it only repairs")
+    p.add_argument("--upscale-to", dest="upscale_to", default=None, metavar="SIZE",
+                   help="--upscale: the finished size: Nx of the original (2x, 1x), a long side in pixels (2048), "
+                        "or WxH to fit inside; the model's result is resized smoothly. default: what the models make")
+    p.add_argument("--fix-jpeg", dest="fix_jpeg", action="extend", nargs="+", default=None, metavar="IMG|DIR",
+                   help="clean the JPEG damage out of pictures at their own size: --upscale IMG --upscale-to 1x, "
+                        "with --repair (or --pixel-art for pixel art). saves NAME_repaired.png / NAME_clean.png")
+    p.add_argument("--pixel-art", dest="pixel_art", action="store_true",
+                   help="--upscale / --fix-jpeg: the picture is pixel art: every pixel goes back to one flat colour "
+                        "of its palette (found from its flat areas and fitted to a bundled palette when one matches, "
+                        "or --palette NAME / --palette-from IMG), at its own size unless --upscale-to (then blocky). "
+                        "goes through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it; --upscale-model none = "
+                        "no server")
+    p.add_argument("--list-upscalers", dest="list_upscalers", action="store_true",
+                   help="list the upscale models on each render server (--server) and exit")
     p.add_argument("--fit-subject", dest="fit_subject", action="store_true",
                    help="crop the full-res render to its subject (background found from the edges) so it FILLS the "
                         "canvas before reducing — a 16x16 sprite gets twice the pixels on the subject")
@@ -2209,12 +2243,17 @@ def main():
     REMOTE = not is_local(SERVER)
     CHECKS_OFF = a.no_check
 
-    nothing_to_make = not (a.prompt or a.batch or a.batch_file or a.mesh or a.turnaround)
+    if a.fix_jpeg:                           # --upscale at the picture's own size, repaired
+        a.upscale = (a.upscale or []) + a.fix_jpeg
+        a.upscale_to = a.upscale_to or "1x"
+        if not (a.pixel_art or a.repair or a.upscale_model):
+            a.repair = "1x-DeJPG-realplksr-otf.safetensors"
+    nothing_to_make = not (a.prompt or a.batch or a.batch_file or a.mesh or a.turnaround or a.upscale)
     if a.wrapper_local_url:
         # bin/pixelmon asks which ComfyUI on this machine (if any) this command renders on, and starts the
         # default one when it's down. Help, listings and dry runs need none; neither does a remote target.
         if not (a.show_help or a.list_palettes or a.list_styles or a.list_servers or a.dry_run or a.print_graph
-                or nothing_to_make):
+                or (nothing_to_make and not a.list_upscalers)):
             for srv in (POOL or [SERVER]):
                 if is_local(srv):
                     print(srv)
@@ -2223,7 +2262,7 @@ def main():
         return
 
     # Friendly help on -h/--help, or when run with no prompt at all.
-    if a.show_help or (nothing_to_make and not a.list_palettes and not a.list_styles and not a.list_servers):
+    if a.show_help or (nothing_to_make and not (a.list_palettes or a.list_styles or a.list_servers or a.list_upscalers)):
         print_help()
         return
     if a.list_servers and nothing_to_make:      # check the boxes for a plain render
@@ -2231,6 +2270,11 @@ def main():
     graph_out = sys.stdout
     if a.print_graph:                    # only the JSON on stdout, so it can be piped; notes go to stderr
         sys.stdout = sys.stderr
+    if a.upscale or a.list_upscalers:        # repair / enlarge finished pictures with an upscale model (upscale.py)
+        import upscale
+        return upscale.run(sys.modules[__name__], a, p)
+    if a.upscale_model or a.repair or a.upscale_to or a.pixel_art:
+        p.error("--upscale-model / --repair / --upscale-to / --pixel-art go with --upscale or --fix-jpeg PICTURE")
     if a.mesh or a.turnaround:               # 3D: a model, and rotation sprites painted from it (turnaround.py)
         import turnaround
         return turnaround.run(sys.modules[__name__], a, p)

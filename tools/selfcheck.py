@@ -222,7 +222,8 @@ def main():
     defaults = ["sd_xl_base_1.0.safetensors", "pixel-art-xl.safetensors", "lcm-lora-sdxl.safetensors",
                 "controlnet-union-sdxl-promax.safetensors", "controlnet-depth-sdxl-1.0.safetensors",
                 "ip-adapter-plus_sdxl_vit-h.safetensors", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
-                "birefnet.safetensors", "hunyuan3d-dit-v2_fp16.safetensors", "sdxl-inpainting-0.1.fp16.safetensors"]
+                "birefnet.safetensors", "hunyuan3d-dit-v2_fp16.safetensors", "sdxl-inpainting-0.1.fp16.safetensors",
+                "4x-realesrgan-x4plus.pth", "1x-DeJPG-realplksr-otf.safetensors"]
     check("download-models.sh fetches every default model (the provisioning hint can name its group)",
           all(m in groups for m in defaults), f"missing: {[m for m in defaults if m not in groups]}")
 
@@ -474,6 +475,152 @@ def main():
                                 argparse.ArgumentParser())
     check("--post-sweep: dither 'none' is made once, not once per amount", len(combos) == 6,
           f"{len(combos)} combinations")
+
+    # --- 🔍 --upscale: model names, the chain, the graph, sizes, alpha — against a fake render server --------------
+    import upscale as U
+
+    class Opt:
+        def __init__(self, **kw):
+            self.repair, self.upscale_model, self.upscale_to = None, None, None
+            self.__dict__.update(kw)
+    have = ["1x-DeJPG-realplksr-otf.safetensors", "4x-realesrgan-x4plus.pth", "4x-realesrgan-x4plus-anime-6b.pth",
+            "2x-realesrgan-x2plus.pth"]
+    check("--upscale-model names resolve without extension / case, and a clash isn't guessed",
+          U.resolve("4x-RealESRGAN-x4plus", have) == "4x-realesrgan-x4plus.pth" and U.resolve("anime", have)
+          == "4x-realesrgan-x4plus-anime-6b.pth" and U.resolve("realesrgan", have) is None
+          and [U.name_scale(m) for m in have] == [1, 4, 4, 2] and U.name_scale("RealESRGAN_x4plus.pth") == 4)
+    check("--upscale chain: the default enlarges, --repair goes first, --repair --upscale-to 1x only repairs",
+          U.model_chain(Opt()) == [U.DEFAULT_UPSCALER]
+          and U.model_chain(Opt(repair=U.DEFAULT_REPAIR)) == [U.DEFAULT_REPAIR, U.DEFAULT_UPSCALER]
+          and U.model_chain(Opt(repair=U.DEFAULT_REPAIR, upscale_to="1x")) == [U.DEFAULT_REPAIR]
+          and U.model_chain(Opt(upscale_model="a,b")) == ["a", "b"])
+    ug = U.graph("pic.png", ["r.pth", "u.pth"], "pixelmon/upscale/pic")
+    check("--upscale graph: LoadImage -> each model in order -> SaveImage",
+          ug["11"]["inputs"]["image"] == ["1", 0] and ug["13"]["inputs"]["image"] == ["11", 0]
+          and ug["9"]["inputs"]["images"] == ["13", 0] and ug["12"]["inputs"]["model_name"] == "u.pth")
+    if Image is not None:
+        sent, saved = [], dict((k, getattr(P, k)) for k in ("_upload_image", "submit", "wait", "fetch_image", "_object_info"))
+        listed = [have]
+        P._object_info = lambda server, cls: {"input": {"required": {"model_name": [listed[0], {}]}}}
+        P._upload_image = lambda path, server, what="": (sent.append(Image.open(path).size), path)[1]
+        P.submit = lambda g, server=None: g
+        P.wait = lambda g, server=None, timeout=0, resubmit=None: {"9": {"images": [{"filename": g["1"]["inputs"]["image"]}]}}
+
+        def fake_fetch(im, dest, server=None):     # the "model": nearest x(product of the chain's scales)
+            k = 1
+            for n in (ug_names[0]):
+                k *= U.name_scale(n)
+            src = Image.open(im["filename"]).convert("RGB")
+            out = os.path.join(dest, "made.png")
+            src.resize((src.width * k, src.height * k)).save(out)
+            return out
+        P.fetch_image = fake_fetch
+        ud = os.path.join(tmp, "up")
+        os.makedirs(ud)
+        spr = Image.new("RGBA", (40, 30), (0, 0, 0, 0))
+        spr.paste((200, 30, 30, 255), (10, 10, 30, 20))
+        spr.save(os.path.join(ud, "sprite.png"))
+        Image.new("RGB", (5000, 3000), (90, 90, 90)).save(os.path.join(ud, "scan.bmp"))
+        # pixel art in web-safe colours, with 1-pixel lines, stripes and a checker, saved as a poor JPEG
+        art = Image.new("RGB", (96, 64), (0, 0, 0))
+        for box, col in (((4, 4, 34, 34), (255, 204, 51)), ((40, 4, 60, 16), (51, 153, 255)), ((64, 4, 92, 40), (204, 51, 153)),
+                         ((4, 40, 40, 60), (102, 204, 0)), ((48, 44, 88, 60), (255, 255, 255))):
+            art.paste(col, box)
+        for x in range(10, 20):                      # a checker inside the yellow block
+            for y in range(10, 20):
+                if (x + y) % 2:
+                    art.putpixel((x, y), (0, 0, 0))
+        for y in range(16, 30, 2):                   # 1-pixel stripes across the magenta one
+            art.paste((255, 255, 255), (64, y, 92, y + 1))
+        art.paste((255, 255, 255), (44, 20, 45, 38))  # a 1-pixel line, and a 1-pixel gap in the white block
+        art.paste((0, 0, 0), (68, 52, 69, 53))
+        art.save(os.path.join(ud, "art.jpg"), quality=60)
+        runs = {}
+        try:
+            for key, args, names, flag, models in (
+                    ("x4", ["sprite.png"], ["4x-realesrgan-x4plus.pth"], "--upscale", have),
+                    ("restore", ["scan.bmp", "--upscale-to", "1x"], ["4x-realesrgan-x4plus.pth"], "--upscale", have),
+                    ("too big", ["scan.bmp"], ["4x-realesrgan-x4plus.pth"], "--upscale", have),
+                    ("pixel", ["art.jpg", "--pixel-art"], [U.PIXEL_MODEL], "--fix-jpeg", have + [U.PIXEL_MODEL]),
+                    ("pixel here", ["art.jpg", "--pixel-art", "--name", "here"], [], "--fix-jpeg", have)):
+                ug_names, listed[0] = [names], models
+                sent.clear()
+                old = sys.argv
+                sys.argv = ["pixelmon", flag, *[os.path.join(ud, x) if i == 0 else x for i, x in enumerate(args)],
+                            "--no-open", "--output-to", ud, "--server", "http://127.0.0.1:1"]
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        P.main()
+                    rc = 0
+                except SystemExit as e:
+                    rc = e.code
+                finally:
+                    sys.argv = old
+                runs[key] = (rc, list(sent), buf.getvalue())
+        finally:
+            for k, v in saved.items():
+                setattr(P, k, v)
+        x4 = os.path.join(ud, "sprite_x4.png")
+        ok4 = os.path.isfile(x4) and Image.open(x4).size == (160, 120) and Image.open(x4).mode == "RGBA" \
+            and Image.open(x4).getpixel((2, 2))[3] == 0 and Image.open(x4).getpixel((80, 60))[3] == 255 \
+            and "pixelmon" in Image.open(x4).text
+        check("--upscale x4 keeps a sprite's see-through background and stamps the recipe", ok4, runs["x4"][2])
+        rest = os.path.join(ud, "scan_restored.png")
+        check("--upscale-to 1x on a big scan sends it in smaller (5000 -> 2048 for a 4x model), saves it full size",
+              runs["restore"][1] == [(2048, 1229)] and os.path.isfile(rest) and Image.open(rest).size == (5000, 3000),
+              str(runs["restore"][:2]))
+        check("--upscale of a big scan with no --upscale-to is refused before it's sent (and exits non-zero)",
+              runs["too big"][0] == 1 and runs["too big"][1] == [] and "--upscale-to" in runs["too big"][2], str(runs["too big"][:2]))
+
+        def pixel_ok(path, least=0.98):              # same size, flat colours, almost every pixel the art's own
+            if not os.path.isfile(path):
+                return False, "not made"
+            got = Image.open(path).convert("RGB")
+            same = sum(p == q for p, q in zip(got.getdata(), art.getdata())) / (art.width * art.height)
+            return got.size == art.size and len(got.getcolors(4096)) <= 8 and same >= least, \
+                f"{got.size} {len(got.getcolors(4096))} colours, {same:.1%} exact"
+        ok, why = pixel_ok(os.path.join(ud, "art_clean.png"))
+        check("--fix-jpeg --pixel-art: through the pixel model at 2x and back, a JPEG of pixel art is its flat "
+              "colours again at its own size (1-pixel lines, stripes and checker kept)",
+              ok and runs["pixel"][1] == [art.size], f"{why} {runs['pixel'][:2]} {runs['pixel'][2][-300:]}")
+        # a sprite drawn in 4x2 art pixels (Atari-style wide pixels) at an odd offset, like the hat man of a JPEG'd
+        # sprite sheet that came back speckled: back on its grid, no specks
+        import random
+        import numpy as np
+        from PIL import ImageFilter
+        guy = ["...OOO....", "...PPP....", "...RRR....", ".PPPPPPPP.", ".RVMMVVVV.", "...LL.L...", "...LLLL...",
+               "...LLL....", "..MMMMM...", ".MMMM.M...", ".MMMMMMV..", ".MMMM.MV..", "...MMMM...", ".MMMM.M...",
+               ".MMMMMM...", ".MM..MM...", ".OP..OO...", ".OO..OO...", ".OOO.OOO..", "..OO.OOO..", ".........."]
+        cols = {".": (0, 0, 0), "O": (255, 153, 102), "P": (255, 153, 153), "R": (204, 51, 102), "V": (153, 51, 153),
+                "M": (204, 51, 204), "L": (255, 102, 255)}
+        small = Image.new("RGB", (10, 21))
+        small.putdata([cols[ch] for row in guy for ch in row])
+        wide = Image.new("RGB", (60, 60), (0, 0, 0))
+        wide.paste(small.resize((40, 42), Image.NEAREST), (9, 7))
+        rnd = random.Random(7)                       # what the colour snap leaves: specks inside shapes, blended
+        dirty = np.array(wide)                        # fringe pixels along edges, a few cells' rims off-colour
+        for _ in range(60):
+            y, x = rnd.randrange(60), rnd.randrange(60)
+            dirty[y, x] = np.clip(dirty[y, x].astype(int) + rnd.choice([-51, 51]), 0, 255)
+        edge = np.abs(np.diff(np.array(wide).astype(int), axis=1)).sum(-1) > 0
+        for y, x in zip(*np.nonzero(edge)):
+            if rnd.random() < 0.3:
+                dirty[y, x + 1] = (dirty[y, x].astype(int) + dirty[y, x + 1]) // 2
+        soft = np.array(wide.filter(ImageFilter.GaussianBlur(0.6))).astype(float)
+        sharp = np.array(wide.resize((120, 120), Image.NEAREST).filter(ImageFilter.GaussianBlur(0.8))).astype(float)
+        snapped, on, n = U.grid_snap(dirty, soft, sharp, 2)
+        got = Image.fromarray(U.despeck(snapped).astype(np.uint8))
+        exact = sum(p == q for p, q in zip(got.getdata(), wide.getdata())) / (wide.width * wide.height)
+        from scipy import ndimage as ndi
+        gk = U._key(np.asarray(got))
+        specks = sum(int((np.bincount(ndi.label(gk == c)[0].ravel())[1:] <= 2).sum()) for c in np.unique(gk))
+        check("--pixel-art puts a speckled sprite drawn in 4x2 art pixels back on its grid: exact, no specks",
+              exact == 1 and specks == 0 and on == 1, f"{exact:.1%} exact, {specks} specks, {on} of {n} on a grid")
+        ok, why = pixel_ok(os.path.join(ud, "here_clean.png"), 0.97)   # rounder: 1-px stripes on colour smear most
+        check("--pixel-art with no pixel model on the server cleans it here alone (nothing sent)",
+              ok and runs["pixel here"][1] == [] and "cleaning without it" in runs["pixel here"][2],
+              f"{why} {runs['pixel here'][2][-300:]}")
 
     # every flag is in the help (a hidden flag is a flag nobody finds)
     buf = io.StringIO()

@@ -26,7 +26,7 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
 **Making pictures**
 - **Pixel art that's really pixel art**: SDXL + the Pixel Art XL LoRA (or any LoRA you pick), then a
   true downscale to the size you ask for (`--size`, `--out` up to 4096), palette-locked and cleaned up.
-- **55 bundled palettes** (PICO-8, NES, ENDESGA-32, DawnBringer, EGA, C64, Game Boy…), a custom hex
+- **56 bundled palettes** (PICO-8, NES, ENDESGA-32, DawnBringer, EGA, C64, Game Boy…), a custom hex
   palette, or **an old sprite's own colours** (`--palette-from`). Perceptual (OKLab) colour matching.
 - **13 dithers** (Bayer 2–16, clustered, Floyd-Steinberg, Jarvis, Stucki, Atkinson, Sierra…) with an
   amount; **despeckle**, **1-px outlines**, **pixel-art angles** on DRAW's grids (pixel, square,
@@ -39,6 +39,11 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
   game's sprites can be remade at exactly the same size and ground line (`--cutout`, `--fit-to`).
 - **Seamless tiles** (`--tile`, either or both axes), **fill frame** for tiny sprites, `--fast` LCM
   previews, locked seeds, steps / CFG / sampler / scheduler / checkpoint.
+- **🔍 JPEG repair and upscaling** (`--upscale`, `--repair`): any picture or folder through
+  [OpenModelDB](https://openmodeldb.info/?t=jpeg) models — remove JPEG blocks and ringing, enlarge 2x / 4x,
+  or restore a big scan at its own size. `--fix-jpeg sprites.jpg --pixel-art` turns a JPEG of pixel art
+  back into clean flat pixels at its own size. `./download-models.sh --upscale` fetches a tested set,
+  `--openmodeldb ID` any other.
 
 **Steering and editing**
 - **Image steering** (IPAdapter) toward reference pictures, with strength, weight type and a start/end window.
@@ -388,7 +393,7 @@ Run `pixelmon --help` for the full, colorized list. The essentials:
 |---|---|---|
 | `-n, --number N` | how many to make, each a different seed | `1` |
 | `--size N\|WxH` | square `N` (128 = sharpest), or non-square `WxH` e.g. `32x48` for tall character sprites | `128` |
-| `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **55 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
+| `--palette NAME` | `none` (model's colors), `random` (a different one per image), one of **56 bundled** (PICO-8, DAWNBRINGER-16, ENDESGA-32, NES, …, `--list-palettes`), or `Custom` | `none` |
 | `--style NAMES` | append proven style guide(s), comma-separated (e.g. `geometric,detailed`) — `--list-styles` | — |
 | `--batch "a,b,c"` | round-robin subjects, one of each per pass, each into its own folder (`-n` = how many of each) | — |
 | `--batch-file FILE` | a sprite list, one per line: `key \| prompt` (or `key \| style \| size \| prompt`); files are named by key — see [Batches](#batches--organizing-output) | — |
@@ -522,6 +527,75 @@ In **pixelmon-gui**: ✂ **cut out** and **+ colour key** sit with the canvas op
 different folder, or a second run would fit into the new pictures.
 
 **Setup:** `./download-models.sh --depth` fetches BiRefNet (444 MB), together with the depth model.
+
+### JPEG repair and upscaling (`--upscale`, `--repair`, `--fix-jpeg`, `--pixel-art`)
+
+`--upscale PICTURE` runs a finished picture (or every picture in a folder) through **upscale models**
+from [OpenModelDB](https://openmodeldb.info/?t=jpeg) on the render server — ComfyUI's own
+UpscaleModelLoader, in tiles, so big pictures fit in the card. A **1x** model only repairs: JPEG's
+8×8 blocks, ringing round edges, colour smear. A **2x / 4x** model also enlarges. `--repair` puts a
+JPEG-repair pass first. A see-through picture keeps its alpha. The result is a new PNG beside the
+others (`NAME_x4.png`, `NAME_repaired.png`, `NAME_restored.png`), with how it was made stamped inside.
+
+```bash
+pixelmon --upscale photo.jpg --repair                     # fix the JPEG damage, then 4x bigger
+pixelmon --upscale photo.jpg --repair --upscale-to 1x     # repair only, same size
+pixelmon --fix-jpeg photo.jpg                             # repair only, same size (= the line above)
+pixelmon --fix-jpeg sprites.jpg --pixel-art               # a JPEG of pixel art -> clean flat pixels, same size
+pixelmon --upscale old-scans/ --upscale-to 1x --upscale-model 4x-UltraSharpV2   # restore every scan in a folder
+pixelmon --upscale art.png --upscale-model anime --upscale-to 2048               # drawings; long side 2048
+pixelmon --list-upscalers                                  # what each render server has
+```
+
+- `--upscale-model M[,N]` picks the model(s), run in order; the extension and case can be left off,
+  and a unique part of a name is enough (`anime`). `none` = no enlarging (with `--repair`).
+- `--upscale-to` sets the finished size: `2x`, a long side (`2048`), or `WxH` to fit inside. A model
+  that would make something huge gets the picture **smaller** and rebuilds the detail: a 6758×8525
+  scan with a 4x model and `--upscale-to 1x` goes in at 1690×2131 and comes back full size, restored
+  (54 s on an RTX 3070).
+- Which model: **4x-realesrgan-x4plus** (the default) is fast and clean but smooths faces into wax;
+  **4x-UltraSharpV2** keeps skin, grain and texture (2x slower; non-commercial licence);
+  **4x-Nomos2-otf-esrgan** is for photos with JPEG, noise and blur; **4x-realesrgan-x4plus-anime-6b**
+  for drawings and flat colour. For repair, **1x-DeJPG-realplksr-otf** (the default) is gentle and
+  **1x-NMKD-Jaywreck3-Lite** crisper but shifts colours.
+- These models smooth hard pixels, so for pixel art add **`--pixel-art`** (below).
+
+**Pixel art from a JPEG (`--pixel-art`).** A JPEG of sprites comes back at its **own size** in flat
+colours: no ringing, no colour smear, one colour per pixel. Saved as `NAME_clean.png`.
+
+- The picture goes through **2x-AnimeSharpV4-Fast-RCAN-PU**, which redraws the edges sharp at 2x with
+  no ringing. Each pixel then snaps to a palette colour that is really there within a couple of pixels,
+  and each 2×2 block takes its main colour. A 1-pixel detail the JPEG smeared (a checker, a stripe, an
+  arm) comes back as 1 pixel.
+- Then each sprite goes onto **its own art-pixel grid**. Sheets mix sizes and offsets: Atari-style 4×2
+  wide pixels, 5×3, even 4.5×2.25 where a sprite was scaled by an odd amount. The grid is the coarsest one
+  nearly all the sprite's edges sit on, and every cell of it takes one colour, by a vote of the model's
+  pixels in it. A speck can't be smaller than an art pixel, so there are none, and features the JPEG
+  smudged come back (the black buttons on a coat).
+- Last, the leftover outliers: a colour a sprite hardly uses that is close to a colour it touches (a pale
+  rim overshot on yellow, a dark fringe by black) becomes that colour, and so does a 1–2 pixel blob inside
+  one close colour. A black eye in a face is far from the face's colour, so it stays. On an 800×600 sheet
+  of 163 Atari sprites, the 1,700 blobs of 1–2 pixels the colour snap left go down to 2.
+- The palette is found from the picture's flat areas. When nearly all of them fit a bundled palette,
+  that palette is used, so a sheet of Atari-style sprites snaps to exact **WEB-SAFE** colours.
+  `--palette NAME` / `--palette-from IMG` sets it instead.
+- If the server doesn't have the model, or with `--upscale-model none`, the clean runs on this computer
+  alone, with no server. It's a little rounder: thin details on a strong colour suffer most, and on a small
+  sprite the colours can drift (JPEG's colour blur leaves too few clean pixels to tell orange from pink).
+- `--upscale-to 2x` / `4x` enlarges the result with hard pixel edges.
+- An 800×600 sheet takes about 20 s with the model (RTX 3070), or 6 s alone.
+
+**Setup:** `./download-models.sh --upscale` on the render box (the nine models above, ~410 MB).
+`./download-models.sh --openmodeldb 4x-Nomos8kSC` fetches any other model by the ID at the end of
+its page's address (checked against the site's checksum); `--openmodeldb jpeg` lists the models with
+a tag and marks the ones that download directly (Google Drive / Mega links need a browser; drop the
+file into `models/upscale_models/`).
+
+In **pixelmon-gui**: the lightbox's **🔍 Upscale** row works on any picture in the gallery, and the
+⚗ **Lab**'s **🔍 Upscale / JPEG repair** box on any picture from disk (Browse…, or drop it in;
+inputs up to 400 MB), as cropped and adjusted there. Pick **repair JPEG**, **model** and **size**, or tick
+**pixel art** for `--pixel-art` (its own model and size choices; **🔍 clean pixels**). The result lands
+in the Queue and gallery (filter **🔍 upscaled**).
 
 ### 3D models, turnarounds and low-poly (`--mesh`, `--turnaround`, `--lowpoly`)
 
@@ -941,6 +1015,8 @@ EXAMPLES
   pixelmon --batch-file sprites.txt -n 4         a game's sprite list: 'key | prompt' rows
   pixelmon "a slime" --palette-from old.png      use an old sprite's colours
   pixelmon "a bandit" --animate "smoke from cigar"  looping animated GIF
+  pixelmon --upscale photo.jpg --repair          fix JPEG damage, then 4x bigger
+  pixelmon --fix-jpeg sprites.jpg --pixel-art    a JPEG of pixel art -> clean flat pixels, same size
 
 OPTIONS
   prompt              what to draw (in quotes)
@@ -976,6 +1052,13 @@ OPTIONS
   --texture-elev DEG  --texture: how high the picture was seen from  [guessed: 0/30/55]
   --blender CMD       Blender for 3D  [blender / org.blender.Blender flatpak]
   --mesh-model FILE   Hunyuan3D 2 checkpoint (models/checkpoints/)  [hunyuan3d-dit-v2_fp16]
+  --upscale IMG|DIR   repair / enlarge a picture (or a folder) with an upscale model, e.g. a JPEG
+  --upscale-model M   --upscale: model(s) in models/upscale_models/, M,N = a chain; none = no enlarging  [4x-realesrgan-x4plus]
+  --repair [M]        --upscale: a JPEG-repair pass first (blocks, ringing, noise)  [1x-DeJPG-realplksr-otf]
+  --upscale-to SIZE   --upscale: finished size: 2x, a long side (2048) or WxH; 1x + --repair = same size  [the model's]
+  --fix-jpeg IMG|DIR  clean JPEG damage, same size (--upscale + --upscale-to 1x + --repair)
+  --pixel-art         --upscale / --fix-jpeg: pixel art -> flat palette colours again (--palette to pick)
+  --list-upscalers    the upscale models each render server has
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,
                         jarvis, stucki, burkes, sierra, sierra2, sierra-lite, atkinson  [floyd-steinberg]
@@ -1113,7 +1196,7 @@ is done, so none of it changes what gets drawn:
 
 The [settings atlas](docs/settings-atlas.html) shows each of these layers with real renders.
 
-Palettes **auto-load** from `custom_nodes/pixelart_palette/gpl/*.GPL` — 55 are
+Palettes **auto-load** from `custom_nodes/pixelart_palette/gpl/*.GPL` — 56 are
 bundled (PICO-8, DAWNBRINGER, ENDESGA, NES, Game Boy, C=64, VGA, QUAKE, and more).
 To add one, drop a GIMP `.GPL` file (export from GIMP/Aseprite, or grab one from
 [lospec.com](https://lospec.com/palette-list)) into that folder and restart — the
@@ -1183,6 +1266,8 @@ pixelmon/
 ├── manifest.py                sprite lists (--batch-file, and the GUI's Sets tab)
 ├── tools/selfcheck.py         offline invariants (no server): run after touching pixelmon.py / animate.py / bin/
 ├── turnaround.py              --mesh / --turnaround: picture → 3D model (Hunyuan3D 2) → N angles → painted sprites
+├── upscale.py                 --upscale / --repair / --pixel-art: JPEG repair, pixel-art clean, upscaling
+├── tools/openmodeldb.py       download-models.sh --openmodeldb: find a model's direct download + checksum
 ├── blender/turnaround.py      the Blender side: renders a model from every angle (+ depth maps), low-poly, .glb export
 ├── shapes.py                  --shape: a model built from the picture's outline (extrude / lathe), glTF writer, preview
 ├── blender/texture.py         --texture: retopology, UV map, the picture baked into a texture
@@ -1219,6 +1304,8 @@ pixelmon/
 - [LCM-LoRA SDXL](https://huggingface.co/latent-consistency/lcm-lora-sdxl) — Latent Consistency
 - [EGA retro style SDXL](https://civitai.com/models/290771/ega-retro-style-sdxl) — the EGA/Wasteland look (commercial use + derivatives OK, no credit required)
 - [CLIPSeg](https://huggingface.co/CIDAS/clipseg-rd64-refined) — CIDAS, text-prompted segmentation for `--animate` auto-masking
+- [OpenModelDB](https://openmodeldb.info) — the upscale models `--upscale` uses; each keeps its own licence; [2x-AnimeSharpV4-Fast-RCAN-PU](https://openmodeldb.info/models/2x-AnimeSharpV4-Fast-RCAN-PU) by Kim2091 does `--pixel-art` (CC-BY-NC-SA)
+  (Real-ESRGAN: BSD-3; 1x-DeJPG / 4x-Nomos2: CC-BY-4.0; Jaywreck3: WTFPL; UltraSharpV2: CC-BY-NC-SA-4.0)
 - [spritefusion-pixel-snapper](https://github.com/Hugo-Dz/spritefusion-pixel-snapper) — Hugo Duprez (MIT), used by `--snap-pixels`
 
 The code in this repo (the CLI, wrapper, launcher, and custom node) is released

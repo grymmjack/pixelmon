@@ -49,8 +49,9 @@ from colors import image_colors, picture_palette, gpl_text   # noqa: E402  (one 
 PIXELMON = os.path.join(REPO, "bin", "pixelmon")
 SERVER_ARG = ""          # --server / $PIXELMON_SERVER: overrides the Setup tab's choice
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-DONE_LINE = re.compile(r"✅.*?seed=(\d+)\s+->\s+(\S.*)$")
+DONE_LINE = re.compile(r"✅.*?(?:seed=(\d+)\s+)?->\s+(\S.*)$")     # 🔍 upscale lines have no seed
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
+LAB_MAX = 400 * 1024 * 1024     # a LAB input can be a 600-dpi scan for 🔍 upscale (other drops stay under 40 MB)
 STEER_WEIGHT_TYPES = ["style transfer", "strong style transfer", "style transfer precise", "composition",
                       "composition precise", "style and composition", "linear", "ease in", "ease out"]
 STEER_COMBINE = ["concat", "average", "norm average", "add", "subtract"]
@@ -568,7 +569,8 @@ def load_adv_lists():
         return _ADV_CACHE["v"]
     info, url = {}, server_url()
     if url and server_is_up():
-        for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader", "UNETLoader"):
+        for node in ("KSampler", "CheckpointLoaderSimple", "ControlNetLoader", "IPAdapterModelLoader", "CLIPVisionLoader", "UNETLoader",
+                     "UpscaleModelLoader"):
             try:
                 with urllib.request.urlopen(f"{url.rstrip('/')}/object_info/{node}", timeout=4) as r:
                     info.update(json.load(r))
@@ -582,6 +584,7 @@ def load_adv_lists():
          "ipadapters": _combo(info, "IPAdapterModelLoader", "ipadapter_file"),
          "clip_visions": _combo(info, "CLIPVisionLoader", "clip_name"),
          "inpaint_models": [u for u in _combo(info, "UNETLoader", "unet_name") if "inpaint" in u.lower()],
+         "upscalers": [u for u in _combo(info, "UpscaleModelLoader", "model_name") if not u.startswith("put_")],
          "live": bool(info)}
     if info:                                     # don't remember the fallbacks from a server that didn't answer
         _ADV_CACHE.update(t=time.time(), v=v)
@@ -600,7 +603,8 @@ NEEDS = [("render", "CheckpointLoaderSimple", "ckpt_name", "--base"),
          ("steering", "IPAdapterModelLoader", "ipadapter_file", "--steer-model"),
          ("steering vision", "CLIPVisionLoader", "clip_name", "--steer-clip"),
          ("cut-out", "LoadBackgroundRemovalModel", "bg_removal_name", "--cutout-model"),
-         ("3D model", "CheckpointLoaderSimple", "ckpt_name", "--mesh-model")]
+         ("3D model", "CheckpointLoaderSimple", "ckpt_name", "--mesh-model"),
+         ("🔍 upscale / JPEG repair", "UpscaleModelLoader", "model_name", None)]
 _MODELS = {}
 
 
@@ -1014,7 +1018,34 @@ def depth_argv(d, src):
     return out
 
 
-def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None, depth=None, turn=None):
+UPSCALE_MODEL = re.compile(r"[\w.+()\[\] -]{1,160}")
+
+
+def upscale_argv(u, src, server):
+    """🔍 {model, repair, to, pixel} -> pixelmon --upscale SRC … (model names as the render server lists them)."""
+    if not src:
+        raise ValueError("upscale: no picture")
+    argv = [PIXELMON, "--upscale", src, "--server", server, "--no-open"]
+    model, repair, to = str(u.get("model") or "").strip(), str(u.get("repair") or "").strip(), str(u.get("to") or "").strip()
+    for v in (model, repair):
+        if v and v != "none" and not UPSCALE_MODEL.fullmatch(v):
+            raise ValueError(f"bad upscale model name {v!r}")
+    if repair:
+        argv += ["--repair", repair]
+    if model:
+        argv += ["--upscale-model", model]
+    if to:
+        if not re.fullmatch(r"\d+(\.\d+)?x|\d{2,5}|\d{2,5}x\d{2,5}", to.lower()):
+            raise ValueError(f"bad upscale size {to!r}: 2x, 2048 or WxH")
+        argv += ["--upscale-to", to.lower()]
+    if u.get("pixel"):
+        argv.append("--pixel-art")             # flat palette colours again, same size unless `to`
+    elif model == "none" and not repair:
+        raise ValueError("pick a model to enlarge with, or a JPEG repair model")
+    return argv
+
+
+def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=None, depth=None, turn=None, up=None):
     """Turn validated form params into a pixelmon argv (no shell involved)."""
     def num(key, typ, lo, hi, default=None):
         v = p.get(key, default)
@@ -1033,6 +1064,8 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
             raise ValueError(f"bad {key} {v!r}; use N or WxH")
         return v
 
+    if p.get("upscale"):                         # 🔍 upscale / JPEG repair of a finished picture: its own small command
+        return upscale_argv(p["upscale"], up, servers_for(p))
     prompt = str(p.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is empty")
@@ -1295,6 +1328,8 @@ def command_preview(p, jobs):
         depth = ref_path(p["depth"]["ref"])
     if (p.get("turnaround") or {}).get("src"):
         turn = jobs.gallery_path(p["turnaround"]["src"])
+    if p.get("upscale"):
+        return shjoin(["pixelmon"] + build_argv(p, up=jobs.upscale_source(p["upscale"]))[1:])
     steer_dir = None
     if len(srcs) == 1:
         steer_dir = srcs[0]                              # one image: --steer takes a file too
@@ -1426,6 +1461,8 @@ class JobQueue:
         # LAB live previews live in gallery/_preview/ (not listed in the gallery; only the newest are kept)
         dirname = f"_preview/{jid}" if params.get("preview") else jid
         jdir = os.path.join(self.gallery, dirname)
+        if params.get("upscale"):                    # 🔍 upscale / JPEG repair: the job keeps its own copy of the picture
+            return self._add_upscale(params, sent, group, label, jid, dirname, jdir)
         init = None
         if parent_src:
             os.makedirs(jdir, exist_ok=True)
@@ -1547,6 +1584,43 @@ class JobQueue:
         self.q.put(jid)
         if params.get("preview"):
             self._prune_previews()
+        return job
+
+    def upscale_source(self, u):
+        """The picture a 🔍 upscale works on: a gallery picture {src: {dir, file}}, or a LAB input {lab: name}."""
+        if not isinstance(u, dict):
+            raise ValueError("bad upscale request")
+        if u.get("src"):
+            return self.gallery_path(u["src"])
+        if u.get("lab"):
+            return lab_path(u["lab"])
+        raise ValueError("upscale: pick a picture")
+
+    def _add_upscale(self, params, sent, group, label, jid, dirname, jdir):
+        u = params["upscale"]
+        src = self.upscale_source(u)
+        upscale_argv(u, src, servers_for(params))    # validate before touching disk
+        os.makedirs(jdir, exist_ok=True)
+        ext = os.path.splitext(src)[1].lower()
+        adj = (params.get("lab_adjust") or {}) if u.get("lab") else {}
+        if adjust_is_default(adj):
+            kept = os.path.join(jdir, "input-up" + ext)
+            shutil.copy2(src, kept)
+        else:                                        # the LAB input as tuned there (crop, levels …)
+            kept = os.path.join(jdir, "input-up.png")
+            adjust_image(src, adj).save(kept)
+        argv = upscale_argv(u, kept, servers_for(params))
+        name = re.sub(r"[^\w-]+", "_", os.path.splitext(os.path.basename(
+            (u.get("src") or {}).get("file") or u.get("lab") or "picture"))[0]).strip("_")[:40] or "picture"
+        argv += ["--name", name]
+        job = {"id": jid, "params": sent, "argv": argv, "command": shjoin(["pixelmon"] + argv[1:]),
+               "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
+               "total": 1, "export": None, "exported": None,
+               "created": time.time(), "started": None, "finished": None, "dir": dirname}
+        with self.lock:
+            self.jobs[jid] = job
+            self.order.append(jid)
+        self.q.put(jid)
         return job
 
     def _prune_previews(self, keep=40):
@@ -1727,7 +1801,7 @@ class JobQueue:
                             job["full_prompt"][key] = pm.group(2).strip()
                         m = DONE_LINE.search(line)
                         if m:
-                            o = {"seed": int(m.group(1)), "file": os.path.basename(m.group(2).strip())}
+                            o = {"seed": int(m.group(1)) if m.group(1) else None, "file": os.path.basename(m.group(2).strip())}
                             lab = re.search(r"✅\s*\[\d+/\d+\]\s+(\S.*?)\s+seed=", line)   # a combo sweep names each picture
                             if lab and job["params"].get("post_sweep"):
                                 o["label"] = lab.group(1).strip()
@@ -1746,8 +1820,8 @@ class JobQueue:
                     job["status"] = "done" if made else "failed"
                     if rc != 0:                      # pixelmon exits 1 when some renders of the job failed: keep what it made
                         job["error"] = job_error(job["log"], rc)
-                        m = next((re.search(r"(\d+) of (\d+) (?:render|job)\(s\)", ln) for ln in reversed(job["log"])
-                                  if re.search(r"(\d+) of (\d+) (?:render|job)\(s\)", ln)), None)
+                        m = next((re.search(r"(\d+) of (\d+) (?:render|job|picture)\(s\)", ln) for ln in reversed(job["log"])
+                                  if re.search(r"(\d+) of (\d+) (?:render|job|picture)\(s\)", ln)), None)
                         if made:
                             job["failed"] = int(m.group(1)) if m else max(1, int(job.get("total") or 1) - len(job["outputs"]))
                 if job["status"] == "done" and job.get("export"):
@@ -3850,7 +3924,7 @@ def _upload(self, q, lab=False):
     fname = safe_name((q.get("filename") or ["image.png"])[0], 96)
     if not fname.lower().endswith(IMG_EXT):
         return self._json({"error": f"not an image type: {fname}"}, 400)
-    n = self._length(40 * 1024 * 1024)
+    n = self._length(LAB_MAX if lab else 40 * 1024 * 1024)   # a LAB input may be a big scan (🔍 upscale)
     if not n:
         return self._json({"error": "empty upload"}, 400)
     data = self._body(n)
@@ -3911,8 +3985,8 @@ def _from_path(self, body, indexed=False):
         return res
     if not name.lower().endswith(IMG_EXT):
         raise ValueError(f"not a picture: {name} (png, jpg, webp, gif, bmp)")
-    if size > 40 * 1024 * 1024:
-        raise ValueError("image must be under 40 MB")
+    if size > (LAB_MAX if to == "lab" else 40 * 1024 * 1024):
+        raise ValueError(f"image must be under {(LAB_MAX if to == 'lab' else 40 * 1024 * 1024) // 1024 // 1024} MB")
     if to == "lab":
         d = LAB
     elif to == "board":
