@@ -535,6 +535,8 @@ def main():
         art.paste((255, 255, 255), (44, 20, 45, 38))  # a 1-pixel line, and a 1-pixel gap in the white block
         art.paste((0, 0, 0), (68, 52, 69, 53))
         art.save(os.path.join(ud, "art.jpg"), quality=60)
+        # a big picture that isn't pixel art (noise: nothing flat) - a wall of box art once ran the machine out of memory
+        Image.effect_noise((1200, 900), 64).convert("RGB").save(os.path.join(ud, "photo.jpg"), quality=80)
         runs = {}
         try:
             for key, args, names, flag, models in (
@@ -542,7 +544,8 @@ def main():
                     ("restore", ["scan.bmp", "--upscale-to", "1x"], ["4x-realesrgan-x4plus.pth"], "--upscale", have),
                     ("too big", ["scan.bmp"], ["4x-realesrgan-x4plus.pth"], "--upscale", have),
                     ("pixel", ["art.jpg", "--pixel-art"], [U.PIXEL_MODEL], "--fix-jpeg", have + [U.PIXEL_MODEL]),
-                    ("pixel here", ["art.jpg", "--pixel-art", "--name", "here"], [], "--fix-jpeg", have)):
+                    ("pixel here", ["art.jpg", "--pixel-art", "--name", "here"], [], "--fix-jpeg", have),
+                    ("not pixel", ["photo.jpg", "--pixel-art"], [U.PIXEL_MODEL], "--fix-jpeg", have + [U.PIXEL_MODEL])):
                 ug_names, listed[0] = [names], models
                 sent.clear()
                 old = sys.argv
@@ -617,6 +620,18 @@ def main():
         specks = sum(int((np.bincount(ndi.label(gk == c)[0].ravel())[1:] <= 2).sum()) for c in np.unique(gk))
         check("--pixel-art puts a speckled sprite drawn in 4x2 art pixels back on its grid: exact, no specks",
               exact == 1 and specks == 0 and on == 1, f"{exact:.1%} exact, {specks} specks, {on} of {n} on a grid")
+        # mostly black with a few sprites: the black alone makes a bundled palette "fit", but a colour it has nothing
+        # near (this yellow) must stay, not vanish into black
+        demo = np.zeros((100, 100, 3), np.int64)
+        demo[10:30, 10:30] = (204, 51, 0)          # a WEB-SAFE red
+        demo[50:60, 50:70] = (250, 186, 60)        # a yellow WEB-SAFE has nothing within FIT of
+        pal, why = U.pixel_palette(demo, np.ones((100, 100), bool), U.known_palettes(P))
+        check("--pixel-art keeps a colour the fitted palette has nothing near (a yellow key on a black sheet)",
+              np.abs(np.asarray(pal) - (250, 186, 60)).max(1).min() <= 8, f"{why}: {np.asarray(pal).astype(int).tolist()}")
+        np_ = runs["not pixel"]
+        check("--pixel-art refuses a big picture that isn't pixel art before sending it, and says what to use",
+              np_[0] == 1 and np_[1] == [] and "doesn't look like pixel art" in np_[2] and "JPEG-to-JPEG-CLEAN-LARGE" in np_[2],
+              f"{np_[:2]} {np_[2][-300:]}")
         ok, why = pixel_ok(os.path.join(ud, "here_clean.png"), 0.97)   # rounder: 1-px stripes on colour smear most
         check("--pixel-art with no pixel model on the server cleans it here alone (nothing sent)",
               ok and runs["pixel here"][1] == [] and "cleaning without it" in runs["pixel here"][2],

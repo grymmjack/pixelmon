@@ -10,7 +10,10 @@
   --pixel-art           the picture is pixel art: back to flat palette colours at its own size (JPEG damage
                         gone), through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it. The palette is found
                         (fitted to a bundled one like WEB-SAFE when it matches) or --palette / --palette-from.
-                        a bigger --upscale-to enlarges it blocky
+                        a bigger --upscale-to enlarges it blocky. A big picture that isn't pixel art (under half
+                        flat colour, over a megapixel: a photo, a wall of box art) is refused with what to use
+                        instead (--repair + a model: the JPEG-to-JPEG-CLEAN-LARGE preset)
+  --pixel-art-anyway    --pixel-art even on a picture that doesn't look like pixel art
   --fix-jpeg IMG|DIR    same size: --upscale IMG --upscale-to 1x, with --repair unless --pixel-art
   --list-upscalers      the upscale models a render server has
 
@@ -169,11 +172,30 @@ def graph(name, chain, prefix):
 FLAT_STD = 7          # a 3x3 patch this even (per channel) is the inside of a shape
 SURE = 22             # a flat pixel this close (max channel difference) to a palette colour is that colour
 FIT = 16              # a bundled palette fits when the picture's colours are this close to its entries
+FAR = 48              # …and a colour further than this from every entry it uses is kept as itself
+NOT_PIXEL_FLAT = 0.5  # --pixel-art: under this share of flat 3x3 patches it isn't pixel art (pixel art measured 62-78 %,
+                      # a photo-like wall of Atari box art 35 %: 211 colours, and a clean that ran the machine out of
+                      # memory) …
+NOT_PIXEL_PX = 1_000_000   # …refused only past this many pixels (a small picture is quick whatever it is)
+CLEAN_LARGE = ("1x-NMKD-Jaywreck3-Lite", "2x-AnimeSharpV4-Fast-RCAN-PU")   # what to use instead: JPEG-to-JPEG-CLEAN-LARGE
+
+
+def flat_share(im):
+    """The share of a picture's pixels whose 3x3 patch is flat colour (pixel_clean's test), at its own size."""
+    import numpy as np
+    a = np.asarray(im.convert("RGB"))
+    flat = np.ones(a.shape[:2], bool)
+    for ch in range(3):
+        c = a[..., ch].astype(np.float64)
+        flat &= _boxsum(c * c, 1) / 9 - (_boxsum(c, 1) / 9) ** 2 < FLAT_STD ** 2
+    return float(flat.mean())
 
 
 def _boxsum(m, r):
     import numpy as np
-    p = np.pad(m, r + 1).cumsum(0).cumsum(1)
+    # a mask's counts fit 32 bits (cumsum would make them 64: twice the memory on a big picture)
+    dt = np.int32 if m.dtype.kind in "biu" and m.size < 2 ** 31 else None
+    p = np.pad(m, r + 1).cumsum(0, dtype=dt).cumsum(1, dtype=dt)
     h, w = m.shape
     k = 2 * r + 1
     return p[k:k + h, k:k + w] - p[0:h, k:k + w] - p[k:k + h, 0:w] + p[0:h, 0:w]
@@ -183,13 +205,17 @@ def _nearest(px, pal):
     """Index of the nearest palette colour (weighted RGB: green counts most) and the max channel difference."""
     import numpy as np
     wgt = np.array([2.0, 4.0, 3.0])
+    pal = np.asarray(pal, np.float64)
+    pw = (pal * wgt).T                            # |q-p|^2 weighted = q.q - 2 q.p + p.p: one matrix product
+    pp = (pal * pal * wgt).sum(1)                 # a chunk instead of a chunk x palette x 3 array
     idx = np.empty(len(px), np.int64)
     cheb = np.empty(len(px), np.int64)
-    for i in range(0, len(px), 32768):
-        q = px[i:i + 32768].astype(np.float64)
-        d = (((q[:, None, :] - pal[None]) ** 2) * wgt).sum(-1)
-        idx[i:i + 32768] = d.argmin(1)
-        cheb[i:i + 32768] = np.abs(q - pal[idx[i:i + 32768]]).max(1)
+    for i in range(0, len(px), 65536):
+        q = px[i:i + 65536].astype(np.float64)
+        d = pp - 2 * (q @ pw)                     # (q.q is the same for every colour: left out)
+        j = d.argmin(1)
+        idx[i:i + 65536] = j
+        cheb[i:i + 65536] = np.abs(q - pal[j]).max(1)
     return idx, cheb
 
 
@@ -222,10 +248,20 @@ def pixel_palette(a, flat, known):
         cover = w[cheb <= FIT].sum() / w.sum()
         if cover >= 0.97 and (best is None or (cover, -len(pal)) > (best[0], -best[2])):
             best = (cover, name, len(pal), np.unique(idx[cheb <= FIT]), pal)
-    if best:
-        return best[4][best[3]], f"{best[1]} palette ({len(best[3])} of its {best[2]} colours)"
+    if best:                                    # a big background can carry the fit: a colour the palette has
+        _, name, n, used, pal = best            # nothing near (a yellow when only reds fit) stays, as itself
+        out = list(pal[used])
+        _, cheb = _nearest(cen, pal)
+        for i in np.argsort(-w):
+            if cheb[i] > FIT and np.abs(np.array(out) - cen[i]).max(1).min() > FAR:
+                out.append(np.round(cen[i]))
+        extra = len(out) - len(used)
+        return np.array(out), f"{name} palette ({len(used)} of its {n} colours{f' + {extra} of its own' if extra else ''})"
     idx, _ = _nearest(f, cen)                   # its own colours: the median of each one's pixels
-    own = np.array([np.median(f[idx == k], 0) if (idx == k).any() else cen[k] for k in range(len(cen))])
+    order = np.argsort(idx, kind="stable")      # (grouped once: a pass over every pixel per colour was slow)
+    ends = np.cumsum(np.bincount(idx, minlength=len(cen)))
+    groups = np.split(f[order], ends[:-1])
+    own = np.array([np.median(g, 0) if len(g) else cen[k] for k, g in enumerate(groups)])
     return np.round(own), f"its own {len(own)} colours"
 
 
@@ -237,6 +273,30 @@ def _linesum(m, r, axis):
     c = np.cumsum(np.pad(m, pad, mode="edge"), axis=axis)
     n = m.shape[axis]
     return np.take(c, range(2 * r + 1, 2 * r + 1 + n), axis) - np.take(c, range(n), axis)
+
+
+def _lone_majority(lab):
+    """Each pixel with no same-coloured pixel among its 8 neighbours takes the colour most of its 3x3 has (itself
+    included; a tie: the lowest colour number), all at once. Only those pixels are looked at: a count per colour
+    over the whole picture was one full-size array per palette colour (256 x 143 MB on a 5184x3456 result)."""
+    import numpy as np
+    h, w = lab.shape
+    pad = np.pad(lab, 1, constant_values=-1)
+    alone = np.ones((h, w), bool)
+    steps = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    for dy, dx in steps:
+        if dy or dx:
+            alone &= pad[1 + dy:1 + dy + h, 1 + dx:1 + dx + w] != lab
+    ly, lx = np.nonzero(alone)
+    if not len(ly):
+        return lab
+    nb = np.stack([pad[ly + 1 + dy, lx + 1 + dx] for dy, dx in steps], 1)    # (n, 9), -1 off the picture
+    cnt = (nb[:, :, None] == nb[:, None, :]).sum(2).astype(np.int64)
+    cnt[nb < 0] = 0
+    pick = (cnt * (1 << 40) - nb).argmax(1)            # the most, then the lowest colour
+    out = lab.copy()
+    out[ly, lx] = nb[np.arange(len(ly)), pick]
+    return out
 
 
 def pixel_clean(im, pal=None, known=None, r=2):
@@ -264,26 +324,32 @@ def pixel_clean(im, pal=None, known=None, r=2):
     near, cheb = _nearest(px, pal)
     near, cheb = near.reshape(h, w), cheb.reshape(h, w)
     sure = (flat | line[0] | line[1]) & (cheb <= SURE)   # a colour is surely here: flat (or a flat line) and close
-    used = [k for k in range(len(pal)) if (sure & (near == k)).sum() >= 3]
+    del flat, line
+    used = np.flatnonzero(np.bincount(near[sure], minlength=len(pal)) >= 3).tolist()
     if not used:
         used = list(range(len(pal)))
     wgt = np.array([2.0, 4.0, 3.0])
     best = np.full((h, w), np.inf)
     lab = near.copy()
     for k in used:                                # nearest colour among the ones really there within r pixels
-        here = _boxsum((sure & (near == k)).astype(np.int32), r) > 0
-        d = (((a - pal[k]) ** 2) * wgt).sum(-1)
-        d[~here] = np.inf
-        better = d < best
-        best[better], lab[better] = d[better], k
+        mk = sure & (near == k)
+        rows, cols = np.flatnonzero(mk.any(1)), np.flatnonzero(mk.any(0))
+        if not len(rows):
+            continue
+        # only the box round its sure pixels, r wider: nothing outside it has one within r (a sprite's colour
+        # is a few hundred pixels to look at, not the whole picture)
+        y0, y1 = max(0, rows[0] - r), min(h, rows[-1] + r + 1)
+        x0, x1 = max(0, cols[0] - r), min(w, cols[-1] + r + 1)
+        here = _boxsum(mk[y0:y1, x0:x1], r) > 0
+        d = (((a[y0:y1, x0:x1] - pal[k]) ** 2) * wgt).sum(-1)
+        better = here & (d < best[y0:y1, x0:x1])
+        best[y0:y1, x0:x1][better] = d[better]
+        lab[y0:y1, x0:x1][better] = k
     lost = ~np.isfinite(best)                    # nothing sure nearby: plain nearest
     lab[lost] = near[lost]
+    del best, near, cheb, sure
     for _ in range(2):                            # a lone pixel with no same-coloured neighbour takes its 3x3 majority
-        ks = np.unique(lab)
-        cnts = np.stack([_boxsum((lab == k).astype(np.int32), 1) for k in ks], -1)
-        pos = np.searchsorted(ks, lab)
-        own = np.take_along_axis(cnts, pos[..., None], -1)[..., 0] - 1
-        lab = np.where(own == 0, ks[cnts.argmax(-1)], lab)
+        lab = _lone_majority(lab)
     out = np.clip(np.round(pal), 0, 255).astype(np.uint8)[lab]
     return Image.fromarray(out), f"{len(np.unique(lab))} colours, {note}"
 
@@ -294,13 +360,16 @@ def mode_down(im, k):
     from PIL import Image
     x = np.asarray(im.convert("RGB"))
     h, w = x.shape[0] // k, x.shape[1] // k
-    key = (x[:h * k, :w * k].astype(np.int32) << np.array([16, 8, 0], np.int32)).sum(-1)
-    corner = key[::k, ::k][:h, :w]
-    best, bestn = corner.copy(), np.zeros((h, w), np.int32)
-    for c in np.unique(key):
-        n = (key == c).reshape(h, k, w, k).sum((1, 3))
-        upd = (n > bestn) | ((n == bestn) & (corner == c))
-        best[upd], bestn[upd] = c, n[upd]
+    key = (x[:h * k, :w * k].astype(np.int64) << np.array([16, 8, 0], np.int64)).sum(-1)
+    blk = key.reshape(h, k, w, k).transpose(0, 2, 1, 3).reshape(h, w, k * k)   # each block's pixels, top-left first
+    best, bestv = blk[..., 0].copy(), np.full((h, w), -1, np.int64)
+    for j in range(k * k):                        # per block position, not per colour (a pass each of 256 colours)
+        c = blk[..., j]
+        n = (blk == c[..., None]).sum(-1)
+        # the most; a tie: the top-left pixel's colour, then the lowest colour
+        v = n * (1 << 50) + (c == blk[..., 0]) * (1 << 49) - c
+        upd = v > bestv
+        best[upd], bestv[upd] = c[upd], v[upd]
     return Image.fromarray(np.stack([(best >> 16) & 255, (best >> 8) & 255, best & 255], -1).astype(np.uint8))
 
 
@@ -435,18 +504,25 @@ def _merge_rare(sub, m, bg, share=0.05, near=64):
     u, n = np.unique(k[m], return_counts=True)
     count = dict(zip(u.tolist(), n.tolist()))
     body = sum(v for c, v in count.items() if c != bg)
+    hh, ww = k.shape
     for c in sorted(count, key=count.get):
         if c == bg or count[c] > share * body:
             continue
         lab, nb = ndi.label(m & (k == c))
-        for j in range(1, nb + 1):
-            blob = lab == j
+        for j, sl in enumerate(ndi.find_objects(lab)):
+            if sl is None:
+                continue
+            # the blob's box, a pixel wider (its ring): the whole sprite once per blob was most of the time
+            y0, y1 = max(0, sl[0].start - 1), min(hh, sl[0].stop + 1)
+            x0, x1 = max(0, sl[1].start - 1), min(ww, sl[1].stop + 1)
+            blob = lab[y0:y1, x0:x1] == j + 1
+            kb = k[y0:y1, x0:x1]
             ring = ndi.binary_dilation(blob) & ~blob
-            t, tn = np.unique(k[ring], return_counts=True)
+            t, tn = np.unique(kb[ring], return_counts=True)
             for d in t[np.argsort(-tn)].tolist():
                 if d != c and count.get(d, 0) >= 4 * count[c] and np.abs(_rgb(d) - _rgb(c)).max() <= near:
-                    sub[blob] = _rgb(d)
-                    k[blob] = d
+                    sub[y0:y1, x0:x1][blob] = _rgb(d)
+                    kb[blob] = d
                     break
 
 
@@ -654,6 +730,17 @@ def run(P, a, parser):
             print(f"   ✗ {label}{os.path.basename(src)}: can't read it ({e})")
             failed += 1
             continue
+        if pixel and not getattr(a, "pixel_art_anyway", False) and size[0] * size[1] > NOT_PIXEL_PX:
+            with Image.open(src) as im:            # checked before anything goes to the server
+                share = flat_share(ImageOps.exif_transpose(im))
+            if share < NOT_PIXEL_FLAT:
+                print(f"   ✗ {label}{os.path.basename(src)}: {size[0]}x{size[1]} doesn't look like pixel art - only "
+                      f"{share:.0%} of it is flat colour (pixel art is 60-80%), so the pixel-art clean would grind on "
+                      f"it for a long time. For a photo, scan or big JPEG, clean it instead: --repair {CLEAN_LARGE[0]} "
+                      f"--upscale-model {CLEAN_LARGE[1]} (the 🔍 preset JPEG-to-JPEG-CLEAN-LARGE). --pixel-art-anyway "
+                      f"cleans it as pixel art regardless", flush=True)
+                failed += 1
+                continue
         k_est = 1
         for n in names:
             k_est *= name_scale(n)

@@ -1042,6 +1042,8 @@ def upscale_argv(u, src, server):
         argv += ["--upscale-to", to.lower()]
     if u.get("pixel"):
         argv.append("--pixel-art")             # flat palette colours again, same size unless `to`
+        if u.get("anyway"):
+            argv.append("--pixel-art-anyway")  # past the not-pixel-art check (a big photo-like picture)
         pal = str(u.get("palette") or "").strip()
         if pal == "Custom":
             cols = re.findall(r"#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b", str(u.get("custom_hex") or ""))

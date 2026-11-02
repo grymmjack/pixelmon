@@ -176,6 +176,7 @@ def print_help():
         opt("--upscale-to SIZE", "--upscale: finished size: 2x, a long side (2048) or WxH; 1x + --repair = same size", "the model's"),
         opt("--fix-jpeg IMG|DIR", "clean JPEG damage, same size (--upscale + --upscale-to 1x + --repair)"),
         opt("--pixel-art", "--upscale / --fix-jpeg: pixel art -> flat palette colours again (--palette to pick)"),
+        opt("--pixel-art-anyway", "--pixel-art on a big picture that doesn't look like pixel art (refused otherwise)"),
         opt("--list-upscalers", "the upscale models each render server has"),
         opt("--tile [x|y]", "seamless tileable texture (+ a 3x3 _tiled_ preview)"),
         opt("--dither [NAME]", "dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,"),
@@ -1986,6 +1987,9 @@ def main():
                         "or --palette NAME / --palette-from IMG), at its own size unless --upscale-to (then blocky). "
                         "goes through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it; --upscale-model none = "
                         "no server")
+    p.add_argument("--pixel-art-anyway", dest="pixel_art_anyway", action="store_true",
+                   help="--pixel-art even on a big picture that doesn't look like pixel art (under half flat colour: "
+                        "a photo, a wall of box art), which is otherwise refused - the clean can take very long")
     p.add_argument("--list-upscalers", dest="list_upscalers", action="store_true",
                    help="list the upscale models on each render server (--server) and exit")
     p.add_argument("--fit-subject", dest="fit_subject", action="store_true",

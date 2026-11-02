@@ -13,6 +13,10 @@ presets/<FOLDER>/
 ```
 
 - **TUNED FACTORY/** — hand-tuned presets.
+- **UPSCALE AND REPAIR/** — 🔍 presets (JPEG → clean pixel art, a 4x upscale, and a big JPEG cleaned
+  and enlarged 2x): each sets the upscale / JPEG-repair controls, not the prompt; the first two load an
+  example picture into the Lab, JPEG-to-JPEG-CLEAN-LARGE keeps yours. The examples are
+  original: a sprite sheet drawn for it, saved as a rough JPEG, and a pixelmon render.
 
 `install.sh` runs `python3 gui/presets_sync.py install`, which puts every preset and image
 where pixelmon looks — only what's missing, never overwriting.

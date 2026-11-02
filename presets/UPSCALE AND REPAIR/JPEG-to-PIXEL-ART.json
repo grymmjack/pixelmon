@@ -1,0 +1,48 @@
+{
+ "name": "JPEG-to-PIXEL-ART",
+ "saved": 1793571736.1815045,
+ "note": "A JPEG of pixel art back to clean pixel art at its own size: flat palette colours, each sprite on its own pixel grid, specks gone. Loads an example sheet into the Lab: press \ud83d\udd0d clean pixels, or drop in your own JPEG first.",
+ "snapshot": {
+  "up": {
+   "model": "",
+   "then": "",
+   "repair": "",
+   "to": "",
+   "tocustom": "",
+   "pixel": true,
+   "pmodel": "",
+   "pthen": "",
+   "prepair": "",
+   "pto": "",
+   "ptocustom": "",
+   "pal": "",
+   "phex": "",
+   "pfrom": "",
+   "pmax": ""
+  },
+  "lab": {
+   "file": "pixelmon-demo-sprites.jpg",
+   "size": [
+    320,
+    200
+   ],
+   "adj": {
+    "brightness": 0,
+    "contrast": 0,
+    "gamma": 1,
+    "saturation": 100,
+    "hue": 0,
+    "clean": 0,
+    "sharpen": 0,
+    "posterize": 0,
+    "gray": false,
+    "invert": false,
+    "crop": null
+   },
+   "mask": null,
+   "sketch": null,
+   "active": true
+  }
+ },
+ "image": "JPEG-to-PIXEL-ART.png"
+}

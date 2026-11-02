@@ -561,7 +561,9 @@ pixelmon --list-upscalers                                  # what each render se
 - These models smooth hard pixels, so for pixel art add **`--pixel-art`** (below).
 
 **Pixel art from a JPEG (`--pixel-art`).** A JPEG of sprites comes back at its **own size** in flat
-colours: no ringing, no colour smear, one colour per pixel. Saved as `NAME_clean.png`.
+colours: no ringing, no colour smear, one colour per pixel. Saved as `NAME_clean.png`. It clears the JPEG
+damage by itself, so it needs no `--repair` (and `--fix-jpeg` leaves it out): on the demo sheet a repair model
+first gave 2.6× as many wrong pixels, smearing small sprites and turning greys lavender.
 
 - The picture goes through **2x-AnimeSharpV4-Fast-RCAN-PU**, which redraws the edges sharp at 2x with
   no ringing. Each pixel then snaps to a palette colour that is really there within a couple of pixels,
@@ -577,12 +579,19 @@ colours: no ringing, no colour smear, one colour per pixel. Saved as `NAME_clean
   one close colour. A black eye in a face is far from the face's colour, so it stays. On an 800×600 sheet
   of 163 Atari sprites, the 1,700 blobs of 1–2 pixels the colour snap left go down to 2.
 - The palette is found from the picture's flat areas. When nearly all of them fit a bundled palette,
-  that palette is used, so a sheet of Atari-style sprites snaps to exact **WEB-SAFE** colours.
+  that palette is used, so a sheet of Atari-style sprites snaps to exact **WEB-SAFE** colours. A colour
+  the palette has nothing near (a yellow key when only the reds fit) is kept as itself, not lost.
   `--palette NAME` / `--palette-from IMG` sets it instead.
 - If the server doesn't have the model, or with `--upscale-model none`, the clean runs on this computer
   alone, with no server. It's a little rounder: thin details on a strong colour suffer most, and on a small
   sprite the colours can drift (JPEG's colour blur leaves too few clean pixels to tell orange from pink).
 - `--upscale-to 2x` / `4x` enlarges the result with hard pixel edges.
+- A big picture that **isn't pixel art** is refused before anything is sent: over a megapixel and under
+  half flat colour (pixel art measures 60–80 %; a photo, a scan or a wall of box art about 35 %). The clean
+  is made for sprite sheets; on a 2592×1728 wall of Atari box art (211 colours) it once ran the computer out
+  of memory. The message says what to use instead, **`--repair 1x-NMKD-Jaywreck3-Lite --upscale-model
+  2x-AnimeSharpV4-Fast-RCAN-PU`** (the **JPEG-to-JPEG-CLEAN-LARGE** preset, all on the server);
+  `--pixel-art-anyway` cleans it as pixel art regardless.
 - An 800×600 sheet takes about 20 s with the model (RTX 3070), or 6 s alone.
 
 **Setup:** `./download-models.sh --upscale` on the render box (the nine models above, ~410 MB).
@@ -594,9 +603,18 @@ file into `models/upscale_models/`).
 In **pixelmon-gui**: the lightbox's **🔍 Upscale** row works on any picture in the gallery, and the
 ⚗ **Lab**'s **🔍 Upscale / JPEG repair** box on any picture from disk (Browse…, or drop it in;
 inputs up to 400 MB), as cropped and adjusted there. Pick **repair JPEG**, **model** and **size**, or tick
-**pixel art** for `--pixel-art` (its own repair, model, size and **palette** choices; **🔍 clean pixels**).
+**pixel art** for `--pixel-art` (its own model, size and **palette** choices, and **even if it doesn't look
+like pixel art** for `--pixel-art-anyway`; **🔍 clean pixels**). Its
+**extra JPEG repair model** stays off: pixel art fixes the JPEG itself.
 **then** chains a second model, and **size › custom…** takes any `--upscale-to` value, so every CLI
 option of this feature is there. The result lands in the Queue and gallery (filter **🔍 upscaled**).
+Three presets ship in **Presets › UPSCALE AND REPAIR**: **JPEG-to-PIXEL-ART** and **UPSCALE-4x** load an
+example picture into the Lab and set these controls, leaving the prompt alone: press 🔍, or drop in your
+own picture first (▶ on the card runs it straight away). **JPEG-to-JPEG-CLEAN-LARGE** keeps your Lab
+picture and sets repair JPEG **1x-NMKD-Jaywreck3-Lite** and model **2x-AnimeSharpV4-Fast-RCAN-PU**: a big
+JPEG (a photo, a scan, a wallpaper) cleaned and enlarged 2x, all on the server. Every preset now saves the 🔍 settings
+too, and **Save as preset** (or 💾) on a 🔍 result saves it as a 🔍 preset: its settings, and its Lab picture
+when it came from the Lab.
 
 ### 3D models, turnarounds and low-poly (`--mesh`, `--turnaround`, `--lowpoly`)
 
@@ -1059,6 +1077,7 @@ OPTIONS
   --upscale-to SIZE   --upscale: finished size: 2x, a long side (2048) or WxH; 1x + --repair = same size  [the model's]
   --fix-jpeg IMG|DIR  clean JPEG damage, same size (--upscale + --upscale-to 1x + --repair)
   --pixel-art         --upscale / --fix-jpeg: pixel art -> flat palette colours again (--palette to pick)
+  --pixel-art-anyway  --pixel-art on a big picture that doesn't look like pixel art (refused otherwise)
   --list-upscalers    the upscale models each render server has
   --tile [x|y]        seamless tileable texture (+ a 3x3 _tiled_ preview)
   --dither [NAME]     dither between palette colors: bayer2/4/8/16, clustered, floyd-steinberg,

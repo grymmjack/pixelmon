@@ -1,0 +1,25 @@
+{
+ "name": "JPEG-to-JPEG-CLEAN-LARGE",
+ "saved": 1793582236.7403176,
+ "note": "A big JPEG - a photo, a scan, a wallpaper or a wall of box art - cleaned of its JPEG blocks and ringing (1x-NMKD-Jaywreck3-Lite), then enlarged 2x with crisp edges (2x-AnimeSharpV4-Fast-RCAN-PU). All on the render server, so any size is quick. For pixel art that should come back as flat palette colours, use JPEG-to-PIXEL-ART instead. Keeps your LAB input: press \ud83d\udd0d upscale.",
+ "snapshot": {
+  "up": {
+   "model": "2x-AnimeSharpV4-Fast-RCAN-PU.safetensors",
+   "then": "",
+   "repair": "1x-NMKD-Jaywreck3-Lite.pth",
+   "to": "",
+   "tocustom": "",
+   "pmodel": "",
+   "pthen": "",
+   "prepair": "",
+   "pto": "",
+   "ptocustom": "",
+   "pal": "",
+   "phex": "",
+   "pfrom": "",
+   "pmax": "",
+   "pixel": false
+  }
+ },
+ "image": "JPEG-to-JPEG-CLEAN-LARGE.jpg"
+}

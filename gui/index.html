@@ -2020,7 +2020,8 @@ const HELP = {
     <b>pixel art</b> — a JPEG of sprites comes back at its own size in flat colours of its palette (found from its flat
     areas, and fitted to a bundled palette such as WEB-SAFE when one matches), ringing and colour smear gone. It goes
     through 2x-AnimeSharpV4-Fast-RCAN-PU when the server has it (crisper; model <b>none</b> = no server at all);
-    <b>size</b> 2x / 4x enlarges it with hard pixel edges. Each sprite goes onto its own art-pixel grid (Atari-style
+    <b>size</b> 2x / 4x enlarges it with hard pixel edges. It clears JPEG damage by itself, so leave its <b>extra JPEG repair
+    model</b> off: that model smears small sprites and shifts their colours. Each sprite goes onto its own art-pixel grid (Atari-style
     4×2 wide pixels, 5×3 …) with one colour per cell, and the specks left are cleared. <b>palette</b>: found by itself,
     or a bundled one, your own hex codes, or the colours of another picture (<b>most</b> = how many to take).
     Everywhere: <b>then</b> runs a second model on the first one's result (a chain), and <b>size › custom…</b> takes
@@ -2373,8 +2374,9 @@ async function turnFrom(job, o, mode) {
 }
 // 🔍 upscale / JPEG repair (pixelmon --upscale): the lightbox's row and the LAB's box share these settings
 const UP_KEYS = ["model", "then", "repair", "to", "tocustom", "pixel", "pmodel", "pthen", "prepair", "pto", "ptocustom",
-  "pal", "phex", "pfrom", "pmax"];
-const UP = Object.assign(Object.fromEntries(UP_KEYS.map(k => [k, k === "pixel" ? false : ""])), store.get("up", {}));
+  "pal", "phex", "pfrom", "pmax", "panyway"];
+const UP_DEFAULTS = Object.fromEntries(UP_KEYS.map(k => [k, k === "pixel" || k === "panyway" ? false : ""]));
+const UP = Object.assign({ ...UP_DEFAULTS }, store.get("up", {}));
 const UP_PIXEL = "2x-AnimeSharpV4-Fast-RCAN-PU";
 const UP_NOTES = {
   "4x-realesrgan-x4plus": "photos + art, fast", "2x-realesrgan-x2plus": "2x, photos + art", "4x-realesrgan-x4plus-anime-6b": "drawings, flat colour",
@@ -2399,6 +2401,7 @@ function upRequest() {
   const u = { model, repair: P ? UP.prepair : UP.repair, to };
   if (!P) return model === "none" && !u.repair ? "Pick a JPEG repair model, or a model to enlarge with." : u;
   u.pixel = true;
+  if (UP.panyway) u.anyway = true;                       // --pixel-art-anyway: past the not-pixel-art check
   if (UP.pal === "Custom") {
     if (!/#?[0-9a-f]{3,6}/i.test(UP.phex)) return "Type the palette's colours as hex codes: #000 #fff #ff9966 …";
     Object.assign(u, { palette: "Custom", custom_hex: UP.phex });
@@ -2419,7 +2422,9 @@ function renderUp() {
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${label}</option>`;
   const P = UP.pixel, K = k => P ? "p" + k : k;          // the pixel-art settings are kept apart from the others
   const pixel = `<label title="the picture is pixel art (e.g. a JPEG of sprites): every pixel goes back to one flat colour of its palette, at its own size; each sprite onto its own art-pixel grid, specks cleared"><input type="checkbox" data-up="pixel"${P ? " checked" : ""}> pixel art</label>`;
-  const repair = `<label title="a 1x model that removes JPEG damage first: blocks, ringing round edges, colour smear">repair JPEG
+  const repair = P ? `<label title="pixel art already clears JPEG damage itself (blocks, ringing, colour smear) by snapping every pixel to its palette. A repair model first usually makes it worse: it smears small sprites and shifts their colours">extra JPEG repair model
+      <select data-up="prepair">${opt("", "off — pixel art fixes JPEG itself (best)", UP.prepair)}${fix.map(m => opt(m, upLabel(m), UP.prepair)).join("")}</select></label>`
+    : `<label title="a 1x model that removes JPEG damage first: blocks, ringing round edges, colour smear">repair JPEG
       <select data-up="${K("repair")}">${opt("", "off", UP[K("repair")])}${fix.map(m => opt(m, upLabel(m), UP[K("repair")])).join("")}</select></label>`;
   const then = `<label title="a second model run on the first one's result (a chain), e.g. a 2x after a 4x">then
       <select data-up="${K("then")}">${opt("", "—", UP[K("then")])}${all.map(m => opt(m, upLabel(m), UP[K("then")])).join("")}</select></label>`;
@@ -2443,12 +2448,13 @@ function renderUp() {
         <button type="button" class="btn small" data-up-browse title="pick the picture on this computer">Browse…</button>
         <label title="the most colours to take from it (blank: all up to 64, else 32)">most
         <input type="number" min="1" max="256" style="width:4.5em" data-up="pmax" value="${esc(UP.pmax)}" placeholder="auto"></label>` : "");
+    const anyway = `<label title="A big picture (over a megapixel) that is less than half flat colour (a photo, a scan, a wall of box art) is refused before it's sent: the pixel-art clean is slow on it (minutes, a few GB of memory) and what comes back isn't pixel art. Tick to clean it anyway. For a big JPEG the JPEG-to-JPEG-CLEAN-LARGE preset (repair + 2x model, no pixel art) is usually what you want."><input type="checkbox" data-up="panyway"${UP.panyway ? " checked" : ""}> even if it doesn't look like pixel art</label>`;
     const usable = UP.pmodel || pdef ? "" : `<span class="dim">no ${UP_PIXEL} on the server (<code>./download-models.sh --upscale</code>): cleaned without it, a little rounder</span>`;
     html = `${pixel}${all.length ? repair : ""}
       <label title="a model that redraws the edges sharp first (it's sized back down after); none = the clean alone, no server">model
         <select data-up="pmodel">${opt("", pdef ? `${esc(upStem(pdef))} (default)` : "none (no pixel model on the server)", UP.pmodel)}${all.filter(m => m !== pdef).map(m => opt(m, upLabel(m), UP.pmodel)).join("")}
           ${pdef ? opt("none", "none — the clean alone", UP.pmodel) : ""}</select></label>
-      ${UP.pmodel === "none" || !all.length ? "" : then}${size}${palette}${usable}`;
+      ${UP.pmodel === "none" || !all.length ? "" : then}${size}${palette}${anyway}${usable}`;
   } else html = !all.length ? `${pixel} <span class="dim">no upscale models on the render server — run <code>./download-models.sh --upscale</code> there</span>`
     : `${pixel}${repair}
       <label title="the model that enlarges it, or none to only repair">model
@@ -2473,6 +2479,36 @@ async function upscaleFrom(target, label, group) {
   if (group) p.group = group;
   showErr();
   try { return await api("/api/render", p); } catch (e) { showErr(e); return null; }
+}
+// a 🔍 preset: its settings replace the controls' (anything it doesn't name goes back to the default)
+function applyUp(u) {
+  Object.assign(UP, UP_DEFAULTS, u || {});
+  store.set("up", Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])));
+  renderUp();
+}
+// a 🔍 job's request -> the controls that would ask for it again (to save it as a preset)
+function upFromRequest(r) {
+  const P = !!r.pixel, K = k => P ? "p" + k : k, u = { ...UP_DEFAULTS, pixel: P };
+  const [first, then] = String(r.model || "").split(",");
+  u[K("model")] = first || ""; u[K("then")] = then || ""; u[K("repair")] = r.repair || "";
+  const sizes = P ? ["", "2x", "3x", "4x"] : ["", "1x", "2x", "2048", "4096", "8192"];
+  if (sizes.includes(r.to || "")) u[K("to")] = r.to || ""; else { u[K("to")] = "custom"; u[K("tocustom")] = r.to; }
+  if (P && r.palette === "Custom") Object.assign(u, { pal: "Custom", phex: r.custom_hex || "" });
+  else if (P && r.palette === "from") Object.assign(u, { pal: "from", pfrom: r.palette_from || "", pmax: r.palette_max || "" });
+  else if (P) u.pal = r.palette || "";
+  if (P && r.anyway) u.panyway = true;
+  return u;
+}
+// a preset card's one-line summary of its 🔍 settings
+function upSummary(u) {
+  const P = u.pixel, K = k => P ? "p" + k : k, m = u[K("model")];
+  return [P ? "🔍 pixel art" : m === "none" ? "🔍 JPEG repair" : "🔍 upscale", u[K("repair")] && "repair " + upStem(u[K("repair")]),
+    m === "none" ? (P ? "no model" : "repair only") : m ? upStem(m) : P ? UP_PIXEL : "4x-realesrgan-x4plus",
+    u[K("then")] && "then " + upStem(u[K("then")]),
+    u[K("to")] === "custom" ? u[K("tocustom")] : u[K("to")] || (P ? "same size" : ""),
+    P && (u.pal === "from" ? "palette from a picture" : u.pal === "Custom" ? "custom palette" : u.pal ? "palette " + u.pal : "palette auto"),
+    P && u.panyway && "even if not pixel art"
+  ].filter(Boolean).join(" · ");
 }
 function initUp() {
   const save = () => store.set("up", Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])));
@@ -4178,9 +4214,18 @@ function labSnapshot(active) {
   return { ...l, adj: { ...LABS.adj }, active: !!active };
 }
 function snapshot(fromLab) {
-  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, depth: { ...DEPTH }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams() };
+  return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, depth: { ...DEPTH }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams(),
+           up: Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])) };       // the 🔍 upscale / JPEG repair settings too
 }
+const presetNameOf = (job, o) => job.params.upscale ? (job.params.upscale.pixel ? "clean-pixels" : "upscale")
+  : `${((job.params.form && job.params.form.subject) || "preset").slice(0, 24)}-s${o.seed}`;
+const upOnly = snap => !!(snap && snap.up && !snap.form);   // a 🔍 preset: only the upscale / clean settings
 function snapshotOfJob(job, o) {
+  if (job.params.upscale) {                              // a 🔍 result: its settings, and its Lab input if it had one
+    const u = job.params.upscale;
+    return { up: upFromRequest(u), ...(u.lab ? { lab: { file: u.lab, size: [0, 0], adj: { ...ADJ0, ...(job.params.lab_adjust || {}) },
+      mask: null, sketch: null, active: true } } : {}) };
+  }
   const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
   return { form: f,
     steer: { ...STEER, use: !!(p.steer && p.steer.length), sel: [...(p.steer || [])], strength: p.steer_strength ?? STEER.strength,
@@ -4203,18 +4248,22 @@ function applyDepth(d) {      // older presets have no depth: the lock goes off
   saveDepth(); renderRefs();
 }
 function applySnapshot(snap) {
-  // start from defaults for anything the preset doesn't mention (older presets predate newer settings),
-  // so nothing leaks in from whatever was set before
-  writeForm({ ...FORM_DEFAULTS, ...(snap.form || {}) });
-  Object.assign(STEER, STEER_DEFAULTS, snap.steer || {});
-  $("useSteer").checked = STEER.use; $("steerStrength").value = STEER.strength;
-  $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
-  $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
-  renderRefs(); saveSteer();
-  applyDepth(snap.depth);
-  Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo();
-  setAdv(snap.adv || {});                                // advanced overrides: none unless the preset has them
-  refresh();
+  if (snap.up) applyUp(snap.up);
+  const only = upOnly(snap);                             // a 🔍 preset: the prompt, steering … are left as they are
+  if (!only) {
+    // start from defaults for anything the preset doesn't mention (older presets predate newer settings),
+    // so nothing leaks in from whatever was set before
+    writeForm({ ...FORM_DEFAULTS, ...(snap.form || {}) });
+    Object.assign(STEER, STEER_DEFAULTS, snap.steer || {});
+    $("useSteer").checked = STEER.use; $("steerStrength").value = STEER.strength;
+    $("steerWeight").value = STEER.weight; $("steerCombine").value = STEER.combine;
+    $("steerStart").value = STEER.start ?? 0; $("steerEnd").value = STEER.end ?? 1;
+    renderRefs(); saveSteer();
+    applyDepth(snap.depth);
+    Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo();
+    setAdv(snap.adv || {});                                // advanced overrides: none unless the preset has them
+    refresh();
+  }
   if (snap.lab) {
     Object.assign(LABS, snap.lab, { adj: { ...ADJ0, ...(snap.lab.adj || {}) }, group: null, prevJob: null });
     maskCanvas.width = 0;   // rebuilt from LABS.mask when the input image loads
@@ -4224,6 +4273,10 @@ function applySnapshot(snap) {
         showErr(`This preset's LAB input “${snap.lab.file}” isn't in lab-inputs any more — pick an input; everything else was restored.`);
     });
     if (snap.lab.active) switchTab("lab");
+  }
+  if (only) {
+    switchTab("lab");
+    ok(`🔍 settings loaded: ${LABS.file ? "press " + $("labUpGo").textContent + " in the LAB" : "pick an input image in the LAB, then press " + $("labUpGo").textContent}`);
   }
 }
 let PFOLDERS = [], PFOLDER = store.get("presetFolder", "*");     // "*" = all folders, "" = unfiled
@@ -4262,11 +4315,12 @@ function renderPresetsPane() {
   const shown = PRESETS.filter(p => PFOLDER === "*" || p.folder === PFOLDER);
   $("presetsPane").innerHTML = bar + importZone + (shown.length ? `<div class="pcards">${shown.map(p => {
     const f = (p.snapshot && p.snapshot.form) || {};
-    const bits = [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
+    const bits = upOnly(p.snapshot) ? upSummary(p.snapshot.up) : [f.lora && f.lora.replace(".safetensors", ""), f.outW && `${f.outW}×${f.outH}`, f.palette,
                   f.dither && f.dither !== "none" && f.dither, f.seedLock && f.seed && `seed ${f.seed}`,
                   p.snapshot && p.snapshot.steer && p.snapshot.steer.use && `🧭 ${p.snapshot.steer.sel.length}`,
                   p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬",
-                  p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`].filter(Boolean).join(" · ");
+                  p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`,
+                  p.snapshot && p.snapshot.up && Object.values(p.snapshot.up).some(Boolean) && upSummary(p.snapshot.up)].filter(Boolean).join(" · ");
     return `<div class="pcard" draggable="true" data-pid="${esc(p.id)}">${p.image ? `<img src="${presetImg(p)}" alt="" draggable="false">` : `<div class="noimg">no picture</div>`}
       <div class="body"><h4 title="double-click to rename">${esc(p.name)}${PFOLDER === "*" ? ` <span class="pfolder">${esc(p.folder || "unfiled")}</span>` : ""}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
@@ -4368,7 +4422,11 @@ function initPresets() {
     if (b.dataset.pdel) { if (confirm(`Delete preset “${p ? p.name : id}”${p && p.folder ? ` from “${p.folder}”` : ""}? This can't be undone.`)) { await api("/api/presets/delete", { id }); loadPresets(); } return; }
     if (!p) return;
     applySnapshot(p.snapshot); $("presetSel").value = id;
-    if (b.dataset.prender) render({ ...params(), form: readForm() });
+    if (b.dataset.prender) {
+      if (!upOnly(p.snapshot)) return render({ ...params(), form: readForm() });
+      await loadLab();                                   // ▶ on a 🔍 preset: run it on the LAB's input
+      if (LABS.file) $("labUpGo").click();
+    }
   });
   $("presetDel").onclick = async () => {
     const id = $("presetSel").value, p = presetById(id);
@@ -5419,7 +5477,9 @@ async function loadLab() {
       data-w="${x.size[0]}" data-h="${x.size[1]}" class="${x.file === LABS.file ? "on" : ""}" alt="">
       <button type="button" class="lr-x" data-lab-remove="${esc(x.file)}" title="remove from recents">×</button>${oiBtn(null)}</span>`).join("")
     + (r.inputs.length > 1 ? `<button type="button" class="btn small lr-clear" id="labRecentClear" title="remove every recent input except the one in use">✕ clear recents</button>` : "");
-  if (LABS.file && !r.inputs.some(x => x.file === LABS.file)) LABS.file = null;
+  const cur = LABS.file && r.inputs.find(x => x.file === LABS.file);
+  if (LABS.file && !cur) LABS.file = null;
+  else if (cur && !(LABS.size && LABS.size[0])) LABS.size = cur.size;   // a preset that didn't know its input's size
   renderLab();
 }
 function labOut() {   // LAB's height follows the input's proportions, rounded to the pixel size
@@ -7225,7 +7285,7 @@ async function init() {
     const rv = e.target.closest("[data-reveal-job]"); if (rv) return reveal("job", rv.dataset.revealJob);
     const sv = e.target.closest("[data-save-job]");
     if (sv) { const job = JOBS[sv.dataset.saveJob], o = job.outputs[0];
-      savePreset(snapshotOfJob(job, o), `${((job.params.form && job.params.form.subject) || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); return; }
+      savePreset(snapshotOfJob(job, o), presetNameOf(job, o), { dir: job.dir, file: o.file }); return; }
     const cp = e.target.closest("[data-copy-job]");
     if (cp) { copyText(JOBS[cp.dataset.copyJob].command, cp); return; }
     const lj = e.target.closest("[data-load-job]");
@@ -7269,7 +7329,7 @@ async function init() {
   t3ShapeUi();
   $("lbParent").onclick = () => { const { job, o } = lbItem; closeLb(); setParent(job, o); };
   $("lbPreset").onclick = () => { const { job, o } = lbItem;
-    savePreset(snapshotOfJob(job, o), `${(job.params.form && job.params.form.subject || "preset").slice(0, 24)}-s${o.seed}`, { dir: job.dir, file: o.file }); };
+    savePreset(snapshotOfJob(job, o), presetNameOf(job, o), { dir: job.dir, file: o.file }); };
   $("lbInfo").addEventListener("click", e => {
     const im = e.target.closest("[data-open-dir]"); if (!im) return;
     const job = [...Object.values(JOBS), ...GALLERY].find(j => j.dir === im.dataset.openDir);
