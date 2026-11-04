@@ -823,6 +823,51 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill", rough=False):
             if len(box) != 4 or not all(0 <= x <= 1 for x in box) or not (box[0] < box[2] and box[1] < box[3]):
                 raise ValueError("advanced: animation box must be left,top,right,bottom fractions 0..1, e.g. 0.25,0.36,0.67,0.49")
             out += ["--anim-box", ",".join(f"{x:g}" for x in box)]
+    # Textures: --surface (an art render of a material), its even light, material maps; a run's contact sheet
+    if val("surface"):
+        out.append("--surface")
+    v = num("flatten", float, 0, 1)
+    if v is not None:
+        out += ["--flatten", f"{v:g}"]
+    if val("maps"):
+        out.append("--maps")
+        for key, flag, lo, hi in (("maps_strength", "--maps-strength", 0.5, 10), ("maps_detail", "--maps-detail", 0, 1)):
+            v = num(key, float, lo, hi)
+            if v is not None:
+                out += [flag, f"{v:g}"]
+        if val("maps_invert"):
+            out.append("--maps-invert")
+    if val("sheet"):
+        out.append("--sheet")
+    # Sprite animation: moves (posed, one character) or an effect
+    mv, eff = val("moves"), choice("effect", ["fire", "explosion", "sparkle", "smoke"])
+    if mv is not None:
+        mv = ",".join(m for m in re.split(r"[\s,]+", str(mv).lower()) if m)
+        if not re.fullmatch(r"[a-z]+(,[a-z]+){0,9}", mv):
+            raise ValueError("advanced: moves must be names like walk,run,idle,attack,hurt,death,jump,stand")
+        out += ["--moves", mv]
+        for key, flag, opts in (("directions", "--directions", ["1", "4", "8"]), ("facing", "--facing", ["right", "left", "front", "back"]),
+                                ("view", "--view", ["side", "topdown"])):
+            v = choice(key, opts)
+            if v:
+                out += [flag, v]
+        v = num("fill", float, 0.3, 1)
+        if v is not None:
+            out += ["--fill", f"{v:g}"]
+        v = choice("sprite_bg", ["grey", "white", "black", "green", "magenta"])
+        if v:
+            out += ["--sprite-bg", v]
+        if adv.get("lock_palette") is False:
+            out.append("--no-lock-palette")
+    elif eff:
+        out += ["--effect", eff]
+    if mv is not None or eff:
+        for key, flag, typ, lo, hi in (("pose_strength", "--pose-strength", float, 0, 2), ("pose_end", "--pose-end", float, 0.1, 1),
+                                       ("sprite_frames", "--anim-frames", int, 1, 16), ("sprite_fps", "--anim-fps", float, 1, 30),
+                                       ("anim_preview", "--anim-preview", int, 1, 8)):
+            v = num(key, typ, lo, hi)
+            if v is not None:
+                out += [flag, f"{v:g}" if typ is float else str(v)]
     return out
 
 

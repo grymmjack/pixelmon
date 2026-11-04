@@ -262,6 +262,7 @@ def print_help():
         opt("--move-to-dirs", "put a run in its own ./<prompt>/ folder"),
         opt("--create-dirs", "create output folders if missing"),
         opt("--no-subdirs", "with --batch/--output-to: dump all into one flat folder"),
+        opt("--sheet", "also save NAME_sheet.png: every picture of the run on one page, seed under each"),
         "",
         f"{c['b']}{c['cyan']}ANIMATION{c['rst']}  {c['dim']}(EXPERIMENTAL — looping portrait gestures → GIF; "
         f"best for glow/light. for crisp sprites, hand-animate a static render){c['rst']}",
@@ -274,6 +275,30 @@ def print_help():
         opt("--anim-loop MODE", "pingpong / cycle / once-return", "preset"),
         opt("--anim-box L,T,R,B", "manual mask box (fractions) if auto-mask misses"),
         opt("--anim-res N", "base/inpaint gen resolution (detail)", "768"),
+        "",
+        f"{c['b']}{c['cyan']}SPRITE ANIMATION{c['rst']}  {c['dim']}(posed game sprites: --size is one frame, default 64; "
+        f"a strip PNG, a GIF and a bigger _x4 GIF per move){c['rst']}",
+        opt("--moves LIST", "walk,run,idle,attack,hurt,death,jump,stand — the character rendered standing, then every frame beside it"),
+        opt("--directions N", "1 / 4 / 8: a strip per direction (s e n w + diagonals)", "1"),
+        opt("--facing WAY", "right / left / front / back (one direction)", "right"),
+        opt("--view V", "side (platformer) / topdown (RPG, camera 30° down)", "side"),
+        opt("--effect KIND", "fire / explosion / sparkle / smoke — looping frames (prompt optional)"),
+        opt("--pose-strength F", "how strictly the skeletons / effect shapes are followed, 0..2", "0.9"),
+        opt("--pose-end F", "when the poses let go (fraction of steps)", "0.8"),
+        opt("--cell-strength F", "weight of each frame's own prompt (effects: its moment)", "0 / 0.35"),
+        opt("--fill F", "a standing character's share of the frame height", "0.8"),
+        opt("--sprite-bg COLOUR", "backdrop painted then cut away: grey / white / black / green / magenta", "grey"),
+        opt("--no-lock-palette", "let frames keep their own colours (default: the standing character's)"),
+        opt("--anim-preview N", "the bigger GIF's scale; 1 = none", "4"),
+        "",
+        f"{c['b']}{c['cyan']}TEXTURES{c['rst']}  {c['dim']}(material pictures for 3D models and tiles){c['rst']}",
+        opt("--surface", "texture mode: the surface square on, evenly lit (juggernautXL, heun, karras); + --tile to repeat"),
+        opt("--flatten F", "--art: even out the lighting, 0..1", "0.6 surface / 0"),
+        opt("--maps", "--art: also save _height, _normal (OpenGL), _rough, _ao beside each picture"),
+        opt("--maps-from IMG…", "make --maps for pictures you have (no render; --tile if they repeat)"),
+        opt("--maps-strength F", "normal map steepness: x 7.5 degrees", "4"),
+        opt("--maps-detail F", "0 broad shapes .. 1 fine detail", "0.5"),
+        opt("--maps-invert", "dark is high (light seams / cracks)"),
         "",
         f"{c['b']}{c['cyan']}OUTPUT{c['rst']}",
         f"  {c['dim']}{OUTPUT}/pixelmon/{c['rst']}",
@@ -335,6 +360,15 @@ TILE_NEGATIVE = "border, frame, vignette, perspective, horizon, single object, c
 TILE_POSITIVE = "seamless repeating texture, flat even lighting, pattern fills the whole frame"
 
 
+# --surface: a material swatch for texturing - the surface itself, seen square on, evenly lit
+SURFACE_POSITIVE = ("flat texture photo seen straight on, orthographic view of the surface, even soft diffuse light, "
+                    "no shadows, the surface fills the whole frame edge to edge, sharp fine detail, material reference scan")
+SURFACE_NEGATIVE = ("perspective, horizon, vanishing point, depth of field, vignette, shadow, spotlight, glare, objects, "
+                    "person, hands, frame, border, text, letters, logo, watermark, signature, blurry, lowres, "
+                    "jpeg artifacts, cartoon, illustration, 3d render")
+SURFACE_BASE = "juggernautXL_v9.safetensors"     # photographic SDXL: clean real materials (Rick's tip, with heun + karras)
+
+
 def art_positive(subject, style_add):
     """Build the POSITIVE prompt for --art (full-res digital art) mode.
 
@@ -380,8 +414,14 @@ def final_prompts(a, subject):
     # and --style snippets (a.style_add) do the steering. "game sprite ... solid
     # background" keeps sprites clean, but fights full scenes, so scenes drop it.
     # Style negatives (a.style_neg) push away unwanted shapes/looks.
-    if a.art:
-        prompt = art_positive(subject, a.style_add)
+    if getattr(a, "surface", False):
+        prompt = ", ".join(x for x in (subject, a.style_add, SURFACE_POSITIVE) if x)
+        if a.tile:
+            prompt += ", " + TILE_POSITIVE
+    elif a.art:
+        # a texture is a surface: the painting boosters ("dramatic lighting") fight an evenly lit repeat
+        prompt = (", ".join(x for x in (subject, a.style_add, "highly detailed texture, sharp focus") if x)
+                  if a.tile else art_positive(subject, a.style_add))
         if a.tile:
             prompt += ", " + TILE_POSITIVE
     elif a.tile:
@@ -397,6 +437,8 @@ def final_prompts(a, subject):
     negative = a.negative + ((", " + a.style_neg) if a.style_neg else "")
     if a.tile:
         negative += ", " + TILE_NEGATIVE
+    if a.tile and a.art:
+        negative += ", dramatic lighting, light from one side"
     return prompt, negative
 
 
@@ -499,7 +541,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         # Digital-art mode: no pixelation, no palette lock. SDXL draws at its own resolution; a smaller
         # output is a smooth (lanczos) resize of that picture, never a tiny generation.
         art_img = ["8", 0]
-        if (a.gen_w, a.gen_h) != (a.sw, a.sh):
+        if (a.gen_w, a.gen_h) != (a.sw, a.sh) and not a.tile:    # a tiling one is resized in finish (seam-safe)
             g["17"] = {"class_type": "ImageScale",
                        "inputs": {"image": ["8", 0], "upscale_method": "lanczos",
                                   "width": a.sw, "height": a.sh, "crop": "center"}}
@@ -642,7 +684,8 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["53"] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": a.control_model}}
         g["54"] = {"class_type": "SetUnionControlNetType",
                    "inputs": {"control_net": ["53", 0],
-                              "type": "canny/lineart/anime_lineart/mlsd" if a.control_mode == "canny" else "tile"}}
+                              "type": {"canny": "canny/lineart/anime_lineart/mlsd", "openpose": "openpose",
+                                       "depth": "depth", "scribble": "hed/pidi/scribble/ted"}.get(a.control_mode, "tile")}}
         g["55"] = {"class_type": "ControlNetApplyAdvanced",
                    "inputs": {"positive": ["6", 0], "negative": ["7", 0], "control_net": ["54", 0], "image": hint,
                               "strength": a.control_strength, "start_percent": 0.0, "end_percent": a.control_end}}
@@ -677,7 +720,7 @@ def build_graph(a, seed, palette=None, subject=None, server=None):
         g["70"] = {"class_type": "SeamlessTile", "inputs": {"model": model_src, "tiling": a.tile}}
         model_src = ["70", 0]
         # a 3x3 repeat of the result, to check the seams by eye
-        if "11" in g:
+        if "11" in g and not a.art:          # art: made in finish, after the resize / flatten
             g["71"] = {"class_type": "TilePreview", "inputs": {"image": g["11"]["inputs"]["images"], "repeat": 3, "tiling": a.tile}}
             g["72"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix + "_tiled", "images": ["71", 0]}}
     if getattr(a, "cutout", False) and ("10" in g or "11" in g) and not (a.fit_subject and "10" in g):
@@ -1196,6 +1239,41 @@ def stamp_recipe(path, a, seed, subject, server):
         pass
 
 
+def texture_finish(a, sprite, files):
+    """--art textures: a tiling render resized to --out without breaking its seam, --flatten's even light, the
+    3x3 seam check (art mode makes it here, after those), --maps' height / normal / roughness / AO pictures."""
+    if not (a.art and sprite and os.path.isfile(sprite)):
+        return
+    flat = getattr(a, "flatten", 0) or 0
+    want_maps = getattr(a, "maps", False)
+    if not (a.tile or flat > 0 or want_maps):
+        return
+    sys.path.insert(0, _SCRIPT_DIR)
+    import textures
+    from PIL import Image
+    im = Image.open(sprite)
+    im.load()
+    changed = False
+    if a.tile and im.size != (a.sw, a.sh):
+        im, changed = textures.wrap_resize(im.convert("RGB"), (a.sw, a.sh), a.tile), True
+    if flat > 0:
+        im, changed = textures.flatten(im, flat, a.tile), True
+    if changed:
+        resave(im, sprite)
+    if a.tile:
+        head, sep, tail = sprite.rpartition("_art_")          # the last one: the prefix has "_art_s7" too
+        prev = head + "_tiled_" + tail
+        if sep:
+            textures.tile_preview(im.convert("RGB"), a.tile).save(prev)
+            files.append(prev)
+    if want_maps:
+        stem = (sprite[:-4] if sprite.endswith(".png") else sprite).rstrip("_")
+        for k, m in textures.make_maps(im, a.tile, a.maps_strength, a.maps_detail, a.maps_invert).items():
+            m.save(f"{stem}_{k}.png")
+            files.append(f"{stem}_{k}.png")
+        print(f"      🧱 maps  ->  {os.path.basename(stem)}_height / _normal / _rough / _ao .png")
+
+
 def enlarge_output(a, sprite):
     """Pixel art past 1024 was made at 1/k size: enlarge it by exactly k, nearest neighbour (crisp square pixels)."""
     k = getattr(a, "enlarge", 1)
@@ -1689,6 +1767,7 @@ class Job:
 def finish(job, files, server):
     """The post-processing every render gets after the server is done; returns the sprite's path."""
     ja, sprite = job.a, pick_sprite(files)
+    texture_finish(ja, sprite, files)
     keep_outside_mask(ja, sprite)
     stitch_inpaint(ja, sprite)
     art_palette(ja, sprite, job.pal)
@@ -2043,6 +2122,9 @@ def main():
     p.add_argument("--no-subdirs", dest="no_subdirs", action="store_true",
                    help="with --batch/--output-to: dump everything flat into the one folder "
                         "(no per-subject subdirs) — files are uniquely named, so all viewable together")
+    p.add_argument("--sheet", action="store_true",
+                   help="also save a contact sheet (NAME_sheet.png): every picture of the run on one page, "
+                        "its seed under it, to pick a take at a glance")
     p.add_argument("--custom-hex", dest="custom_hex", default="",
                    help='hex codes when --palette Custom, e.g. "#000 #fff #f00"')
     p.add_argument("--preview", action="store_true",
@@ -2055,7 +2137,7 @@ def main():
                         "or host[:port]/URL. comma-list = RENDER FARM, jobs fan across all "
                         "GPUs (e.g. 'rtx,titan,local'). default: $PIXELMON_SERVER, else servers.json "
                         "\"_default\", else local")
-    p.add_argument("--base", default="sd_xl_base_1.0.safetensors", help="SDXL base checkpoint")
+    p.add_argument("--base", default=None, help="SDXL base checkpoint (default sd_xl_base_1.0; juggernautXL_v9 with --surface)")
     p.add_argument("--lora", default="pixel-art-xl.safetensors", help="pixel-art LoRA")
     # --- steering: nudge output toward a folder of reference images (IPAdapter) ---
     p.add_argument("--steer", default=None, metavar="DIR|IMG",
@@ -2090,8 +2172,10 @@ def main():
     p.add_argument("--control", default=None, metavar="IMG",
                    help="ControlNet: keep the SHAPE of this image while the prompt/LoRA/palette restyle it "
                         "(photo of a dog -> EGA dog). needs the SDXL union ControlNet on the server")
-    p.add_argument("--control-mode", dest="control_mode", default="canny", choices=["canny", "tile"],
-                   help="canny = follow its edges/outlines (most restyle freedom); tile = keep its layout + colors")
+    p.add_argument("--control-mode", dest="control_mode", default="canny",
+                   choices=["canny", "tile", "openpose", "depth", "scribble"],
+                   help="canny = follow its edges/outlines (most restyle freedom); tile = keep its layout + colors; "
+                        "openpose / depth / scribble = the image already is a pose skeleton / depth map / scribble")
     p.add_argument("--control-strength", dest="control_strength", type=float, default=0.8, metavar="F",
                    help="how strictly to follow the control image, 0..2. default 0.8")
     p.add_argument("--canny-low", dest="canny_low", type=float, default=0.3, metavar="F",
@@ -2158,6 +2242,26 @@ def main():
                    help="DIGITAL ART mode: skip pixelation entirely — no pixel LoRA, no pixel "
                         "downscale. Saves SDXL's full-res image (default 1024px; a smaller --out is a "
                         "smooth resize). --palette pulls its colors toward a palette (--palette-strength).")
+    p.add_argument("--surface", action="store_true",
+                   help="TEXTURE mode (an --art render): a material swatch for texturing - the surface seen square "
+                        "on, evenly lit, no objects or shadows; photographic checkpoint (juggernautXL) with heun + "
+                        "karras, and --flatten 0.6. Add --tile to make it repeat, --maps for height / normal / "
+                        "roughness / AO")
+    p.add_argument("--flatten", type=float, default=None, metavar="F",
+                   help="--art: even out the lighting across the picture, 0 (off) .. 1 (perfectly even). "
+                        "default 0.6 with --surface, else 0")
+    p.add_argument("--maps", action="store_true",
+                   help="--art: also save material maps beside each picture: NAME_height, _normal (OpenGL, +y "
+                        "up), _rough, _ao .png (they tile when the picture does)")
+    p.add_argument("--maps-from", dest="maps_from", nargs="+", default=None, metavar="IMG",
+                   help="make --maps for pictures you already have (no render; add --tile if they repeat)")
+    p.add_argument("--maps-strength", dest="maps_strength", type=float, default=4.0, metavar="F",
+                   help="how steep the normal map's bumps are. default 4")
+    p.add_argument("--maps-detail", dest="maps_detail", type=float, default=0.5, metavar="F",
+                   help="0 = height from the broad shapes (planks, panels) .. 1 = from the fine detail "
+                        "(grain, scratches). default 0.5")
+    p.add_argument("--maps-invert", dest="maps_invert", action="store_true",
+                   help="dark is high (the picture's seams / cracks are light): flips the height")
     p.add_argument("--exact-prompt", dest="exact_prompt", action="store_true",
                    help="send the prompt and --negative exactly as written: no 'pixel, a …' prefix, no sprite / "
                         "scene suffix, no --style text, no default negative (an omitted --negative = empty)")
@@ -2185,7 +2289,7 @@ def main():
                         '"the gun". works on dogs/monsters too. default: guessed from the gesture')
     p.add_argument("--anim-frames", dest="anim_frames", type=int, default=None,
                    help="distinct motion frames: 2 = toggle (blink); 3-5 = motion (smoke). default per-preset or 2")
-    p.add_argument("--anim-fps", dest="anim_fps", type=float, default=6.0,
+    p.add_argument("--anim-fps", dest="anim_fps", type=float, default=None,
                    help="loop SPEED in frames/second during the gesture. default 6")
     p.add_argument("--anim-hold", dest="anim_hold", type=float, default=1.2,
                    help="seconds to hold the resting pose between gestures. default 1.2")
@@ -2198,6 +2302,38 @@ def main():
                    help="manual mask box as fractions 0..1 (overrides auto-mask), e.g. 0.25,0.36,0.67,0.49")
     p.add_argument("--anim-res", dest="anim_res", type=int, default=768,
                    help="base/inpaint generation resolution (bigger = better region detail). default 768")
+    # --- sprite animation (sprites.py / poses.py): moves, directions, effects ---
+    p.add_argument("--moves", default=None, metavar="LIST",
+                   help="SPRITE ANIMATION: one strip per move, e.g. walk,run,idle,attack,hurt,death,jump (stand = one "
+                        "still frame). the character is painted once (NAME_ref.png), then every frame beside it, posed "
+                        "by an OpenPose skeleton; saves NAME_MOVE.png (a strip), .gif, _x4.gif")
+    p.add_argument("--directions", type=int, default=1, choices=[1, 4, 8],
+                   help="--moves: 1 = one facing (--facing); 4 / 8 = a strip per direction (s e n w / + diagonals), "
+                        "after a turnaround (NAME_turnaround.png) that each direction copies")
+    p.add_argument("--facing", default="right", choices=["right", "left", "front", "back"],
+                   help="--moves with --directions 1: which way the character faces. default right (side-scroller)")
+    p.add_argument("--view", default="side", choices=["side", "topdown"],
+                   help="--moves: side = camera level (platformers); topdown = looking down 30 degrees (RPGs)")
+    p.add_argument("--effect", default=None, choices=["fire", "explosion", "sparkle", "smoke"],
+                   help="SPRITE EFFECT: a looping (or one-shot explosion) effect as frames; the prompt is optional "
+                        "(e.g. \"green magic fire\")")
+    p.add_argument("--pose-strength", dest="pose_strength", type=float, default=0.9, metavar="F",
+                   help="--moves / --effect: how strictly the poses / shapes are followed, 0..2. default 0.9")
+    p.add_argument("--pose-end", dest="pose_end", type=float, default=0.8, metavar="F",
+                   help="--moves / --effect: when (fraction of steps) the poses let go. default 0.8")
+    p.add_argument("--cell-strength", dest="cell_strength", type=float, default=None, metavar="F",
+                   help="--moves / --effect: weight of each frame's own prompt (its facing / moment); they make cells "
+                        "paint apart, so 0 (off) for one facing, 0.35 across directions and for effects")
+    p.add_argument("--fill", type=float, default=0.8, metavar="F",
+                   help="--moves: how much of the frame's height a standing character fills. default 0.8")
+    p.add_argument("--sprite-bg", dest="sprite_bg", default="grey", metavar="COLOUR",
+                   help="--moves: the backdrop asked for (cut away: BiRefNet, then its colour trimmed off the "
+                        "edges): grey (default), white, black, green, magenta")
+    p.add_argument("--no-lock-palette", dest="lock_palette", action="store_false",
+                   help="--moves: let frames keep their own colours (by default every frame is snapped to the "
+                        "standing reference's colours, so nothing flickers)")
+    p.add_argument("--anim-preview", dest="anim_preview", type=int, default=4, metavar="N",
+                   help="--moves / --effect: also save the GIF N times bigger (_xN.gif); 1 = none. default 4")
     p.add_argument("--list-palettes", action="store_true", help="list palettes and exit")
     p.add_argument("--list-styles", action="store_true", help="list style guides and exit")
     p.add_argument("--no-open", action="store_true", help="don't auto-open the result image")
@@ -2252,12 +2388,13 @@ def main():
         a.upscale_to = a.upscale_to or "1x"
         if not (a.pixel_art or a.repair or a.upscale_model):
             a.repair = "1x-DeJPG-realplksr-otf.safetensors"
-    nothing_to_make = not (a.prompt or a.batch or a.batch_file or a.mesh or a.turnaround or a.upscale)
+    nothing_to_make = not (a.prompt or a.batch or a.batch_file or a.mesh or a.turnaround or a.upscale or a.maps_from
+                           or a.effect)
     if a.wrapper_local_url:
         # bin/pixelmon asks which ComfyUI on this machine (if any) this command renders on, and starts the
         # default one when it's down. Help, listings and dry runs need none; neither does a remote target.
         if not (a.show_help or a.list_palettes or a.list_styles or a.list_servers or a.dry_run or a.print_graph
-                or (nothing_to_make and not a.list_upscalers)):
+                or a.maps_from or (nothing_to_make and not a.list_upscalers)):
             for srv in (POOL or [SERVER]):
                 if is_local(srv):
                     print(srv)
@@ -2312,6 +2449,50 @@ def main():
         a.palette, a.custom_hex = "Custom", " ".join(hexes)
         print(f"   🎨 palette from {os.path.basename(src)}: {len(hexes)} colours")
 
+    if a.maps_from:                      # material maps for existing pictures: no render, no server
+        sys.path.insert(0, _SCRIPT_DIR)
+        import textures
+        from PIL import Image
+        out_dir = os.path.abspath(os.path.expanduser(a.output_to)) if a.output_to else None
+        if out_dir and not os.path.isdir(out_dir):
+            if not a.create_dirs:
+                p.error(f"output dir does not exist: {out_dir}\n  (add --create-dirs to make it)")
+            os.makedirs(out_dir, exist_ok=True)
+        tile = a.tile
+        for src in a.maps_from:
+            src = os.path.expanduser(src)
+            try:
+                im = Image.open(src)
+                im.load()
+            except OSError as e:
+                p.error(f"--maps-from: can't read {src}: {e}")
+            stem = os.path.join(out_dir or os.path.dirname(os.path.abspath(src)),
+                                os.path.splitext(os.path.basename(src))[0].rstrip("_"))
+            for k, m in textures.make_maps(im, tile, a.maps_strength, a.maps_detail, a.maps_invert).items():
+                m.save(f"{stem}_{k}.png")
+            print(f"   🧱 {os.path.basename(src)}  ->  {stem}_height / _normal / _rough / _ao .png")
+        return
+
+    # --surface is an --art render with its own prompt, checkpoint and sampler (each still overridable)
+    if a.surface:
+        if a.raw or a.animate or a.mask:
+            p.error("--surface makes a texture picture (not --raw, --animate or a --mask edit)")
+        a.art = True
+        a.base = a.base or SURFACE_BASE
+        if not a.fast:
+            a.sampler = a.sampler or "heun"
+            a.scheduler = a.scheduler or "karras"
+            a.steps = 30 if a.steps is None else a.steps
+            a.cfg = 5.5 if a.cfg is None else a.cfg
+        if a.negative is None and not a.exact_prompt:
+            a.negative = SURFACE_NEGATIVE
+    a.base = a.base or "sd_xl_base_1.0.safetensors"
+    a.flatten = (0.6 if a.surface else 0.0) if a.flatten is None else a.flatten
+    if not 0.0 <= a.flatten <= 1.0:
+        p.error("--flatten must be 0..1")
+    if (a.flatten > 0 or a.maps) and not a.art:
+        p.error("--flatten / --maps work on --art (or --surface) pictures, not pixel art")
+
     # Mode-dependent defaults (only when the user didn't override them):
     #   --art  -> full-res illustration: bigger canvas, illustration-tuned negative.
     #   pixel  -> small sprite, pixel-tuned negative.
@@ -2328,6 +2509,32 @@ def main():
                 print(f"   🎯 from the reference: {a.size} (its shape; --size / --out override)")
         except Exception:
             pass
+    if a.moves or a.effect:              # sprite animation: --size is one frame
+        if a.animate or a.tile or a.mask or a.init or a.batch or a.batch_file or a.post_sweep or a.surface:
+            p.error("--moves / --effect make their own sheets: not with --animate, --tile, --mask, --init, --batch, "
+                    "--batch-file, --post-sweep or --surface")
+        if a.moves and a.effect:
+            p.error("--moves and --effect: one at a time")
+        if a.moves:
+            sys.path.insert(0, _SCRIPT_DIR)
+            import poses
+            a.moves = [m.strip().lower() for m in a.moves.replace(" ", ",").split(",") if m.strip()]
+            bad = [m for m in a.moves if m not in poses.MOVES]
+            if bad:
+                p.error(f"--moves: unknown {', '.join(bad)} (choose from {', '.join(poses.MOVES)})")
+            if not a.prompt:
+                p.error("--moves needs a prompt: the character, e.g. \"a knight in blue armour\"")
+        if a.size is None and not a.out:
+            a.size = "64"
+        a.cutout = False                  # the sprite engine cuts out itself
+        if not a.art:
+            a.transparent = True
+        if not (0 <= a.pose_strength <= 2 and 0 < a.pose_end <= 1 and (a.cell_strength is None or 0 <= a.cell_strength <= 4) and 0.3 <= a.fill <= 1):
+            p.error("--pose-strength 0..2, --pose-end (0, 1], --cell-strength 0..4, --fill 0.3..1")
+    elif a.directions != 1 or a.view != "side":
+        p.error("--directions / --view are for --moves")
+    a.anim_fps_given = a.anim_fps is not None
+    a.anim_fps = 6.0 if a.anim_fps is None else a.anim_fps
     if a.size is None:
         a.size = a.out if a.out else ("1024" if a.art else "128")
     if a.negative is None:
@@ -2479,12 +2686,13 @@ def main():
         a.gen_w = a.res if a.sw >= a.sh else _r64(a.res * a.sw / a.sh)
         a.gen_h = a.res if a.sh >= a.sw else _r64(a.res * a.sh / a.sw)
 
-        if a.art and max(a.sw, a.sh) > a.res:
-            # Art mode bigger than --res (wallpapers): SDXL paints its own ~1-megapixel size for that shape
-            # (1344x768 for 16:9) and the picture is resized up to W x H. Painting straight at 1920+ repeats
-            # the subject, and 4K doesn't fit an 8 GB card. Smaller sizes keep the --res render above and
-            # are resized down: SDXL can't draw at 256 px (it makes abstract blobs).
-            ar = a.sw / a.sh
+        if a.art and (max(a.sw, a.sh) > a.res or a.sw != a.sh):
+            # Art mode paints SDXL's own ~1-megapixel size for the picture's shape (1344x768 for 16:9, 2048x512
+            # for a 4:1 strip) and resizes that to W x H. Painting straight at 1920+ repeats the subject and 4K
+            # doesn't fit an 8 GB card; keeping the long side at --res instead squeezed the short side (a
+            # 1024x256 strip was painted at 1024x256), and SDXL that far under its size makes burnt, blobby
+            # abstracts - what made --tile strips look fried. SDXL can't draw at 256 px either way.
+            ar = max(0.25, min(4.0, a.sw / a.sh))           # SDXL's widest shapes are about 4:1
             a.gen_w, a.gen_h = _r64(a.res * ar ** 0.5), _r64(a.res / ar ** 0.5)
 
     apply_size(a)
@@ -2495,6 +2703,30 @@ def main():
     a._stitch = None
     if a.mask and a.init and a.inpaint_crop:     # art mode too: it renders at full size now, so the crop works there
         a._stitch = prepare_inpaint_crop(a, _r64)
+
+    if a.moves or a.effect:              # sprite animation: its own sheets (sprites.py)
+        a.frame_w, a.frame_h = a.ow, a.oh
+        if max(a.frame_w, a.frame_h) > 256:
+            p.error("--moves / --effect: frames up to 256 px (--size); sprites are usually 16..128")
+        dest = os.path.abspath(os.path.expanduser(a.output_to)) if a.output_to else os.path.join(OUTPUT, "pixelmon")
+        if not os.path.isdir(dest):
+            if a.output_to and not a.create_dirs:
+                p.error(f"output dir does not exist: {dest}\n  (add --create-dirs to make it)")
+            os.makedirs(dest, exist_ok=True)
+        if a.dry_run or a.print_graph or a.list_servers:
+            p.error("--moves / --effect don't support --dry-run / --print-graph / --list-servers yet")
+        sys.path.insert(0, _SCRIPT_DIR)
+        import sprites
+        t0 = time.time()
+        made = sprites.run(a, dest, slug, sys.modules[__name__])
+        if a.sheet and made:
+            sp = save_sheet(a, made, dest, repr(a.prompt or a.effect))
+            if sp:
+                print(f"   🗂 contact sheet  ->  {sp}")
+        print(f"   all done in {time.time() - t0:.1f}s  |  files in {dest}")
+        if made and not a.no_open:
+            open_file(made[0][0].replace(".png", f"_x{a.anim_preview}.gif") if a.anim_preview > 1 else made[0][0])
+        return
 
     # Animation mode is its own pipeline (base -> mask -> inpaint frames -> GIF).
     if a.animate:
@@ -2671,6 +2903,7 @@ def main():
     else:
         # Single server: queue everything up front; ComfyUI runs them one at a time. A job that fails is
         # reported and the batch carries on (the rest were already queued and would render for nobody).
+        made = []
         queued = []
         for job in jobs:
             g = job.graph(SERVER)
@@ -2697,6 +2930,7 @@ def main():
                     k = int(m.group(1)) if m else -1
                     lab = post_label(a.post_combos[k]) if 0 <= k < len(a.post_combos) else ""
                     print(f"   ✅ [{j}/{len(shots)}] {lab}  seed={job.seed}  ->  {f}")
+                    made.append((f, lab or f"seed {job.seed}"))
                 first_open = first_open or (shots[0] if shots else None)
                 continue
             try:
@@ -2710,15 +2944,37 @@ def main():
             first_open = first_open or tiled or preview or sprite   # open the seam check / preview if saved, else the sprite
             pal_note = f"pal={job.pal}  " if a.palette == "random" else ""
             print(f"   ✅ {tag}{subj_note}{pal_note}seed={job.seed}  ->  {sprite}")
+            made.append((sprite, (f"{job.label}  " if many else "") + (f"{job.pal}  " if a.palette == "random" else "")
+                         + f"seed {job.seed}"))
             if tiled:
                 print(f"      3x3 seam check  ->  {tiled}")
 
+    if a.sheet and made:
+        sheet_path = save_sheet(a, made, next((d for d in dests if d), None), subj_label)
+        if sheet_path:
+            print(f"   🗂 contact sheet  ->  {sheet_path}")
+            first_open = sheet_path
     where = ", ".join(sorted({str(x) for x in dests if x})) or f"{OUTPUT}/pixelmon/"
     print(f"   all done in {time.time() - t0:.1f}s  |  files in {where}")
     if first_open and not a.no_open:
         open_file(first_open)
     if failed:
         sys.exit(f"pixelmon: {failed} of {total} job(s) produced nothing (see above).")
+
+
+def save_sheet(a, made, dest, title):
+    """--sheet: the run's pictures on one labelled page, beside them (NAME_sheet.png)."""
+    sys.path.insert(0, _SCRIPT_DIR)
+    import sheet
+    items = [m if isinstance(m, tuple) else (m, sheet.label_of(m)) for m in made]
+    d = dest or os.path.dirname(items[0][0]) or os.path.join(OUTPUT, "pixelmon")
+    name = a.name or (slug(a.prompt) if a.prompt else "batch")
+    try:
+        return sheet.contact_sheet(items, sheet.free_name(os.path.join(d, f"{name}_sheet.png")),
+                                   title=f"{title}  ·  {len(items)} picture(s)")
+    except OSError as e:
+        print(f"   ✗ contact sheet: {e}")
+        return None
 
 
 def open_file(path):

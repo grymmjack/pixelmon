@@ -296,6 +296,74 @@ def main():
     check("--exact-prompt sends the prompt word for word", g["6"]["inputs"]["text"] == "exactly this"
           and g["7"]["inputs"]["text"] == "")
 
+    # --- textures, sprite animation, contact sheets --------------------------------------------------------
+    g = graph("worn red paint", "--surface", "--tile", "--out", "1024x256")
+    check("--surface: juggernautXL, heun + karras, no painting boosters; a tiling strip painted ~1 MP in its shape, "
+          "resized in finish (no server-side resize or 3x3)",
+          g["4"]["inputs"]["ckpt_name"].startswith("juggernaut") and g["3"]["inputs"]["sampler_name"] == "heun"
+          and g["3"]["inputs"]["scheduler"] == "karras" and "dramatic" not in g["6"]["inputs"]["text"]
+          and (g["5"]["inputs"]["width"], g["5"]["inputs"]["height"]) == (2048, 512) and "17" not in g and "71" not in g,
+          f"{g['4']['inputs']['ckpt_name']} {g['5']['inputs']}")
+    g = graph("a castle", "--art", "--out", "512x1024")
+    check("--art non-square is painted ~1 MP in its own shape (not the short side squeezed)",
+          (g["5"]["inputs"]["width"], g["5"]["inputs"]["height"]) == (704, 1472), str(g["5"]["inputs"]))
+    import numpy as np
+    from PIL import Image
+    import textures
+    rng = np.random.default_rng(1)
+    tex = Image.fromarray((rng.random((96, 128, 3)) * 255).astype(np.uint8)).resize((256, 192), Image.BICUBIC)
+    tex = textures.tile_preview(tex, "both", 2, 4096).crop((64, 48, 320, 240))         # a picture that tiles
+    small = np.asarray(textures.wrap_resize(tex, (100, 75), "both"), np.float32)
+    seam = np.abs(small[:, 0] - small[:, -1]).mean() / max(1e-6, np.abs(small[:, 1:] - small[:, :-1]).mean())
+    check("wrap_resize keeps a tiling picture's seam (edge difference like any neighbours')", seam < 1.6, f"ratio {seam:.2f}")
+    lit = Image.fromarray(np.clip(np.linspace(40, 220, 256)[None, :, None].repeat(128, 0).repeat(3, 2), 0, 255).astype(np.uint8))
+    fl = np.asarray(textures.flatten(lit, 1.0), np.float32)
+    check("--flatten 1 takes out a light sweep", fl[:, 32].mean() / fl[:, -32].mean() > 0.8,
+          f"{fl[:, 32].mean():.0f} vs {fl[:, -32].mean():.0f}")
+    maps = textures.make_maps(tex, "both")
+    nm = np.asarray(maps["normal"], np.float32)
+    check("--maps: height / normal / rough / ao, the normal map mostly facing out (blue) and tiling",
+          set(maps) == {"height", "normal", "rough", "ao"} and nm[..., 2].mean() > 200
+          and np.abs(nm[:, 0] - nm[:, -1]).mean() < 2 * np.abs(nm[:, 1:] - nm[:, :-1]).mean() + 1)
+    import poses
+    k = poses.body({})
+    vis = {y: poses.project(k, y, 0)[1] for y in (0, 90, 180)}
+    check("poses: front shows both eyes, the right profile one eye and one ear, the back no face",
+          vis[0][poses.REYE] and vis[0][poses.LEYE] and vis[90][poses.REYE] and not vis[90][poses.LEYE]
+          and vis[90][poses.REAR] and not vis[90][poses.LEAR] and not vis[180][poses.NOSE] and not vis[180][poses.REYE])
+    walk = [poses.body(q) for q in poses.move_poses("walk")]
+    check("poses: every walk frame stands on the floor, and every move has its frames",
+          all(abs(min(p[1] for p in f) - 0.03) < 1e-6 for f in walk)
+          and all(len(poses.move_poses(m)) == poses.MOVES[m][0] for m in poses.MOVES))
+    import sprites
+    fr = [Image.new("RGBA", (8, 8), (0, 0, 0, 0)) for _ in range(2)]
+    fr[0].putpixel((1, 1), (200, 10, 10, 255)); fr[1].putpixel((2, 2), (10, 10, 200, 255))
+    locked = sprites.lock_palette(fr, np.array([[255, 0, 0], [0, 255, 0]]))
+    check("sprites: frames lock to the reference's colours", locked[1].getpixel((2, 2))[:3] in ((255, 0, 0), (0, 255, 0)))
+    base = os.path.join(tmp, "anim")
+    sprites.save_anim(fr, base, 8, preview=2)
+    check("sprites: a strip PNG, a GIF and a bigger preview GIF", Image.open(base + ".png").size == (16, 8)
+          and Image.open(base + ".gif").n_frames == 2 and Image.open(base + "_x2.gif").size == (16, 16))
+    gl = Image.new("RGB", (8, 8), (12, 12, 12))
+    gl.putpixel((1, 1), (255, 140, 20)); gl.putpixel((2, 2), (110, 110, 110))
+    g_fire = sprites.glow_alpha([gl])[0]; g_smoke = sprites.glow_alpha([gl], smoke=True)[0]
+    g_hard = sprites.glow_alpha([gl], hard=True)[0]
+    check("effects: black goes see-through, a flame stays, grey smoke stays only in smoke mode, pixel art is solid or gone",
+          g_fire.getpixel((5, 5))[3] == 0 and g_fire.getpixel((1, 1))[3] == 255
+          and g_smoke.getpixel((2, 2))[3] == 255 and g_fire.getpixel((2, 2))[3] < 200
+          and {g_hard.getpixel((x, y))[3] for x in range(8) for y in range(8)} <= {0, 255})
+    ex = []
+    for r in (3, 1, 2, 2, 2, 2, 2, 2):
+        e = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        e.paste((255, 128, 0, 255), (0, 0, r * 2, r * 2))
+        ex.append(e)
+    eo = sprites.explosion_order(ex, 1)
+    ar = [int((np.asarray(e)[..., 3] > 0).sum()) for e in eo]
+    check("effects: an explosion grows to its peak, then burns away", ar[:4] == sorted(ar[:4]) and ar[5] > ar[6] > ar[7])
+    import sheet as sheetmod
+    sp = sheetmod.contact_sheet([base + ".png", base + ".png"], os.path.join(tmp, "s.png"), title="t")
+    check("--sheet: a contact sheet of the run's pictures", sp and os.path.isfile(sp))
+
     # --- the render farm: breaker, requeue to another box, idle refeed, exit status -------------------------
     def farm(boxes, n, poll_fn, grace=None):
         jobs = [P.Job(i, "x", 100 + i, "none", None, argparse.Namespace(batch=None, batch_file=None)) for i in range(n)]

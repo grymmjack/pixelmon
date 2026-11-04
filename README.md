@@ -39,6 +39,10 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
   game's sprites can be remade at exactly the same size and ground line (`--cutout`, `--fit-to`).
 - **Seamless tiles** (`--tile`, either or both axes), **fill frame** for tiny sprites, `--fast` LCM
   previews, locked seeds, steps / CFG / sampler / scheduler / checkpoint.
+- **🧱 Textures** (`--surface`): material swatches for 3D models — the surface square on, evenly lit, on a
+  photographic checkpoint; `--flatten` evens out the light, `--maps` (or `--maps-from` for pictures you
+  have) adds **height, normal, roughness and AO** maps that tile with the picture.
+- **🗂 Contact sheets** (`--sheet`): every picture of a run on one page, seed under each.
 - **🔍 JPEG repair and upscaling** (`--upscale`, `--repair`): any picture or folder through
   [OpenModelDB](https://openmodeldb.info/?t=jpeg) models — remove JPEG blocks and ringing, enlarge 2x / 4x,
   or restore a big scan at its own size. `--fix-jpeg sprites.jpg --pixel-art` turns a JPEG of pixel art
@@ -53,6 +57,9 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
   or rough in colours, select / move / transform, layered `.draw` / `.ora` / `.psd` input.
 - **🧬 Evolve** variations of any result; **sweeps** of one setting side by side at the same seed;
   a **combo sweep** that renders once and applies every grid × dither × amount.
+- **🏃 Sprite animation** (`--moves`, `--effect`): walk, run, idle, attack, hurt, death and jump cycles of
+  one character, posed by stick-figure skeletons, in 1, 4 or 8 directions, side-on or top-down; turnarounds
+  (`--moves stand --directions 8`); looping fire, explosions, sparkles and smoke. Strip PNGs + GIFs.
 - **Animation** (experimental): looping portrait-gesture GIFs, Wasteland style — only a masked part
   (found by words: "the cigar") moves.
 
@@ -724,6 +731,77 @@ pixelmon "a laser pistol held in a right hand, plain solid magenta backdrop" --a
 
 **Setup:** the `comfyui_controlnet_aux` node pack (cloned by `install.sh`) + `./download-models.sh --depth`.
 
+### Sprite animation (`--moves`, `--effect`)
+
+Game-ready animation strips. `--size` is one frame (default 64).
+
+```bash
+pixelmon "a knight in blue armour with a red cape" --moves walk,attack           # side-on, facing right
+pixelmon "a green goblin with a club" --moves walk,idle --directions 8 --view topdown   # an RPG's 8 ways
+pixelmon "a robot" --moves stand --directions 8                                   # a turnaround
+pixelmon "green magic fire" --effect fire --size 48                               # a looping effect
+```
+
+How a character stays one character:
+
+1. **The character is painted once, standing** (`NAME_ref.png`), at full size on a grey backdrop.
+2. **Each frame is painted beside it**: a two-cell picture with the full-size reference on the left and
+   the new pose on the right, only the room round the new pose drawn (inpainting) - the rest of the cell
+   stays backdrop, so nothing else turns up in it. The model copies the character it can see; each frame's
+   prompt says what that moment is ("knees buckling", "lying flat on the ground", "leaping up").
+3. **Pixels are made here, not by the server**: each sprite pixel takes the main colour of its block of
+   the full-size render, and BiRefNet's mask (shrunk the same way) cuts the backdrop away. Shrinking on
+   the server averaged thin legs and arms out of existence.
+4. **Poses come from a 3D stick figure** (`poses.py`) moved through the move and drawn as an OpenPose
+   skeleton for the union ControlNet — the same figure turned 45° at a time gives the 8 directions, and
+   tilted 30° gives the top-down view. Every move uses one scale and one floor line, so a character is the
+   same size in all its strips and the walk's bob is kept.
+5. **Checked**: a frame with hardly any character in it (once, a reference came out as just the club) or
+   painted past the frame's bottom edge is painted again with another seed, up to three tries.
+6. **One palette**: every frame is snapped to the reference's colours (`--no-lock-palette` to skip).
+
+With `--directions 4` / `8` the character is first painted standing in each direction, each beside the
+nearest one already made (front, then round both sides), saved as `NAME_turnaround.png` / `.gif`; every
+direction's frames then copy their own side's picture, so a back view has no face. `--moves stand
+--directions 8` makes just the turnaround.
+
+Each move saves `NAME_MOVE[_DIR].png` (a strip, true size), `.gif` and `_x4.gif` (a bigger, crisp
+preview). Moves: `walk run idle attack hurt death jump stand`; directions are named `s se e ne n nw w sw`.
+Speeds are per move (walk 8 fps, run 12…) unless `--anim-fps`; `--anim-frames` changes the frame count.
+A frame takes about 20 s on an RTX 3070, so a 6-frame walk is ~2 minutes and an 8-way walk ~19
+(48 frames plus 7 turnaround pictures).
+
+Effects (`fire`, `explosion` — plays once —, `sparkle`, `smoke`) are drawn as one sheet steered by depth
+shapes that loop (rising flame tongues, a growing fireball, twinkling stars, a rising puff), each frame
+with its own prompt for its moment (`--cell-strength`); bright parts stay, black goes see-through
+(pixel art: each pixel solid or gone, so the GIF matches the PNG). Saves `NAME_EFFECT.png` / `.gif` /
+`_x4.gif`.
+
+Knobs: `--pose-strength` (0.9; too high and the skeleton's colours leak into the art), `--pose-end`,
+`--fill` (how tall a standing character is in its frame), `--sprite-bg` (the backdrop that gets cut away).
+
+### Textures (`--surface`, `--flatten`, `--maps`)
+
+Material pictures for 3D models (bu1ld0r's props) and tiles.
+
+```bash
+pixelmon "worn red painted wood, grain running up and down" --surface --out 512x1024
+pixelmon "chipped white enamel over rusty metal" --surface --tile --maps        # repeats, + 4 maps
+pixelmon --maps-from crate.png --tile                                           # maps for a picture you have
+```
+
+- `--surface` is an `--art` render with a surface prompt ("seen straight on, even soft diffuse light, no
+  shadows, fills the frame…"), a negative against perspective / objects / shadows, the photographic
+  **juggernautXL** checkpoint with **heun + karras** and CFG 5.5 — each still overridable.
+- `--flatten F` divides out the picture's broad light-to-dark sweep (0.6 by default with `--surface`).
+- `--maps` writes `_height`, `_normal` (OpenGL, +y up), `_rough` and `_ao` beside each picture; with
+  `--tile` they wrap too. `--maps-strength` (normal steepness), `--maps-detail` (broad shapes vs. grain),
+  `--maps-invert` (light seams).
+- Non-square art (and `--tile` strips) is painted at about one megapixel in its own shape and resized —
+  a 1024×256 strip is painted at 2048×512. (It used to be painted at 1024×256, far under SDXL's size,
+  which made burnt, blobby textures.) A tiling picture is resized with its edges wrapped, so the seam
+  survives, and its 3×3 check is made after.
+
 ### Animation (experimental)
 
 `--animate` makes a **looping portrait-gesture GIF**, the way the original Wasteland
@@ -1282,6 +1360,10 @@ pixelmon/
 ├── download-models.sh         fetch SDXL + Pixel Art XL + LCM + EGA-style LoRA (HF + Civitai)
 ├── pixelmon.py                the CLI brains (talks to ComfyUI's API); `pixelmon --version`
 ├── animate.py                 experimental --animate engine (region inpaint + CLIPSeg auto-mask → GIF)
+├── sprites.py                 --moves / --effect: sprite animation (reference, per-frame inpaint, strips + GIFs)
+├── poses.py                   the 3D stick figure: moves, directions, OpenPose drawing
+├── textures.py                --surface / --flatten / --maps: seam-safe resize, even light, material maps
+├── sheet.py                   --sheet: contact sheets
 ├── colors.py                  a picture's colours (--palette-from, and the GUI's palette pick / .gpl export)
 ├── manifest.py                sprite lists (--batch-file, and the GUI's Sets tab)
 ├── tools/selfcheck.py         offline invariants (no server): run after touching pixelmon.py / animate.py / bin/
