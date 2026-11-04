@@ -13,6 +13,17 @@ presets/<FOLDER>/
 ```
 
 - **TUNED FACTORY/** — hand-tuned presets.
+- **GAME TEXTURES/** — 64 px game textures, art renders shrunk: walls, floors and ceilings made with
+  `--surface --tile` (the card is the 3x3 repeat), and doors, paintings, a poster, a banner, a stained
+  glass window, a crate side and a console seen from the front.
+- **GAME TEXTURES HD/** — 512 px tiling materials with height / normal / roughness / AO maps (`--surface
+  --tile --maps`).
+- **GAME ANIMATION/** — 🎞 Animate presets (▶ runs the whole set; the card is a sample GIF): side-view
+  heroes and enemies with their moves, 4-way top-down RPG walkers, an 8-way turnaround, fire, green
+  magic fire, an explosion, smoke and sparkles, and blink / talk / smoke portrait loops.
+
+`gui/make_game_presets.py` builds those three (it renders each sample on the server). SDXL can't
+hold a regular grid, so there's no checkerboard, diamond plate or office ceiling grid among them.
 - **UPSCALE AND REPAIR/** — 🔍 presets (JPEG → clean pixel art, a 4x upscale, and a big JPEG cleaned
   and enlarged 2x): each sets the upscale / JPEG-repair controls, not the prompt; the first two load an
   example picture into the Lab, JPEG-to-JPEG-CLEAN-LARGE keeps yours. The examples are

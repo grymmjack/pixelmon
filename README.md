@@ -81,7 +81,11 @@ pixelmon "a knight" --palette PICO-8 --size 32 --transparent
   under RENDER (COPY CLI), a **setup check** that catches settings that fight each other, hover help
   from `--help`, and the [settings atlas](docs/settings-atlas.html) and [3D guide](docs/3d-guide.html).
 - **Presets** in folders, each with a sample picture: 65 factory ones (scenes, sprites, CGA, Tandy,
-  C64, ZX, Game Boy, Apple II, a demo of every style), import/export as `.zip`.
+  C64, ZX, Game Boy, Apple II, a demo of every style), plus game assets: **GAME TEXTURES** (64 px
+  walls, floors, ceilings that tile; doors, paintings, posters, banners, stained glass),
+  **GAME TEXTURES HD** (512 px tiling materials with height / normal / rough / AO maps) and
+  **GAME ANIMATION** (🎞 Animate presets: platformer heroes and enemies, 4-way RPG walkers, an 8-way
+  turnaround, fire / explosion / smoke / sparkle effects, portrait loops); import/export as `.zip`.
 - **Gallery** with search, filter chips, ★ ratings, **Load** / **Again**, and backups;
   **Queue** with live progress, logs and real cancelling on the GPU.
 - **🎚 Sets**: N takes per sprite beside the one the game has now — pick, flag, re-roll, then
@@ -1008,8 +1012,9 @@ local copy at `/docs/3d-guide.html`).
   USER… create/rename/delete your own). Drag cards to reorder them or onto a folder to move
   them; drag folders to reorder. Right-click a card to **rename** it, edit its note, or move it
   to the top / bottom / another folder; hover its picture for the zoomed preview. 65 factory presets ship: scenes, sprites, hardware looks
-  (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**. A preset or a
-  whole folder exports/imports as a `.zip`.
+  (CGA, Tandy, C64, ZX, Game Boy, Apple II) and a **demo for every `--style`**; the GAME TEXTURES,
+  GAME TEXTURES HD and GAME ANIMATION folders hold game assets (▶ on an animation preset runs it on
+  the 🎞 Animate tab). A preset or a whole folder exports/imports as a `.zip`.
 - **⚗ Lab:** convert any picture into pixel art with ControlNet (shape or layout+colors),
   adjust the source first (brightness, contrast, sharpen, posterize, crop…) — the whole picture, only your 🎨 strokes, or just
   a selected part — then **✓ apply now** to stack adjustments (with undo / redo), and **edit** part of an
@@ -1052,6 +1057,17 @@ local copy at `/docs/3d-guide.html`).
   A set is a frozen copy of the list, its theme and your picks, kept in
   `~/pixelmon-gallery/sets/<set>/set.json`. Its takes are ordinary gallery renders tagged with the
   set and sprite (`gui/sets.py`).
+- **🎞 Animate:** game sprite animation in its own tab. Pick a mode:
+  - **🏃 Character:** describe the character (or **↓ from the prompt**), tick the moves (walk, run,
+    idle, attack, hurt, death, jump, stand), and choose directions (1 / 4 / 8), facing, camera (side or
+    top-down) and frame size. It shows how many pictures that is and about how long it takes.
+  - **💥 Effect:** fire, explosion, sparkle or smoke, with an optional look ("green magic fire").
+  - **🙂 Portrait loop:** the picture in the prompt box with one part moving (blink, talk, glow,
+    smoke, breathe), the old `--animate`.
+
+  **Fine tuning** holds frames, speed, character height, backdrop, colour lock and pose strength.
+  Character and effect jobs use the form's LoRA and palette and nothing else (tiles, steering and
+  cut-outs don't go with them). Press **🎞 Animate**; the strips and GIFs land in the Queue and Gallery.
 - **Gallery / Queue:** every render with its settings and CLI command; hover for a
   blown-up preview, 🧬 to **evolve** variations of any result, reload or re-run a seed.
 - **⚙ Advanced:** every remaining pixelmon setting (sampler, scheduler, checkpoint,
@@ -1088,7 +1104,8 @@ LoRA presets (trigger tags, default strength and palette) live in `gui/presets.j
 The factory presets are built by `~/ComfyUI/.venv/bin/python gui/make_starter_presets.py`
 into `~/pixelmon-gallery/gui-presets/FACTORY/`; hand-tuned preset folders ship in [`presets/`](presets/README.md)
 (copied in by `install.sh`) (`--try 4 NAME` renders candidate seeds to pick from;
-presets you save yourself are never touched).
+presets you save yourself are never touched). The game-asset folders are built by
+`~/ComfyUI/.venv/bin/python gui/make_game_presets.py` (only the missing ones; `--force NAME` redoes one).
 
 ---
 

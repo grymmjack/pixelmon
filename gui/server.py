@@ -839,35 +839,6 @@ def adv_argv(adv, art, has_control, has_mask, mask_mode="fill", rough=False):
             out.append("--maps-invert")
     if val("sheet"):
         out.append("--sheet")
-    # Sprite animation: moves (posed, one character) or an effect
-    mv, eff = val("moves"), choice("effect", ["fire", "explosion", "sparkle", "smoke"])
-    if mv is not None:
-        mv = ",".join(m for m in re.split(r"[\s,]+", str(mv).lower()) if m)
-        if not re.fullmatch(r"[a-z]+(,[a-z]+){0,9}", mv):
-            raise ValueError("advanced: moves must be names like walk,run,idle,attack,hurt,death,jump,stand")
-        out += ["--moves", mv]
-        for key, flag, opts in (("directions", "--directions", ["1", "4", "8"]), ("facing", "--facing", ["right", "left", "front", "back"]),
-                                ("view", "--view", ["side", "topdown"])):
-            v = choice(key, opts)
-            if v:
-                out += [flag, v]
-        v = num("fill", float, 0.3, 1)
-        if v is not None:
-            out += ["--fill", f"{v:g}"]
-        v = choice("sprite_bg", ["grey", "white", "black", "green", "magenta"])
-        if v:
-            out += ["--sprite-bg", v]
-        if adv.get("lock_palette") is False:
-            out.append("--no-lock-palette")
-    elif eff:
-        out += ["--effect", eff]
-    if mv is not None or eff:
-        for key, flag, typ, lo, hi in (("pose_strength", "--pose-strength", float, 0, 2), ("pose_end", "--pose-end", float, 0.1, 1),
-                                       ("sprite_frames", "--anim-frames", int, 1, 16), ("sprite_fps", "--anim-fps", float, 1, 30),
-                                       ("anim_preview", "--anim-preview", int, 1, 8)):
-            v = num(key, typ, lo, hi)
-            if v is not None:
-                out += [flag, f"{v:g}" if typ is float else str(v)]
     return out
 
 
@@ -1066,6 +1037,97 @@ def depth_argv(d, src):
 UPSCALE_MODEL = re.compile(r"[\w.+()\[\] -]{1,160}")
 
 
+SPRITE_MOVES = ("walk", "run", "idle", "attack", "hurt", "death", "jump", "stand")
+SPRITE_EFFECTS = ("fire", "explosion", "sparkle", "smoke")
+
+
+def sprite_argv(p, server):
+    """🎞 the Animate tab: {kind: moves|effect, moves, effect, directions, facing, view, size, frames, fps,
+    pose_strength, pose_end, fill, bg, lock, preview} + the character (prompt), LoRA, palette, seed, name ->
+    pixelmon --moves … / --effect … (its own small command: tiles, steering, cut-outs don't go with it)."""
+    s = p.get("sprite") if isinstance(p.get("sprite"), dict) else {}
+
+    def pick(key, opts, default=None):
+        v = str(s.get(key) if s.get(key) not in (None, "") else (default or "")).lower()
+        if v and v not in opts:
+            raise ValueError(f"animate: unknown {key} {v!r}")
+        return v
+
+    def num(key, typ, lo, hi):
+        v = s.get(key)
+        if v in (None, ""):
+            return None
+        v = typ(v)
+        if not lo <= v <= hi:
+            raise ValueError(f"animate: {key} must be {lo}..{hi}")
+        return v
+
+    prompt = str(p.get("prompt") or "").strip()
+    kind = pick("kind", ("moves", "effect"), "moves")
+    argv = [PIXELMON]
+    if kind == "moves":
+        moves = [m for m in (s.get("moves") or []) if m in SPRITE_MOVES]
+        if not moves:
+            raise ValueError("animate: tick at least one move")
+        if not prompt:
+            raise ValueError("animate: describe the character")
+        argv += [prompt, "--moves", ",".join(moves)]
+        d = pick("directions", ("1", "4", "8"), "1")
+        if d != "1":
+            argv += ["--directions", d]
+        else:
+            argv += ["--facing", pick("facing", ("right", "left", "front", "back"), "right")]
+        argv += ["--view", pick("view", ("side", "topdown"), "side")]
+        v = num("fill", float, 0.3, 1)
+        if v is not None:
+            argv += ["--fill", f"{v:g}"]
+        argv += ["--sprite-bg", pick("bg", ("grey", "white", "black", "green", "magenta"), "grey")]
+        if s.get("lock") is False:
+            argv.append("--no-lock-palette")
+    else:
+        argv += ([prompt] if prompt else []) + ["--effect", pick("effect", SPRITE_EFFECTS, "fire")]
+    argv += ["--server", server, "--no-open", "--show-prompt", "--size", str(num("size", int, 16, 256) or 64)]
+    for key, flag, typ, lo, hi in (("frames", "--anim-frames", int, 1, 16), ("fps", "--anim-fps", float, 1, 30),
+                                   ("pose_strength", "--pose-strength", float, 0, 2), ("pose_end", "--pose-end", float, 0.1, 1),
+                                   ("preview", "--anim-preview", int, 1, 8)):
+        v = num(key, typ, lo, hi)
+        if v is not None:
+            argv += [flag, f"{v:g}" if typ is float else str(v)]
+    lora = str(p.get("lora") or "")
+    if lora == "(none)":
+        argv.append("--no-lora")
+    elif lora:
+        argv += ["--lora", lora]
+        ls = p.get("lora_strength")
+        if ls not in (None, ""):
+            if not 0 <= float(ls) <= 2:
+                raise ValueError("lora strength must be 0..2")
+            argv += ["--lora-strength", f"{float(ls):g}"]
+    pal = str(p.get("palette") or "none")
+    if pal not in ("none", "random"):
+        argv += ["--palette", pal]
+    seed = p.get("seed")
+    if seed not in (None, "") and 0 <= int(seed) <= 2**31 - 1:
+        argv += ["--seed", str(int(seed))]
+    name = re.sub(r"[^\w-]+", "-", str(p.get("name") or "")).strip("-")[:48]
+    if name:
+        argv += ["--name", name]
+    return argv
+
+
+def sprite_total(p):
+    """How many files a sprite job makes (for the queue's n / total): the reference, then a strip, a GIF and a
+    bigger GIF per move and direction (and the turnaround); an effect's three."""
+    s = p.get("sprite") or {}
+    per = 3 if int(s.get("preview") or 4) > 1 else 2
+    if s.get("kind") == "effect":
+        return per
+    d = int(s.get("directions") or 1)
+    moves = [m for m in (s.get("moves") or []) if m in SPRITE_MOVES]
+    strips = sum(1 for m in moves if not (m == "stand" and d > 1)) * d + (1 if d > 1 else 0)
+    return 1 + per * strips
+
+
 def upscale_argv(u, src, server):
     """🔍 {model, repair, to, pixel, palette, custom_hex, palette_from, palette_max} -> pixelmon --upscale SRC …
     (model names as the render server lists them; model may be a chain "a,b")."""
@@ -1135,6 +1197,8 @@ def build_argv(p, steer_dir=None, steer_count=0, init=None, control=None, mask=N
 
     if p.get("upscale"):                         # 🔍 upscale / JPEG repair of a finished picture: its own small command
         return upscale_argv(p["upscale"], up, servers_for(p))
+    if p.get("sprite"):                          # 🎞 Animate: sprite moves / an effect, its own small command
+        return sprite_argv(p, servers_for(p))
     prompt = str(p.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is empty")
@@ -1645,7 +1709,7 @@ class JobQueue:
                "status": "queued", "log": [], "outputs": [], "full_prompt": {}, "group": group, "label": label,
                "total": combo_count(params.get("post_sweep")) or (
                    (1 if params["turnaround"].get("mode") == "mesh" else int(params["turnaround"].get("angles") or 8))
-                   if turn else int(params.get("n") or 1)), "export": export, "exported": None,
+                   if turn else sprite_total(params) if params.get("sprite") else int(params.get("n") or 1)), "export": export, "exported": None,
                "created": time.time(), "started": None, "finished": None, "dir": dirname}
         with self.lock:
             self.jobs[jid] = job

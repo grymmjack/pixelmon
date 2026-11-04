@@ -594,6 +594,29 @@ fieldset.closed { padding-bottom: 2px; }
 .steer-top .use { font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
 .steer-top select { width: auto; }
 .steer-top .rng { display: inline-flex; align-items: center; gap: 8px; } .steer-top .rng input { width: 140px; }
+/* ---- 🎞 Animate tab ---- */
+.anim-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.anim-mode { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px;
+  color: var(--dim); cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 2px; }
+.anim-mode b { color: var(--text); font-size: 14px; }
+.anim-mode span { font-size: 12px; }
+.anim-mode.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.anim-mode.on b { color: var(--accent); }
+.anim-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.anim-body.hidden { display: none; }
+.anim-wide { display: flex; flex-direction: column; gap: 4px; flex: 1 1 320px; min-width: 0; font-size: 12px; color: var(--dim); }
+.anim-wide input { width: 100%; }
+.anim-lbl { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.anim-hint { font-size: 12px; color: var(--dim); }
+#anMoves .chip, #anEffects .chip { font-size: 13px; padding: 3px 11px; }
+.anim-note { color: var(--dim); font-size: 13px; margin: 0 0 10px; max-width: 78ch; }
+.anim-fine { margin: 0 0 12px; }
+.anim-fine summary { cursor: pointer; color: var(--dim); padding: 4px 0; }
+.anim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 8px; }
+.anim-grid .advf { background: var(--panel); }
+.anim-go { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 4px 0 10px; }
+.anim-go .btn.primary { flex: 0 0 auto; padding: 8px 22px; font-size: 15px; letter-spacing: .04em; }
+.anim-est { color: var(--dim); font-size: 13px; }
 .cols { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
 .drop { border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px; text-align: center; color: var(--dim);
   cursor: pointer; margin-bottom: 12px; }
@@ -997,6 +1020,7 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
       <div class="tab" data-tab="steer">Steering <span id="steerTabN"></span></div>
       <div class="tab" data-tab="batch">Batch</div>
       <div class="tab" data-tab="sets" title="a game's sprite list: several takes each, pick one, export into the game">🎚 Sets <span id="setsTabN"></span></div>
+      <div class="tab" data-tab="anim" title="game sprite animation: walk / attack / death… strips, turnarounds, effects, portrait loops">🎞 Animate</div>
       <div class="tab" data-tab="gallery">Gallery</div>
       <div class="tab on" data-tab="queue">Queue <span id="qcount"></span></div>
       <div class="tab" data-tab="find" title="find pictures that look like one — in your Pictures, the gallery, refs, any folder">🔎 Find</div>
@@ -1238,6 +1262,72 @@ dialog.browse[open] { display: grid; grid-template-rows: auto auto auto minmax(0
       <div id="batchInfo" class="err" style="color:var(--dim)"></div>
       <table class="btable"><thead><tr><th></th><th>path</th><th>style</th><th>size</th><th>prompt</th><th>result</th></tr></thead>
         <tbody id="batchBody"><tr><td colspan="6" class="empty">Load a manifest file or paste rows above.</td></tr></tbody></table>
+    </div>
+    <div class="pane hidden" id="animPane">
+      <div class="anim-modes" role="tablist" aria-label="What to animate">
+        <button type="button" class="anim-mode" data-amode="moves" role="tab"><b>🏃 Character</b><span>walk, attack, death… as game strips</span></button>
+        <button type="button" class="anim-mode" data-amode="effect" role="tab"><b>💥 Effect</b><span>fire, explosion, sparkle, smoke</span></button>
+        <button type="button" class="anim-mode" data-amode="portrait" role="tab"><b>🙂 Portrait loop</b><span>a picture that blinks, glows or smokes</span></button>
+      </div>
+
+      <div class="anim-body" data-apanel="moves">
+        <div class="steer-top">
+          <label class="anim-wide">Character
+            <input type="text" id="anChar" placeholder="a knight in blue armour with a red cape" autocomplete="off"></label>
+          <button type="button" class="btn small" id="anFromPrompt" title="copy the subject from the prompt box">↓ from the prompt</button>
+        </div>
+        <div class="steer-top">
+          <span class="anim-lbl">Moves</span>
+          <div class="chips" id="anMoves"></div>
+          <span class="anim-hint" id="anMovesHint"></span>
+        </div>
+        <div class="steer-top">
+          <span>directions <select id="anDirs"><option value="1">1 — one facing</option><option value="4">4 — s e n w</option><option value="8">8 — with diagonals</option></select></span>
+          <span id="anFacingWrap">facing <select id="anFacing"><option>right</option><option>left</option><option>front</option><option>back</option></select></span>
+          <span>camera <select id="anView"><option value="side">side (platformer)</option><option value="topdown">top-down (RPG)</option></select></span>
+          <span>frame size <select id="anSize"></select></span>
+        </div>
+      </div>
+
+      <div class="anim-body" data-apanel="effect">
+        <div class="steer-top">
+          <span class="anim-lbl">Effect</span>
+          <div class="chips" id="anEffects"></div>
+        </div>
+        <div class="steer-top">
+          <label class="anim-wide">Look (optional)
+            <input type="text" id="anFxLook" placeholder="green magic fire / blue electric sparks" autocomplete="off"></label>
+          <span>frame size <select id="anFxSize"></select></span>
+        </div>
+      </div>
+
+      <div class="anim-body" data-apanel="portrait">
+        <p class="anim-note">Renders the picture in the prompt box, then repaints one small part of it frame by frame: a blink, a glow, rising smoke. The rest stays still. Works best on portraits.</p>
+        <div class="steer-top">
+          <label class="anim-wide">What moves
+            <input type="text" id="anGesture" list="anGestures" placeholder="blink / talk / glow / smoke / breathe, or your own words" autocomplete="off"></label>
+          <datalist id="anGestures"><option>blink</option><option>talk</option><option>glow</option><option>smoke</option><option>breathe</option></datalist>
+          <label class="anim-wide">Where (optional)
+            <input type="text" id="anRegion" placeholder="the eyes / the cigar — guessed from the gesture" autocomplete="off"></label>
+        </div>
+      </div>
+
+      <div class="steer-top anim-common">
+        <span>seed <input type="number" id="anSeed" min="0" placeholder="random" style="width:110px"></span>
+        <span>name <input type="text" id="anName" placeholder="from the prompt" style="width:150px" autocomplete="off"></span>
+        <span class="anim-hint" id="anUses"></span>
+      </div>
+
+      <details class="anim-fine" id="anFine"><summary>Fine tuning</summary>
+        <div class="anim-grid" id="anFineGrid"></div>
+      </details>
+
+      <div class="anim-go">
+        <button type="button" class="btn primary" id="anGo">🎞 Animate</button>
+        <span id="anEst" class="anim-est"></span>
+        <span id="anErr" class="err" style="display:inline"></span>
+      </div>
+      <p class="anim-note" id="anAfter"></p>
     </div>
     <div class="pane hidden" id="setsPane">
       <div class="steer-top">
@@ -2642,52 +2732,6 @@ const ADV_GROUPS = [
     { k: "sheet", label: "Contact sheet", type: "check", def: "off", flag: "--sheet",
       why: "Also saves one page with every picture of the run, its seed under it, to pick a take at a glance." },
   ]},
-  { title: "Sprite animation", note: "Fill in moves (a character) or pick an effect: game-ready strips + GIFs. Size is one frame (default 64). A character is rendered standing first; every frame is painted beside it so it stays the same character.", fields: [
-    { k: "moves", label: "Moves", type: "text", ph: "walk,run,idle,attack,hurt,death,jump,stand", def: "off", flag: "--moves",
-      why: "One strip per move, posed by stick-figure skeletons. stand = one still frame (with 4 / 8 directions: a turnaround)." },
-    { k: "effect", label: "Effect", type: "select", options: ["fire", "explosion", "sparkle", "smoke"], def: "off", flag: "--effect",
-      why: "A looping effect (explosion plays once). The prompt is optional: 'green magic fire'." },
-    { k: "directions", label: "Directions", type: "select", options: ["1", "4", "8"], def: "1", flag: "--directions",
-      why: "1 = one facing; 4 / 8 = a strip per direction (s e n w, + diagonals) for top-down games." },
-    { k: "facing", label: "Facing", type: "select", options: ["right", "left", "front", "back"], def: "right", flag: "--facing",
-      why: "Which way a one-direction character faces." },
-    { k: "view", label: "Camera", type: "select", options: ["side", "topdown"], def: "side", flag: "--view",
-      why: "side = level (platformers); topdown = looking down 30° (RPGs)." },
-    { k: "sprite_frames", label: "Frames", type: "number", min: 1, max: 16, step: 1, def: "per move (walk 6, idle 4…)", flag: "--anim-frames",
-      why: "How many frames each move (or the effect) has." },
-    { k: "sprite_fps", label: "Speed (fps)", type: "number", min: 1, max: 30, step: 1, def: "per move (walk 8, run 12…)", flag: "--anim-fps",
-      why: "The GIFs' frame rate." },
-    { k: "pose_strength", label: "Pose strength", type: "number", min: 0, max: 2, step: 0.05, def: "0.9", flag: "--pose-strength",
-      why: "How strictly the skeletons (or the effect's shapes) are followed. Too high and the skeleton's colours leak into the art." },
-    { k: "pose_end", label: "Pose let-go", type: "number", min: 0.1, max: 1, step: 0.05, def: "0.8", flag: "--pose-end",
-      why: "When (fraction of the steps) the pose stops steering, so the last steps tidy the details freely." },
-    { k: "fill", label: "Character height", type: "number", min: 0.3, max: 1, step: 0.05, def: "0.8", flag: "--fill",
-      why: "How much of the frame's height a standing character fills (room above for jumps and swings)." },
-    { k: "sprite_bg", label: "Backdrop", type: "select", options: ["grey", "white", "black", "green", "magenta"], def: "grey", flag: "--sprite-bg",
-      why: "The backdrop asked for while painting; it's cut away. Pick one the character doesn't wear." },
-    { k: "lock_palette", label: "Lock to the character's colours", type: "check", def: "on", on: true, flag: "--no-lock-palette (when off)",
-      why: "Snaps every frame to the standing character's colours so nothing flickers between frames." },
-    { k: "anim_preview", label: "Preview GIF size", type: "number", min: 1, max: 8, step: 1, def: "4", flag: "--anim-preview",
-      why: "Also saves the GIF this many times bigger (crisp) to look at; 1 = none." },
-  ]},
-  { title: "Animation (experimental)", note: "Fill in a gesture to turn a render into a looping GIF: a base portrait, then the region re-inpainted per frame. Best for glows, blinks and smoke.", fields: [
-    { k: "animate", label: "Gesture", type: "text", ph: "blink / talk / glow / smoke / breathe or free text", def: "off", flag: "--animate",
-      why: "What moves. Presets set sensible frames, loop and strength; free text like \"smoke rising from cigar\" works too." },
-    { k: "anim_region", label: "Region", type: "text", ph: "the eyes / the cigar", def: "guessed", flag: "--anim-region",
-      why: "What to auto-mask (CLIPSeg words)." },
-    { k: "anim_box", label: "Region box", type: "text", ph: "0.25,0.36,0.67,0.49", def: "auto", flag: "--anim-box",
-      why: "Manual mask as left,top,right,bottom fractions when the auto-mask misses." },
-    { k: "anim_frames", label: "Frames", type: "number", min: 2, max: 8, step: 1, def: "per gesture", flag: "--anim-frames",
-      why: "2 = toggle (blink); 3–5 = motion (smoke)." },
-    { k: "anim_fps", label: "Speed (fps)", type: "number", min: 1, max: 30, step: 1, def: "6", flag: "--anim-fps", why: "Frames per second during the gesture." },
-    { k: "anim_hold", label: "Hold (s)", type: "number", min: 0, max: 10, step: 0.1, def: "1.2", flag: "--anim-hold", why: "How long the resting pose lingers." },
-    { k: "anim_denoise", label: "Change per frame", type: "number", min: 0.1, max: 1, step: 0.05, def: "0.65", flag: "--anim-denoise",
-      why: "0.3 subtle … 0.9 strong." },
-    { k: "anim_loop", label: "Loop", type: "select", options: ["pingpong", "cycle", "once-return"], def: "per gesture", flag: "--anim-loop",
-      why: "Frame order." },
-    { k: "anim_res", label: "Animation resolution", type: "number", min: 512, max: 1024, step: 64, def: "768", flag: "--anim-res",
-      why: "Base/inpaint resolution. Bigger = more region detail, slower." },
-  ]},
 ];
 const ADV_KEYS = ADV_GROUPS.flatMap(g => g.fields);
 let ADV = (() => { const a = store.get("adv", {}); return a && typeof a === "object" ? a : {}; })();
@@ -2794,6 +2838,194 @@ function renderAdv() {
 }
 
 
+
+// ---------------- 🎞 Animate: character moves, effects, portrait loops — each its own job ----------------
+const AN_MOVES = [["walk", "🚶 walk", 6], ["run", "🏃 run", 6], ["idle", "🧍 idle", 4], ["attack", "⚔ attack", 6],
+  ["hurt", "🤕 hurt", 4], ["death", "💀 death", 6], ["jump", "🦘 jump", 5], ["stand", "🔄 stand / turnaround", 1]];
+const AN_EFFECTS = [["fire", "🔥 fire", 8], ["explosion", "💥 explosion", 8], ["sparkle", "✨ sparkle", 6], ["smoke", "💨 smoke", 8]];
+const AN_SIZES = [16, 24, 32, 48, 64, 96, 128, 192, 256];
+const AN_SECS = 22;                                   // a sprite frame on the RTX 3070
+// fine tuning per mode: [key, label, type, opts, default shown, why]
+const AN_FINE = {
+  moves: [
+    ["frames", "Frames per move", "number", { min: 1, max: 16, step: 1 }, "per move (walk 6, idle 4…)", "How many frames each move has."],
+    ["fps", "Speed (fps)", "number", { min: 1, max: 30, step: 1 }, "per move (walk 8, run 12…)", "The GIFs' frame rate."],
+    ["fill", "Character height", "number", { min: 0.3, max: 1, step: 0.05 }, "0.8", "How much of the frame a standing character fills. Lower it if raised weapons or jumps get cut off at the top."],
+    ["bg", "Backdrop", "select", ["grey", "white", "black", "green", "magenta"], "grey", "Painted behind the character, then cut away. Pick one the character doesn't wear."],
+    ["lock", "Lock to the character's colours", "check", null, "on", "Snaps every frame to the standing character's colours so nothing flickers."],
+    ["pose_strength", "Pose strength", "number", { min: 0, max: 2, step: 0.05 }, "0.9", "How strictly the stick-figure poses are followed. Too high and the skeleton's colours leak in."],
+    ["pose_end", "Pose let-go", "number", { min: 0.1, max: 1, step: 0.05 }, "0.8", "When the pose stops steering, so the last steps tidy details freely."],
+    ["preview", "Preview GIF size", "number", { min: 1, max: 8, step: 1 }, "4", "Also saves the GIF this many times bigger to look at; 1 = none."],
+  ],
+  effect: [
+    ["frames", "Frames", "number", { min: 1, max: 16, step: 1 }, "per effect (fire 8, sparkle 6…)", "How many frames the effect has."],
+    ["fps", "Speed (fps)", "number", { min: 1, max: 30, step: 1 }, "12", "The GIFs' frame rate."],
+    ["pose_strength", "Shape strength", "number", { min: 0, max: 2, step: 0.05 }, "0.9", "How strictly the effect's drawn shapes are followed."],
+    ["preview", "Preview GIF size", "number", { min: 1, max: 8, step: 1 }, "4", "Also saves the GIF this many times bigger to look at; 1 = none."],
+  ],
+  portrait: [
+    ["anim_box", "Region box", "text", { ph: "0.25,0.36,0.67,0.49" }, "auto", "Left,top,right,bottom as fractions, when the automatic region misses."],
+    ["anim_frames", "Frames", "number", { min: 2, max: 8, step: 1 }, "per gesture", "2 = a toggle (blink); 3–5 = motion (smoke)."],
+    ["anim_fps", "Speed (fps)", "number", { min: 1, max: 30, step: 1 }, "6", "Frames per second during the gesture."],
+    ["anim_hold", "Hold (s)", "number", { min: 0, max: 10, step: 0.1 }, "1.2", "How long the resting picture lingers."],
+    ["anim_denoise", "Change per frame", "number", { min: 0.1, max: 1, step: 0.05 }, "0.65", "0.3 subtle … 0.9 strong."],
+    ["anim_loop", "Loop", "select", ["pingpong", "cycle", "once-return"], "per gesture", "The frame order."],
+    ["anim_res", "Resolution", "number", { min: 512, max: 1024, step: 64 }, "768", "Bigger = more detail in the moving part, slower."],
+  ],
+};
+const AN_DEFAULTS = { mode: "moves", char: "", moves: ["walk"], dirs: "1", facing: "right", view: "side", size: 64,
+  effect: "fire", fxlook: "", fxsize: 48, gesture: "", region: "", seed: "", name: "", fine: {} };
+const AN = Object.assign(JSON.parse(JSON.stringify(AN_DEFAULTS)), store.get("anim", {}));
+for (const m of Object.keys(AN_FINE)) AN.fine[m] = AN.fine[m] || {};
+const anSave = () => store.set("anim", AN);
+// presets: the Animate tab's settings travel with a preset; active = it was saved from (and reopens) the tab
+function anSnap() {
+  const tab = document.querySelector(".main .tabs .tab.on");
+  return { ...JSON.parse(JSON.stringify(AN)), active: !!tab && tab.dataset.tab === "anim" };
+}
+function anApply(a) {
+  const { active, ...rest } = a || {};
+  Object.assign(AN, JSON.parse(JSON.stringify(AN_DEFAULTS)), rest);
+  for (const m of Object.keys(AN_FINE)) AN.fine[m] = { ...((rest.fine || {})[m] || {}) };
+  anSave();
+  if (active) switchTab("anim"); else if (!$("animPane").classList.contains("hidden")) animRender();
+}
+function anFromJob(p) {        // a finished Animate job -> the tab's settings that made it
+  const s = p.sprite, a = JSON.parse(JSON.stringify(AN_DEFAULTS));
+  if (s) {
+    const fine = {};
+    for (const [k] of AN_FINE[s.kind === "effect" ? "effect" : "moves"]) if (s[k] !== undefined && s[k] !== "") fine[k] = s[k];
+    Object.assign(a, { mode: s.kind === "effect" ? "effect" : "moves", seed: p.seed >= 0 ? String(p.seed) : "", name: p.name || "" });
+    const raw = p.look ?? p.prompt ?? "";             // the text typed, without the LoRA's trigger words
+    if (a.mode === "moves") Object.assign(a, { char: raw, moves: s.moves || ["walk"], dirs: String(s.directions || "1"),
+      facing: s.facing || "right", view: s.view || "side", size: +s.size || 64 });
+    else Object.assign(a, { effect: s.effect || "fire", fxlook: raw, fxsize: +s.size || 48 });
+    a.fine[a.mode] = fine;
+  } else {                     // a portrait loop: the gesture rode in the Advanced overrides
+    const ad = p.adv || {}, fine = {};
+    for (const [k] of AN_FINE.portrait) if (ad[k] !== undefined && ad[k] !== "") fine[k] = ad[k];
+    Object.assign(a, { mode: "portrait", gesture: ad.animate || "", region: ad.anim_region || "" });
+    a.fine.portrait = fine;
+  }
+  return { ...a, active: true };
+}
+function anSummary(a) {
+  if (!a || !a.active) return "";
+  if (a.mode === "effect") return `🎞 ${a.effect}${a.fxlook ? " · " + a.fxlook : ""} · ${a.fxsize}px`;
+  if (a.mode === "portrait") return `🎞 portrait loop · ${a.gesture}`;
+  return `🎞 ${(a.moves || []).join(", ")}${a.dirs !== "1" ? ` · ${a.dirs} dirs` : ""}${a.view === "topdown" ? " · top-down" : ""} · ${a.size}px`;
+}
+let anWired = false;
+function anFineVal(k) { const v = AN.fine[AN.mode][k]; return v === undefined || v === "" ? undefined : v; }
+function anEstimate() {
+  if (AN.mode === "effect") return "one render · about a minute";
+  if (AN.mode === "portrait") return "a base picture, then a frame at a time · a minute or two";
+  const d = +AN.dirs, fr = anFineVal("frames");
+  const moves = AN_MOVES.filter(m => AN.moves.includes(m[0]));
+  if (!moves.length) return "";
+  let n = 1 + (d > 1 ? d - 1 : 0);                    // the standing reference, then a turnaround picture per extra direction
+  for (const [k, , def] of moves) if (!(k === "stand" && d > 1)) n += (fr || def) * d;
+  const min = Math.max(1, Math.round(n * AN_SECS / 60));
+  return `${n} pictures · about ${min} minute${min > 1 ? "s" : ""} on an RTX 3070`;
+}
+function animRender() {
+  const f = readForm();
+  document.querySelectorAll(".anim-mode").forEach(b => { b.classList.toggle("on", b.dataset.amode === AN.mode); b.setAttribute("aria-selected", b.dataset.amode === AN.mode); });
+  document.querySelectorAll(".anim-body").forEach(b => b.classList.toggle("hidden", b.dataset.apanel !== AN.mode));
+  $("anMoves").innerHTML = AN_MOVES.map(([k, label]) => `<span class="chip ${AN.moves.includes(k) ? "on" : ""}" data-amove="${k}" role="button" tabindex="0">${label}</span>`).join("");
+  $("anEffects").innerHTML = AN_EFFECTS.map(([k, label]) => `<span class="chip ${AN.effect === k ? "on" : ""}" data-afx="${k}" role="button" tabindex="0">${label}</span>`).join("");
+  const sizeOpts = cur => AN_SIZES.map(n => `<option value="${n}" ${+cur === n ? "selected" : ""}>${n} × ${n}</option>`).join("");
+  $("anSize").innerHTML = sizeOpts(AN.size); $("anFxSize").innerHTML = sizeOpts(AN.fxsize);
+  $("anChar").value = AN.char; $("anFxLook").value = AN.fxlook; $("anGesture").value = AN.gesture; $("anRegion").value = AN.region;
+  $("anDirs").value = AN.dirs; $("anFacing").value = AN.facing; $("anView").value = AN.view;
+  $("anSeed").value = AN.seed; $("anName").value = AN.name;
+  $("anFacingWrap").classList.toggle("hidden", AN.dirs !== "1");
+  $("anMovesHint").textContent = AN.dirs !== "1" ? "a turnaround is made first; each direction copies its own side" : "";
+  const lora = f.lora === "(none)" ? "no LoRA" : (META && META.presets && META.presets[f.lora] ? META.presets[f.lora].label : (f.lora || "").replace(".safetensors", "")) || "the default LoRA";
+  $("anUses").textContent = AN.mode === "portrait" ? "uses the prompt box and its settings"
+    : `uses the form's ${lora}${f.palette && !["none", "random"].includes(f.palette) ? ` and the ${f.palette} palette` : ""}`;
+  $("anFineGrid").innerHTML = AN_FINE[AN.mode].map(([k, label, type, o, def, why]) => {
+    const v = AN.fine[AN.mode][k];
+    let ctl;
+    if (type === "select") ctl = `<select data-anfine="${k}"><option value="">default</option>${o.map(x => `<option ${x === v ? "selected" : ""}>${x}</option>`).join("")}</select>`;
+    else if (type === "check") ctl = `<label class="inline" style="margin:0"><input type="checkbox" data-anfine="${k}" ${v !== false ? "checked" : ""}> on</label>`;
+    else ctl = `<input type="${type}" data-anfine="${k}" value="${esc(v ?? "")}" ${type === "number" ? `min="${o.min}" max="${o.max}" step="${o.step}"` : ""} placeholder="${esc(o && o.ph ? o.ph : "default: " + def)}">`;
+    const set = type === "check" ? v === false : !(v === undefined || v === "");
+    return `<div class="advf ${set ? "set" : ""}"><label><span>${esc(label)}</span></label>${ctl}<div class="meta">default ${esc(def)}</div><div class="why">${esc(why)}</div></div>`;
+  }).join("");
+  $("anEst").textContent = anEstimate();
+  $("anAfter").textContent = AN.mode === "portrait" ? "The GIF shows up in the Queue and the Gallery."
+    : "Saves a strip PNG for the game, a GIF and a bigger preview GIF per move (and NAME_turnaround with 4 / 8 directions). They show up in the Queue and the Gallery.";
+  if (!anWired) anWire();
+}
+function anWire() {
+  anWired = true;
+  const keep = () => { anSave(); $("anEst").textContent = anEstimate(); };
+  document.querySelectorAll(".anim-mode").forEach(b => b.onclick = () => { AN.mode = b.dataset.amode; anSave(); $("anErr").textContent = ""; animRender(); });
+  const toggle = el => {
+    if (el.dataset.amove) { const k = el.dataset.amove; AN.moves = AN.moves.includes(k) ? AN.moves.filter(x => x !== k) : [...AN.moves, k]; }
+    if (el.dataset.afx) AN.effect = el.dataset.afx;
+    anSave(); animRender();
+  };
+  for (const box of ["anMoves", "anEffects"]) {
+    $(box).onclick = e => { const c = e.target.closest(".chip"); if (c) toggle(c); };
+    $(box).onkeydown = e => { const c = e.target.closest(".chip"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(c); } };
+  }
+  const bind = (id, key, num) => $(id).addEventListener("input", () => { AN[key] = num ? (+$(id).value || "") : $(id).value; keep(); });
+  bind("anChar", "char"); bind("anFxLook", "fxlook"); bind("anGesture", "gesture"); bind("anRegion", "region"); bind("anName", "name");
+  $("anSeed").addEventListener("input", () => { AN.seed = $("anSeed").value; keep(); });
+  for (const [id, key] of [["anDirs", "dirs"], ["anFacing", "facing"], ["anView", "view"], ["anSize", "size"], ["anFxSize", "fxsize"]])
+    $(id).onchange = () => { AN[key] = $(id).value; anSave(); animRender(); };
+  $("anFineGrid").addEventListener("change", e => {
+    const el = e.target.closest("[data-anfine]"); if (!el) return;
+    const k = el.dataset.anfine, F = AN.fine[AN.mode];
+    if (el.type === "checkbox") { if (el.checked) delete F[k]; else F[k] = false; }
+    else if (el.value === "") delete F[k];
+    else F[k] = el.type === "number" ? +el.value : el.value.trim();
+    anSave(); animRender();
+  });
+  $("anFromPrompt").onclick = () => { const sub = ($("subject").value || "").trim(); if (!sub) return $("anErr").textContent = "The prompt box is empty."; AN.char = sub; anSave(); animRender(); };
+  $("anGo").onclick = anGo;
+}
+async function anGo() {
+  const err = m => { $("anErr").textContent = m || ""; };
+  err();
+  const f = readForm(), F = AN.fine[AN.mode], seed = AN.seed === "" ? -1 : +AN.seed;
+  if (seed !== -1 && !(seed >= 0)) return err("The seed is a whole number (blank = random).");
+  if (AN.mode === "portrait") {
+    if (!AN.gesture.trim()) return err("Say what moves: blink, talk, glow, smoke, breathe, or your own words.");
+    const p = params(f);
+    if (!p.prompt.trim()) return err("Write the picture in the prompt box first.");
+    p.adv = { ...p.adv, animate: AN.gesture.trim(), ...(AN.region.trim() ? { anim_region: AN.region.trim() } : {}) };
+    for (const [k] of AN_FINE.portrait) if (F[k] !== undefined && F[k] !== "") p.adv[k] = F[k];
+    if (seed >= 0) p.seed = seed;
+    if (AN.name.trim()) p.name = AN.name.trim();
+    p.n = 1;
+    p.label = `🙂 portrait loop · ${AN.gesture.trim()}`;
+    try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { err(e.message || e); }
+    return;
+  }
+  const sprite = { kind: AN.mode, ...Object.fromEntries(Object.entries(F).filter(([, v]) => v !== "" && v !== undefined)) };
+  let prompt, label;
+  if (AN.mode === "moves") {
+    prompt = AN.char.trim();
+    if (!prompt) return err("Describe the character first (or press ↓ from the prompt).");
+    const moves = AN_MOVES.map(m => m[0]).filter(k => AN.moves.includes(k));
+    if (!moves.length) return err("Pick at least one move.");
+    Object.assign(sprite, { moves, directions: AN.dirs, facing: AN.facing, view: AN.view, size: +AN.size });
+    label = `🎞 ${moves.join(", ")}${AN.dirs !== "1" ? ` · ${AN.dirs} directions` : ""}${AN.view === "topdown" ? " · top-down" : ""} · ${AN.size}px`;
+  } else {
+    prompt = AN.fxlook.trim();
+    Object.assign(sprite, { effect: AN.effect, size: +AN.fxsize });
+    label = `🎞 ${AN.effect}${prompt ? ` · ${prompt}` : ""} · ${AN.fxsize}px`;
+  }
+  const raw = prompt, trig = (META && META.presets && META.presets[f.lora] && META.presets[f.lora].trigger) || "";
+  if (trig && prompt) prompt = `${prompt}, ${trig}`;     // the LoRA's trigger words, as the prompt box adds them
+  const p = { prompt, lora: f.lora, lora_strength: f.lora_strength, palette: f.palette, seed, n: 1,
+    name: AN.name.trim(), sprite, label, look: raw, form: { ...f, subject: raw || AN.effect },
+    ...(RSRV.size ? { servers: [...RSRV] } : {}) };
+  try { await api("/api/render", p); switchTab("queue"); poll(); } catch (e) { err(e.message || e); }
+}
 
 // ---------------- corkboard as a mood board: drag to rearrange, corner-drag to resize ----------------
 function corkGridMetrics() {
@@ -4259,7 +4491,8 @@ function labSnapshot(active) {
 }
 function snapshot(fromLab) {
   return { form: readForm(), steer: { ...STEER, sel: [...STEER.sel] }, depth: { ...DEPTH }, evo: { ...EVO }, lab: labSnapshot(fromLab), adv: advParams(),
-           up: Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])) };       // the 🔍 upscale / JPEG repair settings too
+           up: Object.fromEntries(UP_KEYS.map(k => [k, UP[k]])),        // the 🔍 upscale / JPEG repair settings too
+           anim: anSnap() };                                             // and the 🎞 Animate tab's
 }
 const presetNameOf = (job, o) => job.params.upscale ? (job.params.upscale.pixel ? "clean-pixels" : "upscale")
   : `${((job.params.form && job.params.form.subject) || "preset").slice(0, 24)}-s${o.seed}`;
@@ -4271,7 +4504,8 @@ function snapshotOfJob(job, o) {
       mask: null, sketch: null, active: true } } : {}) };
   }
   const p = job.params, f = { ...(p.form || {}), seed: o.seed ?? "", seedLock: o.seed != null };
-  return { form: f,
+  const anim = p.sprite || (p.adv && p.adv.animate) ? anFromJob(p) : undefined;
+  return { form: f, ...(anim ? { anim } : {}),
     steer: { ...STEER, use: !!(p.steer && p.steer.length), sel: [...(p.steer || [])], strength: p.steer_strength ?? STEER.strength,
              weight: p.steer_weight_type || STEER.weight, combine: p.steer_combine || STEER.combine },
     depth: p.depth ? { ...DEPTH_DEFAULTS, ...p.depth, use: true } : { ...DEPTH_DEFAULTS },
@@ -4307,6 +4541,7 @@ function applySnapshot(snap) {
     Object.assign(EVO, EVO_DEFAULTS, { parent: null }, snap.evo || {}); renderEvo();
     setAdv(snap.adv || {});                                // advanced overrides: none unless the preset has them
     refresh();
+    if (snap.anim) anApply(snap.anim);
   }
   if (snap.lab) {
     Object.assign(LABS, snap.lab, { adj: { ...ADJ0, ...(snap.lab.adj || {}) }, group: null, prevJob: null });
@@ -4364,7 +4599,8 @@ function renderPresetsPane() {
                   p.snapshot && p.snapshot.steer && p.snapshot.steer.use && `🧭 ${p.snapshot.steer.sel.length}`,
                   p.snapshot && p.snapshot.evo && p.snapshot.evo.parent && "🧬",
                   p.snapshot && p.snapshot.lab && p.snapshot.lab.active && `⚗ ${p.snapshot.lab.file || "LAB"}`,
-                  p.snapshot && p.snapshot.up && Object.values(p.snapshot.up).some(Boolean) && upSummary(p.snapshot.up)].filter(Boolean).join(" · ");
+                  p.snapshot && p.snapshot.up && Object.values(p.snapshot.up).some(Boolean) && upSummary(p.snapshot.up),
+                  p.snapshot && anSummary(p.snapshot.anim)].filter(Boolean).join(" · ");
     return `<div class="pcard" draggable="true" data-pid="${esc(p.id)}">${p.image ? `<img src="${presetImg(p)}" alt="" draggable="false">` : `<div class="noimg">no picture</div>`}
       <div class="body"><h4 title="double-click to rename">${esc(p.name)}${PFOLDER === "*" ? ` <span class="pfolder">${esc(p.folder || "unfiled")}</span>` : ""}</h4><div class="note">${esc(p.note || "")}</div>
         <div class="note">${esc(f.subject || "")}</div><div class="note" style="font:11px var(--mono)">${esc(bits)}</div>
@@ -4467,6 +4703,7 @@ function initPresets() {
     if (!p) return;
     applySnapshot(p.snapshot); $("presetSel").value = id;
     if (b.dataset.prender) {
+      if (p.snapshot.anim && p.snapshot.anim.active) return anGo();
       if (!upOnly(p.snapshot)) return render({ ...params(), form: readForm() });
       await loadLab();                                   // ▶ on a 🔍 preset: run it on the LAB's input
       if (LABS.file) $("labUpGo").click();
@@ -7166,6 +7403,8 @@ function switchTab(t) {
   $("presetsPane").classList.toggle("hidden", t !== "presets");
   $("batchPane").classList.toggle("hidden", t !== "batch");
   $("setsPane").classList.toggle("hidden", t !== "sets");
+  $("animPane").classList.toggle("hidden", t !== "anim");
+  if (t === "anim") animRender();
   if (t === "sets") loadSets();
   $("labPane").classList.toggle("hidden", t !== "lab");
   $("advPane").classList.toggle("hidden", t !== "adv");
